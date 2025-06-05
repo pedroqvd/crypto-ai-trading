@@ -1,0 +1,15 @@
+{
+  "name": "crypto-ai-trading",
+  "version": "0.1.0",
+  "description": "AI-powered crypto trading assistant",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["crypto", "trading", "ai", "dex"],
+  "author": "pedroqvd",
+  "license": "MIT",
+  "private": true
+}
