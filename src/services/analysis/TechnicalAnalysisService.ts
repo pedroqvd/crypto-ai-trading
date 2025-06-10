@@ -1,347 +1,271 @@
-export interface TechnicalIndicators {
-  rsi: {
-    value: number;
-    signal: 'bullish' | 'bearish' | 'neutral';
-    timeframe: string;
-  };
-  stochRSI: {
-    k: number;
-    d: number;
-    signal: 'bullish' | 'bearish' | 'neutral';
-    timeframe: string;
-  };
-  bmsb: {
-    support: number;
-    current: number;
-    signal: 'bullish' | 'bearish' | 'neutral';
-    strength: number;
-  };
-  overall: {
-    signal: 'bullish' | 'bearish' | 'neutral';
-    confidence: number;
-    recommendation: 'strong_buy' | 'buy' | 'hold' | 'sell' | 'strong_sell';
-  };
-  timestamp: string;
+// ================================================
+// TECHNICAL ANALYSIS SERVICE - VERSÃO CORRIGIDA
+// Métodos públicos para integração CCXT
+// ================================================
+
+interface RSIResult {
+  value: number;
+  signal: 'bullish' | 'bearish' | 'neutral';
+  timeframe: string;
 }
 
-export interface PriceData {
-  symbol: string;
-  price: number;
-  volume?: number;
-  timestamp: string;
-  high24h?: number;
-  low24h?: number;
-  change24h?: number;
+interface StochasticRSIResult {
+  k: number;
+  d: number;
+  signal: 'bullish' | 'bearish' | 'neutral';
+  timeframe: string;
+}
+
+interface BMSBResult {
+  support: number;
+  current: number;
+  signal: 'bullish' | 'bearish' | 'neutral';
+  strength: number;
 }
 
 export class TechnicalAnalysisService {
-  private rsiPeriod: number = 14;
-  private stochRSIPeriod: number = 14;
-  private priceHistory: Map<string, number[]> = new Map();
-
   constructor() {
     console.log('📊 TechnicalAnalysisService initialized');
   }
 
-  /**
-   * Calcula todos os indicadores técnicos para um ativo
-   */
-  async calculateIndicators(priceData: PriceData): Promise<TechnicalIndicators> {
-    try {
-      // Armazenar histórico de preços
-      this.updatePriceHistory(priceData.symbol, priceData.price);
-      
-      const prices = this.priceHistory.get(priceData.symbol) || [];
-      
-      // Calcular indicadores individuais
-      const rsi = this.calculateRSI(prices);
-      const stochRSI = this.calculateStochRSI(prices);
-      const bmsb = this.calculateBMSB(prices, priceData.price);
-      
-      // Gerar sinal geral
-      const overall = this.generateOverallSignal(rsi, stochRSI, bmsb);
-      
-      return {
-        rsi,
-        stochRSI,
-        bmsb,
-        overall,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error('❌ Error calculating indicators:', error);
-      return this.getDefaultIndicators();
-    }
-  }
+  // ========================================
+  // MÉTODOS PÚBLICOS PARA CCXT
+  // ========================================
 
   /**
-   * Calcula RSI (Relative Strength Index)
+   * Calcular RSI - Método público
    */
-  private calculateRSI(prices: number[]): TechnicalIndicators['rsi'] {
-    if (prices.length < this.rsiPeriod + 1) {
-      return {
-        value: 50,
-        signal: 'neutral',
-        timeframe: `${this.rsiPeriod}p`
-      };
-    }
+  public calculateRSIPublic(prices: number[], period = 14): number[] {
+    if (prices.length < period + 1) return [];
 
-    // Calcular mudanças de preço
-    const changes = [];
+    const gains: number[] = [];
+    const losses: number[] = [];
+
+    // Calcular gains e losses
     for (let i = 1; i < prices.length; i++) {
-      changes.push(prices[i] - prices[i - 1]);
+      const change = prices[i] - prices[i - 1];
+      gains.push(change > 0 ? change : 0);
+      losses.push(change < 0 ? Math.abs(change) : 0);
     }
 
-    // Separar ganhos e perdas
-    const gains = changes.map(change => change > 0 ? change : 0);
-    const losses = changes.map(change => change < 0 ? Math.abs(change) : 0);
+    const rsiValues: number[] = [];
 
-    // Médias móveis dos ganhos e perdas
-    const avgGain = gains.slice(-this.rsiPeriod).reduce((a, b) => a + b, 0) / this.rsiPeriod;
-    const avgLoss = losses.slice(-this.rsiPeriod).reduce((a, b) => a + b, 0) / this.rsiPeriod;
+    // Primeira média simples
+    let avgGain = gains.slice(0, period).reduce((sum, gain) => sum + gain, 0) / period;
+    let avgLoss = losses.slice(0, period).reduce((sum, loss) => sum + loss, 0) / period;
 
-    // Calcular RSI
-    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    const rsi = 100 - (100 / (1 + rs));
+    let rs = avgGain / (avgLoss || 0.0001);
+    let rsi = 100 - (100 / (1 + rs));
+    rsiValues.push(rsi);
 
-    // Determinar sinal
-    let signal: 'bullish' | 'bearish' | 'neutral';
-    if (rsi > 70) signal = 'bearish'; // Sobrecomprado
-    else if (rsi < 30) signal = 'bullish'; // Sobrevendido
-    else signal = 'neutral';
+    // Médias móveis exponenciais subsequentes
+    for (let i = period; i < gains.length; i++) {
+      avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
+      avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
 
-    return {
-      value: Math.round(rsi * 100) / 100,
-      signal,
-      timeframe: `${this.rsiPeriod}p`
-    };
+      rs = avgGain / (avgLoss || 0.0001);
+      rsi = 100 - (100 / (1 + rs));
+      rsiValues.push(rsi);
+    }
+
+    return rsiValues;
   }
 
   /**
-   * Calcula Stochastic RSI
+   * Calcular Stochastic RSI - Método público
    */
-  private calculateStochRSI(prices: number[]): TechnicalIndicators['stochRSI'] {
-    if (prices.length < this.stochRSIPeriod * 2) {
-      return {
-        k: 50,
-        d: 50,
-        signal: 'neutral',
-        timeframe: `${this.stochRSIPeriod}p`
-      };
+  public calculateStochasticRSIPublic(prices: number[], rsiPeriod = 14, stochPeriod = 14): number[] {
+    const rsiValues = this.calculateRSIPublic(prices, rsiPeriod);
+    if (rsiValues.length < stochPeriod) return [];
+
+    const stochRSIValues: number[] = [];
+
+    for (let i = stochPeriod - 1; i < rsiValues.length; i++) {
+      const rsiWindow = rsiValues.slice(i - stochPeriod + 1, i + 1);
+      const minRSI = Math.min(...rsiWindow);
+      const maxRSI = Math.max(...rsiWindow);
+      const currentRSI = rsiValues[i];
+
+      const stochRSI = maxRSI !== minRSI 
+        ? ((currentRSI - minRSI) / (maxRSI - minRSI)) * 100 
+        : 50;
+
+      stochRSIValues.push(stochRSI);
     }
 
-    // Calcular RSI para cada período
-    const rsiValues = [];
-    for (let i = this.rsiPeriod; i < prices.length; i++) {
-      const periodPrices = prices.slice(i - this.rsiPeriod, i + 1);
-      const rsi = this.calculateRSI(periodPrices);
-      rsiValues.push(rsi.value);
-    }
-
-    if (rsiValues.length < this.stochRSIPeriod) {
-      return {
-        k: 50,
-        d: 50,
-        signal: 'neutral',
-        timeframe: `${this.stochRSIPeriod}p`
-      };
-    }
-
-    // Calcular Stochastic do RSI
-    const recentRSI = rsiValues.slice(-this.stochRSIPeriod);
-    const highestRSI = Math.max(...recentRSI);
-    const lowestRSI = Math.min(...recentRSI);
-    const currentRSI = recentRSI[recentRSI.length - 1];
-
-    const k = ((currentRSI - lowestRSI) / (highestRSI - lowestRSI)) * 100;
-    
-    // Simular %D como média móvel de 3 períodos do %K
-    const d = k; // Simplificado para este exemplo
-
-    // Determinar sinal
-    let signal: 'bullish' | 'bearish' | 'neutral';
-    if (k > 80 && d > 80) signal = 'bearish';
-    else if (k < 20 && d < 20) signal = 'bullish';
-    else signal = 'neutral';
-
-    return {
-      k: Math.round(k * 100) / 100,
-      d: Math.round(d * 100) / 100,
-      signal,
-      timeframe: `${this.stochRSIPeriod}p`
-    };
+    return stochRSIValues;
   }
 
   /**
-   * Calcula Bull Market Support Band (BMSB)
+   * Calcular BMSB - Método público
    */
-  private calculateBMSB(prices: number[], currentPrice: number): TechnicalIndicators['bmsb'] {
-    if (prices.length < 50) {
-      return {
-        support: currentPrice * 0.85,
-        current: currentPrice,
-        signal: 'neutral',
-        strength: 0.5
-      };
+  public calculateBMSBPublic(prices: number[], volumes: number[], period = 20): number[] {
+    if (prices.length < period || volumes.length < period) return [];
+
+    const bmsbValues: number[] = [];
+
+    for (let i = period - 1; i < prices.length; i++) {
+      const priceWindow = prices.slice(i - period + 1, i + 1);
+      const volumeWindow = volumes.slice(i - period + 1, i + 1);
+
+      // Calcular preço médio ponderado por volume
+      let totalVolumePrice = 0;
+      let totalVolume = 0;
+
+      for (let j = 0; j < priceWindow.length; j++) {
+        totalVolumePrice += priceWindow[j] * volumeWindow[j];
+        totalVolume += volumeWindow[j];
+      }
+
+      const vwap = totalVolume > 0 ? totalVolumePrice / totalVolume : priceWindow[priceWindow.length - 1];
+
+      // Calcular suporte baseado em VWAP
+      const currentPrice = priceWindow[priceWindow.length - 1];
+      const supportLevel = vwap * 0.98; // 2% abaixo do VWAP
+
+      // Calcular força do sinal
+      const strength = Math.abs((currentPrice - supportLevel) / supportLevel) * 100;
+
+      bmsbValues.push(strength);
     }
 
-    // BMSB = Média móvel de 20 períodos da SMA de 21 
-    const sma21 = prices.slice(-21).reduce((a, b) => a + b, 0) / 21;
-    const ema20 = this.calculateEMA(prices, 20);
-    
-    // Banda de suporte (simplificada)
-    const support = Math.min(sma21, ema20);
-    
-    // Determinar força do sinal
-    const distanceFromSupport = (currentPrice - support) / support;
-    const strength = Math.max(0, Math.min(1, distanceFromSupport + 0.5));
-    
-    // Determinar sinal
-    let signal: 'bullish' | 'bearish' | 'neutral';
-    if (currentPrice > support * 1.05) signal = 'bullish';
-    else if (currentPrice < support * 0.95) signal = 'bearish';
-    else signal = 'neutral';
+    return bmsbValues;
+  }
+
+  // ========================================
+  // MÉTODOS PRIVADOS (ORIGINAIS)
+  // ========================================
+  private calculateRSI(prices: number[], period = 14): RSIResult {
+    const rsiValues = this.calculateRSIPublic(prices, period);
+    const currentRSI = rsiValues[rsiValues.length - 1] || 50;
+
+    let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+    if (currentRSI < 30) signal = 'bullish';
+    else if (currentRSI > 70) signal = 'bearish';
 
     return {
-      support: Math.round(support * 100) / 100,
+      value: currentRSI,
+      signal,
+      timeframe: '1h'
+    };
+  }
+
+  private calculateStochasticRSI(prices: number[], rsiPeriod = 14, stochPeriod = 14): StochasticRSIResult {
+    const stochValues = this.calculateStochasticRSIPublic(prices, rsiPeriod, stochPeriod);
+    const currentStoch = stochValues[stochValues.length - 1] || 50;
+
+    // Simular %D como média móvel simples de %K
+    const kPeriod = 3;
+    const dValues = [];
+    for (let i = kPeriod - 1; i < stochValues.length; i++) {
+      const kWindow = stochValues.slice(i - kPeriod + 1, i + 1);
+      const d = kWindow.reduce((sum, val) => sum + val, 0) / kWindow.length;
+      dValues.push(d);
+    }
+
+    const currentD = dValues[dValues.length - 1] || 50;
+
+    let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+    if (currentStoch < 20 && currentD < 20) signal = 'bullish';
+    else if (currentStoch > 80 && currentD > 80) signal = 'bearish';
+
+    return {
+      k: currentStoch,
+      d: currentD,
+      signal,
+      timeframe: '1h'
+    };
+  }
+
+  private calculateBMSB(prices: number[], volumes: number[], period = 20): BMSBResult {
+    const bmsbValues = this.calculateBMSBPublic(prices, volumes, period);
+    const currentStrength = bmsbValues[bmsbValues.length - 1] || 0;
+
+    // Calcular níveis de suporte
+    const recentPrices = prices.slice(-period);
+    const minPrice = Math.min(...recentPrices);
+    const maxPrice = Math.max(...recentPrices);
+    const currentPrice = prices[prices.length - 1];
+
+    const supportLevel = minPrice + (maxPrice - minPrice) * 0.236; // Fibonacci 23.6%
+
+    let signal: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+    if (currentPrice <= supportLevel && currentStrength > 2) signal = 'bullish';
+    else if (currentPrice >= maxPrice * 0.95 && currentStrength > 5) signal = 'bearish';
+
+    return {
+      support: supportLevel,
       current: currentPrice,
       signal,
-      strength: Math.round(strength * 100) / 100
+      strength: currentStrength
     };
   }
 
-  /**
-   * Calcula EMA (Exponential Moving Average)
-   */
-  private calculateEMA(prices: number[], period: number): number {
-    if (prices.length < period) {
-      return prices.reduce((a, b) => a + b, 0) / prices.length;
+  // ========================================
+  // ANÁLISE COMPLETA
+  // ========================================
+  analyzeMarket(prices: number[], volumes: number[]): any {
+    if (prices.length < 20 || volumes.length < 20) {
+      return {
+        error: 'Dados insuficientes para análise',
+        timestamp: Date.now()
+      };
     }
 
-    const multiplier = 2 / (period + 1);
-    let ema = prices.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    const rsi = this.calculateRSI(prices);
+    const stochRSI = this.calculateStochasticRSI(prices);
+    const bmsb = this.calculateBMSB(prices, volumes);
 
-    for (let i = period; i < prices.length; i++) {
-      ema = (prices[i] * multiplier) + (ema * (1 - multiplier));
-    }
+    // Gerar sinal geral
+    let overallSignal = 'HOLD';
+    let signalStrength = 0;
 
-    return ema;
-  }
+    if (rsi.signal === 'bullish') signalStrength += 1;
+    if (stochRSI.signal === 'bullish') signalStrength += 1;
+    if (bmsb.signal === 'bullish') signalStrength += 1;
 
-  /**
-   * Gera sinal geral baseado em todos os indicadores
-   */
-  private generateOverallSignal(
-    rsi: TechnicalIndicators['rsi'],
-    stochRSI: TechnicalIndicators['stochRSI'],
-    bmsb: TechnicalIndicators['bmsb']
-  ): TechnicalIndicators['overall'] {
-    
-    // Sistema de pontuação
-    let bullishScore = 0;
-    let bearishScore = 0;
+    if (rsi.signal === 'bearish') signalStrength -= 1;
+    if (stochRSI.signal === 'bearish') signalStrength -= 1;
+    if (bmsb.signal === 'bearish') signalStrength -= 1;
 
-    // RSI (peso: 35%)
-    if (rsi.signal === 'bullish') bullishScore += 0.35;
-    else if (rsi.signal === 'bearish') bearishScore += 0.35;
-
-    // Stochastic RSI (peso: 30%)
-    if (stochRSI.signal === 'bullish') bullishScore += 0.30;
-    else if (stochRSI.signal === 'bearish') bearishScore += 0.30;
-
-    // BMSB (peso: 35%)
-    if (bmsb.signal === 'bullish') bullishScore += 0.35;
-    else if (bmsb.signal === 'bearish') bearishScore += 0.35;
-
-    // Determinar sinal final
-    const netScore = bullishScore - bearishScore;
-    const confidence = Math.abs(netScore);
-
-    let signal: 'bullish' | 'bearish' | 'neutral';
-    let recommendation: TechnicalIndicators['overall']['recommendation'];
-
-    if (netScore > 0.5) {
-      signal = 'bullish';
-      recommendation = confidence > 0.7 ? 'strong_buy' : 'buy';
-    } else if (netScore < -0.5) {
-      signal = 'bearish';
-      recommendation = confidence > 0.7 ? 'strong_sell' : 'sell';
-    } else {
-      signal = 'neutral';
-      recommendation = 'hold';
-    }
+    if (signalStrength >= 2) overallSignal = 'BUY';
+    else if (signalStrength <= -2) overallSignal = 'SELL';
 
     return {
-      signal,
-      confidence: Math.round(confidence * 100) / 100,
-      recommendation
+      indicators: {
+        rsi,
+        stochasticRSI: stochRSI,
+        bmsb
+      },
+      overallSignal,
+      signalStrength: Math.abs(signalStrength),
+      recommendation: this.generateRecommendation(overallSignal, signalStrength),
+      timestamp: Date.now()
     };
   }
 
-  /**
-   * Atualiza histórico de preços
-   */
-  private updatePriceHistory(symbol: string, price: number): void {
-    if (!this.priceHistory.has(symbol)) {
-      this.priceHistory.set(symbol, []);
-    }
+  private generateRecommendation(signal: string, strength: number): string {
+    const strengthMap = ['Fraco', 'Moderado', 'Forte'];
+    const strengthLabel = strengthMap[Math.min(strength, 2)] || 'Neutro';
 
-    const prices = this.priceHistory.get(symbol)!;
-    prices.push(price);
-
-    // Manter apenas os últimos 200 preços
-    if (prices.length > 200) {
-      prices.shift();
+    switch (signal) {
+      case 'BUY':
+        return `Sinal de COMPRA ${strengthLabel}. Considere abrir posição long.`;
+      case 'SELL':
+        return `Sinal de VENDA ${strengthLabel}. Considere abrir posição short.`;
+      default:
+        return 'Sinal neutro. Aguarde confirmação antes de operar.';
     }
   }
 
-  /**
-   * Retorna indicadores padrão em caso de erro
-   */
-  private getDefaultIndicators(): TechnicalIndicators {
+  // ========================================
+  // HEALTH CHECK
+  // ========================================
+  healthCheck(): any {
     return {
-      rsi: {
-        value: 50,
-        signal: 'neutral',
-        timeframe: '14p'
-      },
-      stochRSI: {
-        k: 50,
-        d: 50,
-        signal: 'neutral',
-        timeframe: '14p'
-      },
-      bmsb: {
-        support: 0,
-        current: 0,
-        signal: 'neutral',
-        strength: 0.5
-      },
-      overall: {
-        signal: 'neutral',
-        confidence: 0,
-        recommendation: 'hold'
-      },
-      timestamp: new Date().toISOString()
+      status: 'operational',
+      indicators: ['RSI', 'Stochastic RSI', 'BMSB'],
+      timestamp: Date.now()
     };
-  }
-
-  /**
-   * Método público para obter análise rápida
-   */
-  async getQuickAnalysis(symbol: string, price: number): Promise<string> {
-    const indicators = await this.calculateIndicators({
-      symbol,
-      price,
-      timestamp: new Date().toISOString()
-    });
-
-    const { overall, rsi, stochRSI, bmsb } = indicators;
-
-    return `📊 ${symbol} Analysis:
-• Overall: ${overall.recommendation.toUpperCase()} (${overall.confidence * 100}% confidence)
-• RSI: ${rsi.value} (${rsi.signal})
-• Stoch RSI: ${stochRSI.k}/${stochRSI.d} (${stochRSI.signal})
-• BMSB: ${bmsb.signal} (support: $${bmsb.support})`;
   }
 }
