@@ -4,12 +4,45 @@
   "description": "AI-powered crypto trading assistant",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "nodemon src/index.ts",
+    "dev": "nodemon --exec ts-node src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["crypto", "trading", "ai", "dex"],
+  "keywords": [
+    "crypto",
+    "trading",
+    "ai",
+    "dex"
+  ],
   "author": "pedroqvd",
   "license": "MIT",
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@types/cors": "^2.8.18",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.15.29",
+    "@types/ws": "^8.18.1",
+    "eslint": "^9.28.0",
+    "nodemon": "^3.1.10",
+    "prettier": "^3.5.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.53.0",
+    "@nktkas/hyperliquid": "^0.21.1",
+    "@solana/web3.js": "^1.98.2",
+    "@types/socket.io": "^3.0.1",
+    "axios": "^1.9.0",
+    "bufferutil": "^4.0.9",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "ethers": "^6.14.3",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1",
+    "utf-8-validate": "^5.0.10",
+    "viem": "^2.30.6",
+    "ws": "^8.18.2"
+  }
 }
