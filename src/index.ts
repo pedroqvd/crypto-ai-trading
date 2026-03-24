@@ -13,6 +13,11 @@ import { TechnicalAnalysisService } from './services/analysis/TechnicalAnalysisS
 import { AnthropicService } from './services/ai/AnthropicService';
 import { CCXTService } from './services/exchange/CCXTService';
 import { AdvancedCacheService } from './services/cache/AdvancedCacheService';
+import { CoinGeckoService } from './services/market/CoinGeckoService';
+import { FearGreedService } from './services/sentiment/FearGreedService';
+import { PolymarketService } from './services/sentiment/PolymarketService';
+import { DeFiLlamaService } from './services/defi/DeFiLlamaService';
+import { BlockchainService } from './services/onchain/BlockchainService';
 
 interface OHLCVData {
   timestamp: number;
@@ -40,6 +45,11 @@ class CryptoAITradingServer {
     private anthropicService!: AnthropicService;
     private ccxtService!: CCXTService;
     private cacheService!: AdvancedCacheService;
+    private coinGeckoService!: CoinGeckoService;
+    private fearGreedService!: FearGreedService;
+    private polymarketService!: PolymarketService;
+    private defiLlamaService!: DeFiLlamaService;
+    private blockchainService!: BlockchainService;
     private port: number;
 
     constructor() {
@@ -68,7 +78,12 @@ class CryptoAITradingServer {
         this.anthropicService = new AnthropicService();
         this.cacheService = new AdvancedCacheService();
         this.ccxtService = new CCXTService();
-        
+        this.coinGeckoService = new CoinGeckoService();
+        this.fearGreedService = new FearGreedService();
+        this.polymarketService = new PolymarketService();
+        this.defiLlamaService = new DeFiLlamaService();
+        this.blockchainService = new BlockchainService();
+
         console.log('✅ Todos os serviços inicializados');
     }
 
@@ -86,13 +101,28 @@ class CryptoAITradingServer {
     private setupRoutes(): void {
         this.app.get('/api/health', async (req, res) => {
             try {
-                const ccxtHealth = await this.ccxtService.healthCheck();
+                const [ccxtHealth, coinGeckoHealth, fearGreedHealth, polymarketHealth, defiHealth, blockchainHealth] = await Promise.allSettled([
+                    this.ccxtService.healthCheck(),
+                    this.coinGeckoService.healthCheck(),
+                    this.fearGreedService.healthCheck(),
+                    this.polymarketService.healthCheck(),
+                    this.defiLlamaService.healthCheck(),
+                    this.blockchainService.healthCheck()
+                ]);
                 const cacheHealth = this.cacheService.healthCheck();
-                
+
                 res.json({
                     status: 'healthy',
                     timestamp: new Date().toISOString(),
-                    services: { ccxt: ccxtHealth, cache: cacheHealth }
+                    services: {
+                        ccxt: ccxtHealth.status === 'fulfilled' ? ccxtHealth.value : { status: 'error' },
+                        cache: cacheHealth,
+                        coinGecko: coinGeckoHealth.status === 'fulfilled' ? coinGeckoHealth.value : { status: 'error' },
+                        fearGreed: fearGreedHealth.status === 'fulfilled' ? fearGreedHealth.value : { status: 'error' },
+                        polymarket: polymarketHealth.status === 'fulfilled' ? polymarketHealth.value : { status: 'error' },
+                        defiLlama: defiHealth.status === 'fulfilled' ? defiHealth.value : { status: 'error' },
+                        blockchain: blockchainHealth.status === 'fulfilled' ? blockchainHealth.value : { status: 'error' }
+                    }
                 });
             } catch (error) {
                 res.status(500).json({
@@ -188,6 +218,184 @@ class CryptoAITradingServer {
             }
         });
 
+        // ========================================
+        // COINGECKO ROUTES
+        // ========================================
+        this.app.get('/api/coingecko/global', async (req, res) => {
+            try {
+                const data = await this.coinGeckoService.getGlobalData();
+                res.json({ success: true, data });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch global data' });
+            }
+        });
+
+        this.app.get('/api/coingecko/trending', async (req, res) => {
+            try {
+                const data = await this.coinGeckoService.getTrending();
+                res.json({ success: true, data });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch trending' });
+            }
+        });
+
+        this.app.get('/api/coingecko/top', async (req, res) => {
+            try {
+                const limit = parseInt(req.query.limit as string) || 50;
+                const data = await this.coinGeckoService.getTopCoins(Math.min(limit, 250));
+                res.json({ success: true, count: data.length, data });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch top coins' });
+            }
+        });
+
+        // ========================================
+        // SENTIMENT ROUTES (Fear & Greed + Polymarket)
+        // ========================================
+        this.app.get('/api/sentiment/fear-greed', async (req, res) => {
+            try {
+                const data = await this.fearGreedService.getHistoryWithTrend();
+                res.json({ success: true, data });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch Fear & Greed' });
+            }
+        });
+
+        this.app.get('/api/sentiment/polymarket', async (req, res) => {
+            try {
+                const report = await this.polymarketService.getCryptoSentimentReport();
+                res.json({ success: true, data: report });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch Polymarket sentiment' });
+            }
+        });
+
+        this.app.get('/api/sentiment/polymarket/search', async (req, res) => {
+            try {
+                const query = req.query.q as string;
+                if (!query) {
+                    return res.status(400).json({ success: false, error: 'Query parameter "q" is required' });
+                }
+                const markets = await this.polymarketService.searchMarkets(query);
+                res.json({ success: true, count: markets.length, data: markets });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to search Polymarket' });
+            }
+        });
+
+        this.app.get('/api/sentiment/overview', async (req, res) => {
+            try {
+                const [fearGreed, polymarket] = await Promise.allSettled([
+                    this.fearGreedService.getHistoryWithTrend(),
+                    this.polymarketService.getCryptoSentimentReport()
+                ]);
+
+                res.json({
+                    success: true,
+                    data: {
+                        fearGreed: fearGreed.status === 'fulfilled' ? fearGreed.value : null,
+                        polymarket: polymarket.status === 'fulfilled' ? polymarket.value : null,
+                        timestamp: Date.now()
+                    }
+                });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch sentiment overview' });
+            }
+        });
+
+        // ========================================
+        // DEFI LLAMA ROUTES
+        // ========================================
+        this.app.get('/api/defi/overview', async (req, res) => {
+            try {
+                const overview = await this.defiLlamaService.getDeFiOverview();
+                res.json({ success: true, data: overview });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch DeFi overview' });
+            }
+        });
+
+        this.app.get('/api/defi/protocols', async (req, res) => {
+            try {
+                const limit = parseInt(req.query.limit as string) || 30;
+                const protocols = await this.defiLlamaService.getProtocols(limit);
+                res.json({ success: true, count: protocols.length, data: protocols });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch protocols' });
+            }
+        });
+
+        this.app.get('/api/defi/chains', async (req, res) => {
+            try {
+                const chains = await this.defiLlamaService.getChains();
+                res.json({ success: true, count: chains.length, data: chains });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch chains' });
+            }
+        });
+
+        // ========================================
+        // ON-CHAIN ROUTES (Bitcoin)
+        // ========================================
+        this.app.get('/api/onchain/btc', async (req, res) => {
+            try {
+                const stats = await this.blockchainService.getStats();
+                res.json({ success: true, data: stats });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch BTC on-chain' });
+            }
+        });
+
+        this.app.get('/api/onchain/mempool', async (req, res) => {
+            try {
+                const mempool = await this.blockchainService.getMempoolCount();
+                res.json({ success: true, data: mempool });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch mempool' });
+            }
+        });
+
+        // ========================================
+        // DASHBOARD COMPLETO - Todos os dados agregados
+        // ========================================
+        this.app.get('/api/dashboard', async (req, res) => {
+            try {
+                const [
+                    tickers,
+                    globalData,
+                    trending,
+                    fearGreed,
+                    polymarket,
+                    defiOverview,
+                    btcOnChain
+                ] = await Promise.allSettled([
+                    this.ccxtService.getAllTickers(),
+                    this.coinGeckoService.getGlobalData(),
+                    this.coinGeckoService.getTrending(),
+                    this.fearGreedService.getHistoryWithTrend(),
+                    this.polymarketService.getCryptoSentimentReport(),
+                    this.defiLlamaService.getDeFiOverview(),
+                    this.blockchainService.getStats()
+                ]);
+
+                res.json({
+                    success: true,
+                    data: {
+                        prices: tickers.status === 'fulfilled' ? tickers.value : [],
+                        global: globalData.status === 'fulfilled' ? globalData.value : null,
+                        trending: trending.status === 'fulfilled' ? trending.value : [],
+                        fearGreed: fearGreed.status === 'fulfilled' ? fearGreed.value : null,
+                        polymarket: polymarket.status === 'fulfilled' ? polymarket.value : null,
+                        defi: defiOverview.status === 'fulfilled' ? defiOverview.value : null,
+                        btcOnChain: btcOnChain.status === 'fulfilled' ? btcOnChain.value : null,
+                        timestamp: Date.now()
+                    }
+                });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch dashboard data' });
+            }
+        });
+
         this.app.post('/api/claude/chat', async (req, res) => {
             try {
                 const { message } = req.body;
@@ -199,7 +407,33 @@ class CryptoAITradingServer {
                     });
                 }
 
-                const response = await this.anthropicService.chat(message);
+                // Enriquecer contexto com dados de mercado para o Claude
+                let enrichedMessage = message;
+
+                if (req.body.includeContext !== false) {
+                    try {
+                        const [fearGreedSummary, defiSummary, onChainSummary, polymarketSummary] = await Promise.allSettled([
+                            this.fearGreedService.getSentimentSummary(),
+                            this.defiLlamaService.getDeFiSummary(),
+                            this.blockchainService.getOnChainSummary(),
+                            this.polymarketService.getCryptoSentimentReport()
+                        ]);
+
+                        let context = '\n\n--- Contexto de Mercado Atual ---\n';
+                        if (fearGreedSummary.status === 'fulfilled') context += fearGreedSummary.value + '\n';
+                        if (defiSummary.status === 'fulfilled') context += defiSummary.value + '\n';
+                        if (onChainSummary.status === 'fulfilled') context += onChainSummary.value + '\n';
+                        if (polymarketSummary.status === 'fulfilled' && polymarketSummary.value.summary) {
+                            context += polymarketSummary.value.summary + '\n';
+                        }
+
+                        enrichedMessage = message + context;
+                    } catch {
+                        // Continuar sem contexto se falhar
+                    }
+                }
+
+                const response = await this.anthropicService.chat(enrichedMessage);
 
                 res.json({
                     success: true,
@@ -256,14 +490,6 @@ class CryptoAITradingServer {
                 console.error('❌ Erro na atualização:', error);
             }
         }, 15000);
-    }
-
-    private generateTradingSignal(rsi: number): string {
-        if (rsi < 30) return 'STRONG_BUY';
-        if (rsi < 40) return 'BUY';
-        if (rsi > 70) return 'STRONG_SELL';
-        if (rsi > 60) return 'SELL';
-        return 'HOLD';
     }
 
     public start(): void {
