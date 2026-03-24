@@ -14,7 +14,7 @@ interface MarketAnalysis {
 export class AnthropicService {
   private client: Anthropic | null = null;
   private isInitialized = false;
-  private model = 'claude-3-5-sonnet-20241022';
+  private model = 'claude-sonnet-4-6';
 
   constructor() {
     this.initializeClient();
@@ -54,7 +54,8 @@ export class AnthropicService {
     try {
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 1000,
+        max_tokens: 2048,
+        system: 'Você é um assistente especializado em trading de criptomoedas. Forneça análises técnicas, fundamentalistas e de sentimento de mercado. Sempre inclua disclaimers sobre riscos. Responda em português.',
         messages: [{
           role: 'user',
           content: message
@@ -128,7 +129,7 @@ export class AnthropicService {
     }
     
     if (message.toLowerCase().includes('btc') || message.toLowerCase().includes('bitcoin')) {
-      return 'Bitcoin está mostrando ' + (Math.random() > 0.5 ? 'força' : 'fraqueza') + ' relativa. Monitore os $' + (40000 + Math.floor(Math.random() * 20000)) + ' como nível chave.';
+      return 'Bitcoin está mostrando ' + (Math.random() > 0.5 ? 'força' : 'fraqueza') + ' relativa. Monitore os níveis de suporte e resistência atuais como referência para entrada e saída.';
     }
 
     // Resposta aleatória

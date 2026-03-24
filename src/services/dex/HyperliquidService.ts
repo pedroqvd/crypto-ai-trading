@@ -16,7 +16,7 @@ export class HyperliquidService extends EventEmitter {
   private marketDataCache: Map<string, MarketDataModel> = new Map();
 
   // Principais assets para monitorar
-  private readonly MAIN_ASSETS = ['BTC', 'ETH', 'SOL', 'AVAX', 'MATIC', 'LINK', 'UNI'];
+  private readonly MAIN_ASSETS = ['BTC', 'ETH', 'SOL', 'AVAX', 'LINK', 'SUI', 'ARB'];
 
   constructor(config?: Partial<HyperliquidConfig>) {
     super();

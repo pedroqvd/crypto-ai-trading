@@ -87,8 +87,9 @@ export class CCXTService {
 
   private setupDefaultWatchlists(): void {
     const cryptoSymbols = [
-      'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'ADA/USDT',
-      'DOGE/USDT', 'MATIC/USDT', 'AVAX/USDT', 'DOT/USDT'
+      'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT',
+      'ADA/USDT', 'AVAX/USDT', 'DOGE/USDT', 'LINK/USDT',
+      'DOT/USDT', 'SUI/USDT'
     ];
 
     this.exchanges.forEach((exchange, name) => {

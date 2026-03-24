@@ -2,8 +2,9 @@
 // SERVIDOR PRINCIPAL - TIPOS EXPLÍCITOS
 // ================================================
 
+import 'dotenv/config';
 import express from 'express';
-import { createServer } from 'http';
+import { createServer, Server } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
 import cors from 'cors';
@@ -33,7 +34,7 @@ interface TickerData {
 
 class CryptoAITradingServer {
     private app: express.Application;
-    private server: any;
+    private server: Server;
     private io: SocketIOServer;
     private technicalAnalysis!: TechnicalAnalysisService;
     private anthropicService!: AnthropicService;
@@ -121,7 +122,14 @@ class CryptoAITradingServer {
         this.app.post('/api/analysis/enhanced', async (req, res) => {
             try {
                 const { symbol, exchange = 'binance', timeframe = '1h' } = req.body;
-                
+
+                if (!symbol || typeof symbol !== 'string') {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Symbol is required (e.g., BTC/USDT)'
+                    });
+                }
+
                 const ohlcv: OHLCVData[] = await this.ccxtService.getOHLCV(symbol, exchange, timeframe, 100);
                 
                 if (ohlcv.length === 0) {
@@ -134,16 +142,13 @@ class CryptoAITradingServer {
                 const prices: number[] = ohlcv.map((candle: OHLCVData) => candle.close);
                 const volumes: number[] = ohlcv.map((candle: OHLCVData) => candle.volume);
 
-                const rsiValues = this.technicalAnalysis.calculateRSIPublic(prices);
-                const currentRSI = rsiValues[rsiValues.length - 1] || 50;
+                const fullAnalysis = this.technicalAnalysis.analyzeMarket(prices, volumes);
 
                 const analysis = {
                     symbol,
                     exchange,
                     timeframe,
-                    indicators: { rsi: currentRSI },
-                    signal: this.generateTradingSignal(currentRSI),
-                    timestamp: Date.now()
+                    ...fullAnalysis,
                 };
 
                 this.cacheService.setAnalysis(symbol, analysis, 300000);
@@ -158,9 +163,42 @@ class CryptoAITradingServer {
             }
         });
 
+        this.app.get('/api/market/arbitrage/:symbol', async (req, res) => {
+            try {
+                const symbol = req.params.symbol;
+                const opportunities = await this.ccxtService.findArbitrageOpportunities(symbol);
+                res.json({ success: true, data: opportunities, timestamp: Date.now() });
+            } catch (error) {
+                res.status(500).json({
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Arbitrage check failed'
+                });
+            }
+        });
+
+        this.app.get('/api/market/stats', async (req, res) => {
+            try {
+                const stats = await this.ccxtService.getMarketStats();
+                res.json({ success: true, data: stats });
+            } catch (error) {
+                res.status(500).json({
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Stats failed'
+                });
+            }
+        });
+
         this.app.post('/api/claude/chat', async (req, res) => {
             try {
                 const { message } = req.body;
+
+                if (!message || typeof message !== 'string') {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Message is required'
+                    });
+                }
+
                 const response = await this.anthropicService.chat(message);
 
                 res.json({

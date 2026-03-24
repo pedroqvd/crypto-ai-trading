@@ -23,6 +23,13 @@ interface BMSBResult {
   strength: number;
 }
 
+interface MACDResult {
+  macd: number;
+  signal: number;
+  histogram: number;
+  trend: 'bullish' | 'bearish' | 'neutral';
+}
+
 export class TechnicalAnalysisService {
   constructor() {
     console.log('📊 TechnicalAnalysisService initialized');
@@ -132,6 +139,60 @@ export class TechnicalAnalysisService {
     return bmsbValues;
   }
 
+  /**
+   * Calcular EMA - Método público
+   */
+  public calculateEMAPublic(prices: number[], period: number): number[] {
+    if (prices.length < period) return [];
+
+    const multiplier = 2 / (period + 1);
+    const emaValues: number[] = [];
+
+    // Primeira EMA = SMA
+    let ema = prices.slice(0, period).reduce((sum, p) => sum + p, 0) / period;
+    emaValues.push(ema);
+
+    for (let i = period; i < prices.length; i++) {
+      ema = (prices[i] - ema) * multiplier + ema;
+      emaValues.push(ema);
+    }
+
+    return emaValues;
+  }
+
+  /**
+   * Calcular MACD - Método público
+   */
+  public calculateMACDPublic(prices: number[], fastPeriod = 12, slowPeriod = 26, signalPeriod = 9): MACDResult | null {
+    const fastEMA = this.calculateEMAPublic(prices, fastPeriod);
+    const slowEMA = this.calculateEMAPublic(prices, slowPeriod);
+
+    if (fastEMA.length === 0 || slowEMA.length === 0) return null;
+
+    // Alinhar os arrays (slow EMA começa mais tarde)
+    const offset = slowPeriod - fastPeriod;
+    const macdLine: number[] = [];
+    for (let i = 0; i < slowEMA.length; i++) {
+      macdLine.push(fastEMA[i + offset] - slowEMA[i]);
+    }
+
+    if (macdLine.length < signalPeriod) return null;
+
+    const signalLine = this.calculateEMAPublic(macdLine, signalPeriod);
+    if (signalLine.length === 0) return null;
+
+    const signalOffset = signalPeriod - 1;
+    const lastMACD = macdLine[macdLine.length - 1];
+    const lastSignal = signalLine[signalLine.length - 1];
+    const histogram = lastMACD - lastSignal;
+
+    let trend: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+    if (histogram > 0 && lastMACD > 0) trend = 'bullish';
+    else if (histogram < 0 && lastMACD < 0) trend = 'bearish';
+
+    return { macd: lastMACD, signal: lastSignal, histogram, trend };
+  }
+
   // ========================================
   // MÉTODOS PRIVADOS (ORIGINAIS)
   // ========================================
@@ -215,6 +276,7 @@ export class TechnicalAnalysisService {
     const rsi = this.calculateRSI(prices);
     const stochRSI = this.calculateStochasticRSI(prices);
     const bmsb = this.calculateBMSB(prices, volumes);
+    const macd = this.calculateMACDPublic(prices);
 
     // Gerar sinal geral
     let overallSignal = 'HOLD';
@@ -223,10 +285,12 @@ export class TechnicalAnalysisService {
     if (rsi.signal === 'bullish') signalStrength += 1;
     if (stochRSI.signal === 'bullish') signalStrength += 1;
     if (bmsb.signal === 'bullish') signalStrength += 1;
+    if (macd?.trend === 'bullish') signalStrength += 1;
 
     if (rsi.signal === 'bearish') signalStrength -= 1;
     if (stochRSI.signal === 'bearish') signalStrength -= 1;
     if (bmsb.signal === 'bearish') signalStrength -= 1;
+    if (macd?.trend === 'bearish') signalStrength -= 1;
 
     if (signalStrength >= 2) overallSignal = 'BUY';
     else if (signalStrength <= -2) overallSignal = 'SELL';
@@ -235,7 +299,8 @@ export class TechnicalAnalysisService {
       indicators: {
         rsi,
         stochasticRSI: stochRSI,
-        bmsb
+        bmsb,
+        macd
       },
       overallSignal,
       signalStrength: Math.abs(signalStrength),
@@ -264,7 +329,7 @@ export class TechnicalAnalysisService {
   healthCheck(): any {
     return {
       status: 'operational',
-      indicators: ['RSI', 'Stochastic RSI', 'BMSB'],
+      indicators: ['RSI', 'Stochastic RSI', 'BMSB', 'MACD', 'EMA'],
       timestamp: Date.now()
     };
   }
