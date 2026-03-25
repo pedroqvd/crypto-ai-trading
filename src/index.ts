@@ -16,6 +16,7 @@ import { AdvancedCacheService } from './services/cache/AdvancedCacheService';
 import { CoinGeckoService } from './services/market/CoinGeckoService';
 import { FearGreedService } from './services/sentiment/FearGreedService';
 import { PolymarketService } from './services/sentiment/PolymarketService';
+import { PolymarketTraderService } from './services/sentiment/PolymarketTraderService';
 import { DeFiLlamaService } from './services/defi/DeFiLlamaService';
 import { BlockchainService } from './services/onchain/BlockchainService';
 
@@ -50,6 +51,7 @@ class CryptoAITradingServer {
     private polymarketService!: PolymarketService;
     private defiLlamaService!: DeFiLlamaService;
     private blockchainService!: BlockchainService;
+    private polymarketTraderService!: PolymarketTraderService;
     private port: number;
 
     constructor() {
@@ -83,6 +85,7 @@ class CryptoAITradingServer {
         this.polymarketService = new PolymarketService();
         this.defiLlamaService = new DeFiLlamaService();
         this.blockchainService = new BlockchainService();
+        this.polymarketTraderService = new PolymarketTraderService();
 
         console.log('✅ Todos os serviços inicializados');
     }
@@ -280,6 +283,33 @@ class CryptoAITradingServer {
                 res.json({ success: true, count: markets.length, data: markets });
             } catch (error) {
                 res.status(500).json({ success: false, error: 'Failed to search Polymarket' });
+            }
+        });
+
+        // ========================================
+        // POLYMARKET TRADER TRACKING ROUTES
+        // ========================================
+        this.app.get('/api/polymarket/top-traders', async (req, res) => {
+            try {
+                const limit = parseInt(req.query.limit as string) || 20;
+                const traders = await this.polymarketTraderService.getTopTraders(limit);
+                res.json({ success: true, count: traders.length, data: traders });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch top traders' });
+            }
+        });
+
+        this.app.get('/api/polymarket/trader/:address', async (req, res) => {
+            try {
+                const address = req.params.address;
+                const name = req.query.name as string | undefined;
+                if (!address || !address.startsWith('0x')) {
+                    return res.status(400).json({ success: false, error: 'Valid Ethereum address required (0x...)' });
+                }
+                const profile = await this.polymarketTraderService.buildTraderProfile(address, name);
+                res.json({ success: true, data: profile });
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Failed to fetch trader profile' });
             }
         });
 

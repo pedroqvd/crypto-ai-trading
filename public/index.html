@@ -1,720 +1,550 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polymarket Trader Tracker</title>
-    <style>
-        :root {
-            --bg: #0c0e0c;
-            --bg-card: #131613;
-            --bg-sidebar: #0f110f;
-            --green: #00d97e;
-            --red: #ff4747;
-            --orange: #ff8c42;
-            --border: rgba(255,255,255,0.06);
-            --text-primary: #e8ece8;
-            --text-secondary: rgba(255,255,255,0.45);
-            --text-muted: rgba(255,255,255,0.28);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg);
-            color: var(--text-primary);
-            min-height: 100vh;
-            display: flex;
-            overflow: hidden;
-        }
-
-        /* ===== SIDEBAR ===== */
-        .sidebar {
-            width: 260px;
-            min-width: 260px;
-            background: var(--bg-sidebar);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        .sidebar-header {
-            padding: 20px 16px 14px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .sidebar-title {
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: var(--text-secondary);
-            margin-bottom: 14px;
-        }
-
-        .add-trader-btn {
-            width: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-            padding: 9px 14px;
-            background: rgba(0,217,126,0.10);
-            border: 1px solid rgba(0,217,126,0.22);
-            border-radius: 8px;
-            color: var(--green);
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.15s, border-color 0.15s;
-        }
-
-        .add-trader-btn:hover {
-            background: rgba(0,217,126,0.16);
-            border-color: rgba(0,217,126,0.36);
-        }
-
-        .add-trader-btn svg {
-            width: 14px;
-            height: 14px;
-            flex-shrink: 0;
-        }
-
-        .traders-list {
-            flex: 1;
-            overflow-y: auto;
-            padding: 8px 0;
-        }
-
-        .traders-list::-webkit-scrollbar { width: 4px; }
-        .traders-list::-webkit-scrollbar-track { background: transparent; }
-        .traders-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 2px; }
-
-        .trader-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 16px;
-            cursor: pointer;
-            border-radius: 0;
-            transition: background 0.12s;
-            position: relative;
-        }
-
-        .trader-item:hover {
-            background: rgba(255,255,255,0.04);
-        }
-
-        .trader-item.active {
-            background: rgba(0,217,126,0.07);
-        }
-
-        .trader-item.active::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 3px;
-            background: var(--green);
-            border-radius: 0 2px 2px 0;
-        }
-
-        .trader-avatar {
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #1e3a2e, #2d5c40);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 13px;
-            font-weight: 700;
-            color: var(--green);
-            flex-shrink: 0;
-            text-transform: uppercase;
-            border: 1px solid rgba(0,217,126,0.18);
-        }
-
-        .trader-info {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .trader-name {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-primary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin-bottom: 3px;
-        }
-
-        .trader-stats {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-        }
-
-        .trader-roi {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--green);
-        }
-
-        .trader-roi.negative { color: var(--red); }
-
-        .trader-profit {
-            font-size: 11px;
-            color: var(--text-muted);
-        }
-
-        /* ===== MAIN CONTENT ===== */
-        .main-content {
-            flex: 1;
-            height: 100vh;
-            overflow-y: auto;
-            background: var(--bg);
-        }
-
-        .main-content::-webkit-scrollbar { width: 5px; }
-        .main-content::-webkit-scrollbar-track { background: transparent; }
-        .main-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
-
-        /* ===== EMPTY STATE ===== */
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            gap: 12px;
-            color: var(--text-muted);
-        }
-
-        .empty-state svg {
-            width: 48px;
-            height: 48px;
-            opacity: 0.3;
-        }
-
-        .empty-state p {
-            font-size: 14px;
-        }
-
-        /* ===== TRADER PROFILE ===== */
-        .trader-profile {
-            padding: 28px 32px 40px;
-        }
-
-        /* Profile Header */
-        .profile-header {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .profile-avatar {
-            width: 52px;
-            height: 52px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #1e3a2e, #2d5c40);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--green);
-            border: 2px solid rgba(0,217,126,0.22);
-            flex-shrink: 0;
-            text-transform: uppercase;
-        }
-
-        .profile-name-wrap {
-            flex: 1;
-        }
-
-        .profile-name {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 5px;
-        }
-
-        .profile-link {
-            font-size: 12px;
-            color: var(--green);
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            opacity: 0.8;
-            transition: opacity 0.15s;
-        }
-
-        .profile-link:hover { opacity: 1; }
-
-        /* Stats Bar */
-        .stats-bar {
-            display: flex;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            margin-bottom: 24px;
-            overflow: hidden;
-        }
-
-        .stat-block {
-            flex: 1;
-            padding: 16px 20px;
-            border-right: 1px solid var(--border);
-            min-width: 0;
-        }
-
-        .stat-block:last-child { border-right: none; }
-
-        .stat-label {
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.07em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 6px;
-        }
-
-        .stat-value {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-
-        .stat-value.positive { color: var(--green); }
-        .stat-value.negative { color: var(--red); }
-
-        /* Tabs */
-        .tabs-row {
-            display: flex;
-            align-items: center;
-            gap: 0;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 24px;
-        }
-
-        .tab-btn {
-            padding: 10px 20px;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            background: transparent;
-            border: none;
-            border-bottom: 2px solid transparent;
-            cursor: pointer;
-            transition: color 0.15s, border-color 0.15s;
-            margin-bottom: -1px;
-        }
-
-        .tab-btn:hover { color: var(--text-primary); }
-
-        .tab-btn.active {
-            color: var(--text-primary);
-            border-bottom-color: var(--green);
-        }
-
-        /* Bet count label */
-        .section-label {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 16px;
-            letter-spacing: 0.02em;
-        }
-
-        /* ===== MONTHLY CHART ===== */
-        .chart-section {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 20px 24px;
-            margin-bottom: 24px;
-        }
-
-        .chart-title {
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.10em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 20px;
-        }
-
-        .bar-chart {
-            display: flex;
-            align-items: flex-end;
-            gap: 10px;
-            height: 110px;
-        }
-
-        .bar-col {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            flex: 1;
-        }
-
-        .bar-value-label {
-            font-size: 10px;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        .bar-value-label.positive { color: var(--green); }
-        .bar-value-label.negative { color: var(--red); }
-
-        .bar-wrap {
-            display: flex;
-            align-items: flex-end;
-            height: 80px;
-            width: 100%;
-            justify-content: center;
-        }
-
-        .bar {
-            width: 100%;
-            max-width: 48px;
-            border-radius: 4px 4px 0 0;
-            min-height: 4px;
-        }
-
-        .bar.positive { background: var(--green); opacity: 0.85; }
-        .bar.negative { background: var(--red); opacity: 0.75; }
-
-        .bar-month-label {
-            font-size: 10px;
-            color: var(--text-muted);
-            white-space: nowrap;
-        }
-
-        /* ===== BETS TABLE ===== */
-        .bets-table-wrap {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        .bets-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .bets-table th {
-            padding: 11px 14px;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.07em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-            white-space: nowrap;
-        }
-
-        .bets-table td {
-            padding: 12px 14px;
-            font-size: 12px;
-            color: var(--text-primary);
-            border-bottom: 1px solid var(--border);
-            vertical-align: middle;
-        }
-
-        .bets-table tr:last-child td { border-bottom: none; }
-
-        .bets-table tr:hover td { background: rgba(255,255,255,0.022); }
-
-        .td-date {
-            color: var(--text-muted);
-            font-size: 11px;
-            white-space: nowrap;
-        }
-
-        .td-event {
-            max-width: 260px;
-            line-height: 1.4;
-        }
-
-        /* Bet pill */
-        .bet-pill {
-            display: inline-block;
-            padding: 3px 9px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-            letter-spacing: 0.02em;
-        }
-
-        .bet-pill.yes {
-            background: rgba(0,217,126,0.14);
-            color: var(--green);
-            border: 1px solid rgba(0,217,126,0.25);
-        }
-
-        .bet-pill.no {
-            background: rgba(255,71,71,0.13);
-            color: var(--red);
-            border: 1px solid rgba(255,71,71,0.24);
-        }
-
-        .bet-pill.team {
-            background: rgba(255,140,66,0.13);
-            color: var(--orange);
-            border: 1px solid rgba(255,140,66,0.24);
-        }
-
-        /* Confidence bars */
-        .confidence-wrap {
-            display: flex;
-            align-items: flex-end;
-            gap: 2px;
-        }
-
-        .conf-bar {
-            width: 4px;
-            border-radius: 1px;
-        }
-
-        .conf-bar.active { background: rgba(255,255,255,0.65); }
-        .conf-bar.inactive { background: rgba(255,255,255,0.12); }
-
-        .conf-bar-1 { height: 6px; }
-        .conf-bar-2 { height: 9px; }
-        .conf-bar-3 { height: 12px; }
-
-        .conf-cell {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            white-space: nowrap;
-        }
-
-        .conf-label {
-            font-size: 11px;
-            color: var(--text-secondary);
-        }
-
-        .td-odds { color: var(--text-secondary); }
-
-        .td-roi.positive { color: var(--green); font-weight: 600; }
-        .td-roi.negative { color: var(--red); font-weight: 600; }
-
-        .td-profit.positive { color: var(--green); font-weight: 600; }
-        .td-profit.negative { color: var(--red); font-weight: 600; }
-
-        /* ===== MODAL ===== */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.65);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-overlay.open {
-            display: flex;
-        }
-
-        .modal {
-            background: var(--bg-card);
-            border: 1px solid rgba(255,255,255,0.10);
-            border-radius: 14px;
-            padding: 28px;
-            width: 420px;
-            max-width: calc(100vw - 32px);
-            box-shadow: 0 24px 60px rgba(0,0,0,0.55);
-        }
-
-        .modal-title {
-            font-size: 16px;
-            font-weight: 700;
-            margin-bottom: 20px;
-            color: var(--text-primary);
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        .form-label {
-            display: block;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.07em;
-            color: var(--text-muted);
-            margin-bottom: 6px;
-        }
-
-        .form-input {
-            width: 100%;
-            padding: 10px 12px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.10);
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-size: 13px;
-            outline: none;
-            transition: border-color 0.15s;
-        }
-
-        .form-input:focus {
-            border-color: rgba(0,217,126,0.35);
-        }
-
-        .form-input::placeholder { color: var(--text-muted); }
-
-        .modal-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 22px;
-        }
-
-        .btn-cancel {
-            flex: 1;
-            padding: 10px;
-            background: transparent;
-            border: 1px solid rgba(255,255,255,0.10);
-            border-radius: 8px;
-            color: var(--text-secondary);
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.15s;
-        }
-
-        .btn-cancel:hover { background: rgba(255,255,255,0.05); }
-
-        .btn-confirm {
-            flex: 1;
-            padding: 10px;
-            background: var(--green);
-            border: none;
-            border-radius: 8px;
-            color: #0a1a10;
-            font-size: 13px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: opacity 0.15s;
-        }
-
-        .btn-confirm:hover { opacity: 0.88; }
-
-        /* ===== TOAST ===== */
-        #toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 2000;
-            padding: 12px 18px;
-            border-radius: 9px;
-            font-size: 13px;
-            font-weight: 500;
-            color: #fff;
-            pointer-events: none;
-            opacity: 0;
-            transform: translateY(8px);
-            transition: opacity 0.2s, transform 0.2s;
-            max-width: 320px;
-        }
-
-        #toast.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        #toast.success { background: #1a4a2e; border: 1px solid rgba(0,217,126,0.35); color: var(--green); }
-        #toast.error   { background: #3a1515; border: 1px solid rgba(255,71,71,0.35); color: var(--red); }
-        #toast.info    { background: #1a2a3a; border: 1px solid rgba(100,160,255,0.35); color: #88aaff; }
-
-        /* Open bet badge */
-        .open-badge {
-            display: inline-block;
-            padding: 2px 7px;
-            background: rgba(255,140,66,0.14);
-            border: 1px solid rgba(255,140,66,0.26);
-            color: var(--orange);
-            border-radius: 20px;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Polymarket Trader Tracker</title>
+  <style>
+    :root {
+      --bg: #0c0e0c;
+      --bg-card: #131613;
+      --bg-sidebar: #0f110f;
+      --green: #00d97e;
+      --red: #ff4747;
+      --orange: #ff8c42;
+      --border: rgba(255, 255, 255, 0.06);
+      --text: #e8ece8;
+      --text-muted: rgba(255, 255, 255, 0.45);
+      --text-dim: rgba(255, 255, 255, 0.25);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ===== SIDEBAR ===== */
+    #sidebar {
+      width: 260px;
+      min-width: 260px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #sidebar-header {
+      padding: 18px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #sidebar-header h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+    }
+
+    #btn-add-trader {
+      width: 100%;
+      background: rgba(0, 217, 126, 0.1);
+      border: 1px solid rgba(0, 217, 126, 0.25);
+      color: var(--green);
+      padding: 7px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    #btn-add-trader:hover { background: rgba(0, 217, 126, 0.18); }
+
+    #traders-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+
+    #traders-list::-webkit-scrollbar { width: 4px; }
+    #traders-list::-webkit-scrollbar-track { background: transparent; }
+    #traders-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+    .trader-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: background 0.12s;
+      border-left: 2px solid transparent;
+    }
+    .trader-item:hover { background: rgba(255,255,255,0.04); }
+    .trader-item.active {
+      background: rgba(0, 217, 126, 0.06);
+      border-left-color: var(--green);
+    }
+
+    .trader-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      flex-shrink: 0;
+      text-transform: uppercase;
+    }
+
+    .trader-info { flex: 1; min-width: 0; }
+    .trader-name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
+    }
+    .trader-meta {
+      display: flex;
+      gap: 6px;
+      margin-top: 2px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .trader-roi-positive { color: var(--green); font-weight: 600; }
+    .trader-roi-negative { color: var(--red); font-weight: 600; }
+
+    /* ===== MAIN CONTENT ===== */
+    #main {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg);
+    }
+    #main::-webkit-scrollbar { width: 4px; }
+    #main::-webkit-scrollbar-track { background: transparent; }
+    #main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+    #empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* ===== TRADER PROFILE ===== */
+    #trader-profile { padding: 28px 32px; max-width: 1100px; }
+
+    /* Header */
+    .profile-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .profile-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .profile-name-block h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .profile-polymarket-link {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-top: 3px;
+      transition: color 0.15s;
+    }
+    .profile-polymarket-link:hover { color: var(--green); }
+
+    /* Stats bar */
+    .stats-bar {
+      display: flex;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    .stat-block {
+      flex: 1;
+      padding: 16px 20px;
+      border-right: 1px solid var(--border);
+    }
+    .stat-block:last-child { border-right: none; }
+    .stat-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .stat-value.positive { color: var(--green); }
+    .stat-value.negative { color: var(--red); }
+    .stat-value.neutral { color: var(--text); }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active {
+      color: #fff;
+      border-bottom-color: var(--green);
+    }
+
+    /* Bets count */
+    .bets-count {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    /* Monthly chart section */
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+
+    .monthly-chart-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-bottom: 24px;
+    }
+
+    .monthly-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      height: 110px;
+    }
+
+    .chart-bar-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      flex: 1;
+    }
+
+    .chart-bar-value {
+      font-size: 9px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      white-space: nowrap;
+    }
+    .chart-bar-value.positive { color: var(--green); }
+    .chart-bar-value.negative { color: var(--red); }
+
+    .chart-bar-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      width: 100%;
+    }
+
+    .chart-bar {
+      width: 28px;
+      border-radius: 3px 3px 0 0;
+      min-height: 3px;
+    }
+    .chart-bar.positive { background: var(--green); }
+    .chart-bar.negative {
+      background: var(--red);
+      border-radius: 0 0 3px 3px;
+    }
+
+    .chart-month-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      margin-top: 5px;
+    }
+
+    /* Bets table */
+    .bets-table-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+
+    .bets-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .bets-table th {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+      padding: 11px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+      white-space: nowrap;
+    }
+
+    .bets-table td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      color: var(--text);
+    }
+
+    .bets-table tr:last-child td { border-bottom: none; }
+    .bets-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .td-date { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+    .td-event { max-width: 260px; font-size: 12px; line-height: 1.4; }
+
+    /* Bet pills */
+    .bet-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .bet-pill.yes {
+      background: rgba(0, 217, 126, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(0, 217, 126, 0.3);
+    }
+    .bet-pill.no {
+      background: rgba(255, 71, 71, 0.15);
+      color: var(--red);
+      border: 1px solid rgba(255, 71, 71, 0.3);
+    }
+    .bet-pill.team {
+      background: rgba(255, 140, 66, 0.15);
+      color: var(--orange);
+      border: 1px solid rgba(255, 140, 66, 0.3);
+    }
+
+    /* Confidence bars */
+    .conf-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .conf-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+    }
+    .conf-bar {
+      width: 4px;
+      border-radius: 1px;
+    }
+    .conf-bar.active { background: rgba(255,255,255,0.65); }
+    .conf-bar.inactive { background: rgba(255,255,255,0.12); }
+    .conf-label { font-size: 11px; color: var(--text-muted); }
+
+    /* Positive/Negative values */
+    .val-positive { color: var(--green); font-weight: 600; }
+    .val-negative { color: var(--red); font-weight: 600; }
+    .val-neutral { color: var(--text); }
+
+    /* ===== ADD TRADER MODAL ===== */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-overlay.open { display: flex; }
+
+    #modal-box {
+      background: #1a1d1a;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      width: 400px;
+      max-width: 95vw;
+    }
+    #modal-box h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+    .modal-field { margin-bottom: 14px; }
+    .modal-field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+    .modal-field input {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 9px 12px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .modal-field input:focus { border-color: rgba(0, 217, 126, 0.4); }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      justify-content: flex-end;
+    }
+    .btn-secondary {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 8px 16px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .btn-primary {
+      background: var(--green);
+      border: none;
+      color: #000;
+      padding: 8px 16px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .btn-primary:hover { background: #00c471; }
+
+    /* ===== TOAST ===== */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1e221e;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 13px;
+      color: var(--text);
+      z-index: 200;
+      transform: translateY(80px);
+      opacity: 0;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+      pointer-events: none;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.success { border-left: 3px solid var(--green); }
+    #toast.error { border-left: 3px solid var(--red); }
+    #toast.info { border-left: 3px solid #4a9eff; }
+  </style>
 </head>
 <body>
 
-    <!-- Sidebar -->
-    <aside class="sidebar">
-        <div class="sidebar-header">
-            <div class="sidebar-title">Traders Monitorados</div>
-            <button class="add-trader-btn" onclick="openAddTrader()">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <line x1="8" y1="2" x2="8" y2="14"/><line x1="2" y1="8" x2="14" y2="8"/>
-                </svg>
-                Adicionar trader
-            </button>
-        </div>
-        <div class="traders-list" id="traders-list">
-            <!-- populated by JS -->
-        </div>
-    </aside>
-
-    <!-- Main Content -->
-    <main class="main-content" id="main-content">
-        <div class="empty-state" id="empty-state">
-            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
-                <circle cx="24" cy="24" r="20"/>
-                <path d="M24 16v8l5 5"/>
-            </svg>
-            <p>Selecione um trader para ver o perfil</p>
-        </div>
-        <div id="trader-profile" style="display:none;"></div>
-    </main>
-
-    <!-- Add Trader Modal -->
-    <div class="modal-overlay" id="add-trader-modal">
-        <div class="modal">
-            <div class="modal-title">Adicionar Trader</div>
-            <div class="form-group">
-                <label class="form-label" for="trader-address">Endereço Polymarket</label>
-                <input class="form-input" id="trader-address" type="text" placeholder="0x...">
-            </div>
-            <div class="form-group">
-                <label class="form-label" for="trader-name-input">Nome (opcional)</label>
-                <input class="form-input" id="trader-name-input" type="text" placeholder="Ex: FeatherLeather">
-            </div>
-            <div class="modal-actions">
-                <button class="btn-cancel" onclick="closeAddTrader()">Cancelar</button>
-                <button class="btn-confirm" onclick="addTrader()">Adicionar</button>
-            </div>
-        </div>
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <h2>Traders Rastreados</h2>
+      <button id="btn-add-trader" onclick="openAddTrader()">+ Adicionar trader</button>
     </div>
+    <div id="traders-list"></div>
+  </aside>
 
-    <!-- Toast -->
-    <div id="toast"></div>
+  <!-- MAIN CONTENT -->
+  <main id="main">
+    <div id="empty-state">Selecione um trader para ver o perfil</div>
+    <div id="trader-profile" style="display:none;"></div>
+  </main>
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="js/polymarket-ui.js"></script>
+  <!-- ADD TRADER MODAL -->
+  <div id="modal-overlay" onclick="handleOverlayClick(event)">
+    <div id="modal-box">
+      <h3>Adicionar Trader</h3>
+      <div class="modal-field">
+        <label>Endereço Polymarket</label>
+        <input type="text" id="input-address" placeholder="0x..." />
+      </div>
+      <div class="modal-field">
+        <label>Nome (opcional)</label>
+        <input type="text" id="input-name" placeholder="Apelido do trader" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeAddTrader()">Cancelar</button>
+        <button class="btn-primary" onclick="addTrader()">Adicionar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/polymarket-ui.js"></script>
 </body>
 </html>
