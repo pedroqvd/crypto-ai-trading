@@ -362,6 +362,36 @@
             padding: 1.5rem;
         }
 
+        /* Polymarket Modal & Toast */
+        #modal-overlay {
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #modal-overlay.open {
+            display: flex;
+        }
+
+        #toast.show {
+            opacity: 1 !important;
+        }
+
+        #toast.success {
+            border-color: var(--success);
+            color: var(--success);
+        }
+
+        #toast.error {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        #toast.info {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
         /* WLFI Section */
         #wlfi-section {
             padding: 1rem;
@@ -941,17 +971,49 @@
         <div id="polymarket-section" class="section">
             <div class="polymarket-container">
                 <div class="traders-sidebar">
-                    <div style="padding: 1rem; border-bottom: 1px solid var(--border); color: var(--primary); font-weight: 600;">
-                        Top Traders
+                    <div style="padding: 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+                        <span style="color: var(--primary); font-weight: 600;">Top Traders</span>
+                        <button onclick="openAddTrader()" style="background: var(--primary); color: #000; border: none; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;">+ Add</button>
                     </div>
                     <div class="traders-list" id="traders-list">
                         <!-- Populated by polymarket-ui.js -->
                     </div>
                 </div>
                 <div class="polymarket-main" id="polymarket-main">
-                    <!-- Populated by polymarket-ui.js -->
+                    <!-- Empty state: shown when no trader is selected -->
+                    <div id="empty-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #888; text-align: center; padding: 2rem;">
+                        <i class="fas fa-chart-bar" style="font-size: 3rem; margin-bottom: 1rem; color: var(--border);"></i>
+                        <p style="font-size: 1rem; margin-bottom: 0.5rem;">Selecione um trader para ver o perfil</p>
+                        <p style="font-size: 0.85rem;">ou adicione um novo trader pelo endereço Polymarket</p>
+                    </div>
+                    <!-- Trader profile: shown when a trader is selected -->
+                    <div id="trader-profile" style="display: none; overflow-y: auto; height: 100%;">
+                        <!-- Populated by polymarket-ui.js renderTraderProfile() -->
+                    </div>
                 </div>
             </div>
+
+            <!-- Modal overlay for adding a trader -->
+            <div id="modal-overlay" onclick="handleOverlayClick(event)" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; width: 100%; max-width: 440px; margin: 1rem;">
+                    <h2 style="color: var(--primary); margin-bottom: 1.5rem; font-size: 1.1rem;">Adicionar Trader</h2>
+                    <div style="margin-bottom: 1rem;">
+                        <label style="display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 0.4rem;">Endereço Polymarket *</label>
+                        <input id="input-address" type="text" placeholder="0x..." style="width: 100%; padding: 0.6rem 0.75rem; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 6px; color: #e1e1e1; font-size: 0.9rem; outline: none;">
+                    </div>
+                    <div style="margin-bottom: 1.5rem;">
+                        <label style="display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 0.4rem;">Nome (opcional)</label>
+                        <input id="input-name" type="text" placeholder="Ex: WhaleTrader" style="width: 100%; padding: 0.6rem 0.75rem; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 6px; color: #e1e1e1; font-size: 0.9rem; outline: none;">
+                    </div>
+                    <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+                        <button onclick="closeAddTrader()" style="padding: 0.6rem 1.25rem; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: #aaa; cursor: pointer; font-size: 0.9rem;">Cancelar</button>
+                        <button onclick="addTrader()" style="padding: 0.6rem 1.25rem; background: var(--primary); border: none; border-radius: 6px; color: #000; cursor: pointer; font-size: 0.9rem; font-weight: 600;">Adicionar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Toast notification -->
+            <div id="toast" style="position: fixed; bottom: 2rem; right: 2rem; z-index: 3000; padding: 0.75rem 1.25rem; border-radius: 8px; font-size: 0.9rem; font-weight: 500; pointer-events: none; opacity: 0; transition: opacity 0.3s ease; background: var(--bg-card); border: 1px solid var(--border); color: #e1e1e1;"></div>
         </div>
 
         <!-- WLFI Token Section -->
