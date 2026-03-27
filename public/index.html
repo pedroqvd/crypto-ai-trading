@@ -422,6 +422,265 @@
             opacity: 1 !important;
         }
 
+        /* ---- Trader Profile ---- */
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.5rem 1.5rem 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .profile-avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--success));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #000;
+            flex-shrink: 0;
+        }
+
+        .profile-name-block h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #e1e1e1;
+            margin: 0;
+        }
+
+        .profile-polymarket-link {
+            font-size: 0.8rem;
+            color: var(--primary);
+            text-decoration: none;
+            opacity: 0.8;
+        }
+
+        .profile-polymarket-link:hover { opacity: 1; text-decoration: underline; }
+
+        /* Stats bar */
+        .stats-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .stat-block {
+            flex: 1;
+            padding: 1rem 1.25rem;
+            border-right: 1px solid rgba(255,255,255,0.06);
+            text-align: center;
+        }
+
+        .stat-block:last-child { border-right: none; }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-bottom: 0.35rem;
+        }
+
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .stat-value.positive { color: var(--success); }
+        .stat-value.negative { color: var(--danger); }
+        .stat-value.neutral  { color: #e1e1e1; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0;
+            padding: 1rem 1.5rem 0;
+        }
+
+        .tab-btn {
+            background: none;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px 6px 0 0;
+            color: #888;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0.5rem 1.25rem;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active {
+            background: rgba(0,212,255,0.12);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .tab-btn:hover:not(.active) { color: #ccc; }
+
+        .bets-count {
+            font-size: 0.8rem;
+            color: #666;
+            padding: 0.5rem 1.5rem 0;
+        }
+
+        /* Section title */
+        .section-title {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            padding: 1rem 1.5rem 0.5rem;
+        }
+
+        /* Monthly chart */
+        .monthly-chart-wrap {
+            padding: 0 1.5rem 1rem;
+            overflow-x: auto;
+        }
+
+        .monthly-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 0.75rem;
+            min-height: 120px;
+        }
+
+        .chart-bar-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            min-width: 60px;
+        }
+
+        .chart-bar-value {
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .chart-bar-value.positive { color: var(--success); }
+        .chart-bar-value.negative { color: var(--danger); }
+
+        .chart-bar-wrap {
+            width: 100%;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            height: 88px;
+        }
+
+        .chart-bar {
+            width: 36px;
+            border-radius: 4px 4px 0 0;
+            transition: opacity 0.2s;
+        }
+
+        .chart-bar.positive { background: linear-gradient(180deg, var(--success), rgba(0,255,136,0.4)); }
+        .chart-bar.negative { background: linear-gradient(180deg, var(--danger), rgba(255,71,87,0.4)); }
+
+        .chart-month-label {
+            font-size: 0.7rem;
+            color: #666;
+            white-space: nowrap;
+        }
+
+        /* Bets table */
+        .bets-table-wrap {
+            padding: 0 1.5rem 1.5rem;
+            overflow-x: auto;
+        }
+
+        .bets-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+
+        .bets-table thead tr {
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .bets-table th {
+            color: #666;
+            font-weight: 600;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            padding: 0.5rem 0.75rem;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .bets-table tbody tr {
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            transition: background 0.15s ease;
+        }
+
+        .bets-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+        .bets-table td {
+            padding: 0.6rem 0.75rem;
+            vertical-align: middle;
+            color: #ccc;
+        }
+
+        .td-date { white-space: nowrap; color: #666 !important; font-size: 0.78rem; }
+        .td-event { max-width: 300px; }
+
+        .val-positive { color: var(--success); font-weight: 600; }
+        .val-negative { color: var(--danger); font-weight: 600; }
+        .val-neutral  { color: #ccc; }
+
+        /* Bet pills */
+        .bet-pill {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .bet-pill.yes  { background: rgba(0,255,136,0.15); color: var(--success); }
+        .bet-pill.no   { background: rgba(255,71,87,0.15); color: var(--danger); }
+        .bet-pill.team { background: rgba(0,212,255,0.15); color: var(--primary); }
+
+        /* Confidence bars */
+        .conf-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .conf-bars {
+            display: flex;
+            gap: 3px;
+            align-items: flex-end;
+        }
+
+        .conf-bar {
+            width: 5px;
+            border-radius: 2px;
+        }
+
+        .conf-bar.active  { background: var(--primary); }
+        .conf-bar.inactive { background: rgba(255,255,255,0.1); }
+
+        .conf-label {
+            font-size: 0.65rem;
+            color: #666;
+            white-space: nowrap;
+        }
+
         #toast.success {
             border-color: var(--success);
             color: var(--success);
