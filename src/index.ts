@@ -406,10 +406,10 @@ class CryptoAITradingServer {
                 try {
                     // Attempt to fetch real data from CoinGecko
                     const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true`);
-                    const data = await response.json();
+                    const data = await response.json() as Record<string, any>;
 
                     if (data && data[coingeckoId]) {
-                        const tokenData = data[coingeckoId];
+                        const tokenData = data[coingeckoId] as Record<string, number>;
                         return res.json({
                             success: true,
                             data: {
