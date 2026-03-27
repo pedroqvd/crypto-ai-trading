@@ -850,6 +850,363 @@
                 text-align: center;
             }
         }
+
+/* ============================== */
+/* PREMIUM UI UPGRADE             */
+/* ============================== */
+
+/* Premium font imports */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+body {
+    font-family: 'Inter', 'Segoe UI', sans-serif !important;
+}
+
+/* Glass morphism cards */
+.wlfi-panel, .sidebar, .header, .main-chart, .widget-card, .traders-sidebar, .polymarket-main, .status-card, .chat-container {
+    background: rgba(15, 15, 25, 0.7) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Premium nav bar */
+.nav-bar {
+    background: rgba(8, 8, 15, 0.98) !important;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.15) !important;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+.nav-logo {
+    background: linear-gradient(135deg, #00d4ff, #00ff88);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 800 !important;
+    letter-spacing: -0.5px;
+}
+
+.nav-tab {
+    font-weight: 500 !important;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    font-size: 0.85rem !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.nav-tab.active {
+    border-bottom-color: transparent !important;
+    background: linear-gradient(180deg, transparent 60%, rgba(0, 212, 255, 0.1));
+    color: #fff !important;
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+}
+
+/* Glow accents */
+.wlfi-header, .chat-container h3 {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(0, 255, 136, 0.04)) !important;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.15) !important;
+}
+
+/* Premium cards hover */
+.upd-card, .xp, .pm-card, .anal-item, .trader-item, .market-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+.upd-card:hover, .xp:hover, .pm-card:hover, .trader-item:hover, .market-card:hover {
+    border-color: rgba(0, 212, 255, 0.3) !important;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.1), 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* Badge upgrades */
+.upd-badge {
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-size: 0.6rem !important;
+    font-weight: 700 !important;
+}
+
+/* Premium scrollbar */
+::-webkit-scrollbar {
+    width: 6px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 212, 255, 0.2) !important;
+    border-radius: 3px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 212, 255, 0.4) !important;
+}
+
+/* Sentiment badges premium */
+.xp-sent {
+    border-radius: 12px !important;
+    padding: 0.2rem 0.6rem !important;
+    font-size: 0.65rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+}
+
+/* Premium prediction bars */
+.pm-bar {
+    height: 8px !important;
+    border-radius: 4px !important;
+}
+
+.pm-yes-bar {
+    background: linear-gradient(90deg, #00ff88, rgba(0, 255, 136, 0.6)) !important;
+    border-radius: 4px 0 0 4px !important;
+}
+
+/* Correlation bars premium */
+.corr-fill {
+    background: linear-gradient(90deg, #00d4ff, #00ff88) !important;
+    border-radius: 3px !important;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.3) !important;
+}
+
+/* WLFI Token Info Card */
+.wlfi-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.wlfi-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.wlfi-info-label {
+    font-size: 0.7rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.wlfi-info-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #e1e1e1;
+}
+
+/* Tokenomics donut */
+.tokenomics-chart {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    padding: 1rem 0;
+}
+
+.tokenomics-donut {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.tokenomics-donut::after {
+    content: '';
+    position: absolute;
+    inset: 30px;
+    background: rgba(15, 15, 25, 0.95);
+    border-radius: 50%;
+}
+
+.tokenomics-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
+}
+
+.tokenomics-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+}
+
+.tokenomics-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.tokenomics-pct {
+    margin-left: auto;
+    font-weight: 700;
+    color: #e1e1e1;
+}
+
+/* Key People */
+.people-row {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding: 0.5rem 0;
+}
+
+.person-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 100px;
+    text-align: center;
+}
+
+.person-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 0.9rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.person-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #e1e1e1;
+    line-height: 1.2;
+}
+
+.person-role {
+    font-size: 0.65rem;
+    color: #888;
+}
+
+/* X Accounts */
+.x-account {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background: rgba(20, 20, 35, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    transition: all 0.3s ease;
+}
+
+.x-account:hover {
+    border-color: rgba(0, 212, 255, 0.2);
+    background: rgba(25, 25, 40, 0.8);
+}
+
+.x-account-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.x-account-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #e1e1e1;
+}
+
+.x-account-handle {
+    font-size: 0.75rem;
+    color: #888;
+}
+
+.x-account-desc {
+    font-size: 0.7rem;
+    color: #666;
+    margin-top: 0.15rem;
+}
+
+.x-account-meta {
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.x-account-followers {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.x-account-cat {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-weight: 600;
+    margin-top: 0.25rem;
+    display: inline-block;
+}
+
+.x-account-cat.official { background: rgba(0, 212, 255, 0.15); color: var(--primary); }
+.x-account-cat.analyst { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
+.x-account-cat.media { background: rgba(0, 255, 136, 0.15); color: var(--success); }
+.x-account-cat.markets { background: rgba(155, 89, 182, 0.15); color: #9b59b6; }
+
+/* Risk cards */
+.risk-card {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background: rgba(20, 20, 35, 0.6);
+    border-left: 3px solid;
+}
+
+.risk-card.high { border-color: var(--danger); }
+.risk-card.medium { border-color: #ffa500; }
+.risk-card.low { border-color: var(--success); }
+
+.risk-level {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    align-self: flex-start;
+}
+
+.risk-level.high { background: rgba(255, 71, 87, 0.15); color: var(--danger); }
+.risk-level.medium { background: rgba(255, 165, 0, 0.15); color: #ffa500; }
+.risk-level.low { background: rgba(0, 255, 136, 0.15); color: var(--success); }
+
+.risk-info { flex: 1; }
+.risk-title { font-size: 0.85rem; font-weight: 600; color: #e1e1e1; margin-bottom: 0.2rem; }
+.risk-desc { font-size: 0.75rem; color: #888; line-height: 1.4; }
+
+/* Premium price header */
+.wlfi-price-header {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(0, 255, 136, 0.04)) !important;
+    border: 1px solid rgba(0, 212, 255, 0.12) !important;
+    border-radius: 12px;
+    padding: 1.5rem !important;
+}
+
+#wlfi-price {
+    font-size: 2.5rem !important;
+    font-weight: 800 !important;
+    background: linear-gradient(135deg, #00d4ff, #00ff88);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
     </style>
 </head>
 <body>
@@ -1018,66 +1375,60 @@
 
         <!-- WLFI Token Section -->
         <div id="wlfi-section" class="section">
-            <div class="wlfi-container">
-                <!-- Left Panel: Updates & Markets -->
-                <div class="wlfi-left">
-                    <!-- Updates -->
+            <div class="wlfi-container" style="grid-template-columns: 1fr 1fr 1fr; height: auto; padding-bottom: 2rem;">
+                <!-- Column 1: Token Info + Tokenomics + Key People + Risks -->
+                <div class="wlfi-left" style="gap: 1rem;">
                     <div class="wlfi-panel">
-                        <div class="wlfi-header">
-                            <i class="fas fa-bell"></i> Team Updates
-                        </div>
-                        <div class="wlfi-content" id="wlfi-updates">
-                            <!-- Populated by wlfi.js -->
-                        </div>
+                        <div class="wlfi-header"><i class="fas fa-coins"></i> Token Info</div>
+                        <div class="wlfi-content" id="wlfi-token-info"></div>
                     </div>
-
-                    <!-- Markets -->
                     <div class="wlfi-panel">
-                        <div class="wlfi-header">
-                            <i class="fas fa-chart-pie"></i> Prediction Markets
-                        </div>
-                        <div class="wlfi-content" id="wlfi-markets">
-                            <!-- Populated by wlfi.js -->
-                        </div>
+                        <div class="wlfi-header"><i class="fas fa-chart-pie"></i> Tokenomics</div>
+                        <div class="wlfi-content" id="wlfi-tokenomics"></div>
+                    </div>
+                    <div class="wlfi-panel">
+                        <div class="wlfi-header"><i class="fas fa-users"></i> Key People</div>
+                        <div class="wlfi-content" id="wlfi-key-people"></div>
+                    </div>
+                    <div class="wlfi-panel">
+                        <div class="wlfi-header"><i class="fas fa-shield-alt"></i> Risk Assessment</div>
+                        <div class="wlfi-content" id="wlfi-risks"></div>
                     </div>
                 </div>
 
-                <!-- Right Panel: Posts, Correlations, Analysis -->
-                <div class="wlfi-right">
-                    <!-- Price Header -->
+                <!-- Column 2: Price + News + Prediction Markets -->
+                <div style="display: flex; flex-direction: column; gap: 1rem; overflow-y: auto;">
                     <div class="wlfi-price-header">
                         <div id="wlfi-price">$0.0482</div>
                         <div id="wlfi-chg" class="pos">▲ +3.2% (24h)</div>
                     </div>
-
-                    <!-- X Posts -->
-                    <div class="wlfi-panel" style="flex: 0 0 auto; max-height: 40%;">
-                        <div class="wlfi-header">
-                            <i class="fab fa-x-twitter"></i> Influencer Posts
-                        </div>
-                        <div class="wlfi-content" id="wlfi-posts" style="max-height: 350px;">
-                            <!-- Populated by wlfi.js -->
-                        </div>
+                    <div class="wlfi-panel">
+                        <div class="wlfi-header"><i class="fas fa-newspaper"></i> News & Updates</div>
+                        <div class="wlfi-content" id="wlfi-updates" style="max-height: 400px; overflow-y: auto;"></div>
                     </div>
-
-                    <!-- Correlations -->
-                    <div class="wlfi-panel" style="flex: 0 0 auto;">
-                        <div class="wlfi-header">
-                            <i class="fas fa-link"></i> Asset Correlations
-                        </div>
-                        <div class="wlfi-content" id="wlfi-correlations">
-                            <!-- Populated by wlfi.js -->
-                        </div>
+                    <div class="wlfi-panel">
+                        <div class="wlfi-header"><i class="fas fa-chart-bar"></i> Prediction Markets</div>
+                        <div class="wlfi-content" id="wlfi-markets"></div>
                     </div>
+                </div>
 
-                    <!-- Analysis -->
-                    <div class="wlfi-panel" style="flex: 0 0 auto;">
-                        <div class="wlfi-header">
-                            <i class="fas fa-lightbulb"></i> Analysis
-                        </div>
-                        <div class="wlfi-content" id="wlfi-analysis">
-                            <!-- Populated by wlfi.js -->
-                        </div>
+                <!-- Column 3: X Accounts + Influencer Posts + Correlations + Analysis -->
+                <div class="wlfi-right" style="gap: 1rem;">
+                    <div class="wlfi-panel">
+                        <div class="wlfi-header"><i class="fab fa-x-twitter"></i> Accounts to Follow</div>
+                        <div class="wlfi-content" id="wlfi-x-accounts" style="max-height: 250px; overflow-y: auto;"></div>
+                    </div>
+                    <div class="wlfi-panel">
+                        <div class="wlfi-header"><i class="fab fa-x-twitter"></i> Influencer Posts</div>
+                        <div class="wlfi-content" id="wlfi-posts" style="max-height: 300px; overflow-y: auto;"></div>
+                    </div>
+                    <div class="wlfi-panel">
+                        <div class="wlfi-header"><i class="fas fa-link"></i> Correlations</div>
+                        <div class="wlfi-content" id="wlfi-correlations"></div>
+                    </div>
+                    <div class="wlfi-panel">
+                        <div class="wlfi-header"><i class="fas fa-lightbulb"></i> Analysis</div>
+                        <div class="wlfi-content" id="wlfi-analysis"></div>
                     </div>
                 </div>
             </div>
@@ -1108,6 +1459,9 @@
 
             // Mark tab as active
             event.target.classList.add('active');
+
+            // Lazy-render sections
+            if (sectionName === 'wlfi' && typeof renderWLFI === 'function') renderWLFI();
         }
     </script>
     <script src="js/dashboard.js"></script>
