@@ -20,6 +20,12 @@ import { PolymarketTraderService } from './services/sentiment/PolymarketTraderSe
 import { DeFiLlamaService } from './services/defi/DeFiLlamaService';
 import { BlockchainService } from './services/onchain/BlockchainService';
 
+import { marketRoutes } from './routes/market';
+import { sentimentRoutes } from './routes/sentiment';
+import { defiRoutes } from './routes/defi';
+import { wlfiRoutes } from './routes/wlfi';
+import { claudeRoutes } from './routes/claude';
+
 interface OHLCVData {
   timestamp: number;
   open: number;
@@ -135,21 +141,9 @@ class CryptoAITradingServer {
             }
         });
 
-        this.app.get('/api/market/tickers', async (req, res) => {
-            try {
-                const tickers = await this.ccxtService.getAllTickers();
-                res.json({
-                    success: true,
-                    count: tickers.length,
-                    data: tickers,
-                    timestamp: Date.now()
-                });
-            } catch (error) {
-                res.status(500).json({
-                    success: false,
-                    error: error instanceof Error ? error.message : 'Failed to fetch tickers'
-                });
-            }
+        marketRoutes(this.app, {
+            ccxtService: this.ccxtService,
+            coinGeckoService: this.coinGeckoService
         });
 
         this.app.post('/api/analysis/enhanced', async (req, res) => {
@@ -196,259 +190,27 @@ class CryptoAITradingServer {
             }
         });
 
-        this.app.get('/api/market/arbitrage/:symbol', async (req, res) => {
-            try {
-                const symbol = req.params.symbol;
-                const opportunities = await this.ccxtService.findArbitrageOpportunities(symbol);
-                res.json({ success: true, data: opportunities, timestamp: Date.now() });
-            } catch (error) {
-                res.status(500).json({
-                    success: false,
-                    error: error instanceof Error ? error.message : 'Arbitrage check failed'
-                });
-            }
+        sentimentRoutes(this.app, {
+            fearGreedService: this.fearGreedService,
+            polymarketService: this.polymarketService,
+            polymarketTraderService: this.polymarketTraderService
         });
 
-        this.app.get('/api/market/stats', async (req, res) => {
-            try {
-                const stats = await this.ccxtService.getMarketStats();
-                res.json({ success: true, data: stats });
-            } catch (error) {
-                res.status(500).json({
-                    success: false,
-                    error: error instanceof Error ? error.message : 'Stats failed'
-                });
-            }
+        defiRoutes(this.app, {
+            defiLlamaService: this.defiLlamaService,
+            blockchainService: this.blockchainService
         });
 
-        // ========================================
-        // COINGECKO ROUTES
-        // ========================================
-        this.app.get('/api/coingecko/global', async (req, res) => {
-            try {
-                const data = await this.coinGeckoService.getGlobalData();
-                res.json({ success: true, data });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch global data' });
-            }
+        wlfiRoutes(this.app, {
+            polymarketService: this.polymarketService
         });
 
-        this.app.get('/api/coingecko/trending', async (req, res) => {
-            try {
-                const data = await this.coinGeckoService.getTrending();
-                res.json({ success: true, data });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch trending' });
-            }
-        });
-
-        this.app.get('/api/coingecko/top', async (req, res) => {
-            try {
-                const limit = parseInt(req.query.limit as string) || 50;
-                const data = await this.coinGeckoService.getTopCoins(Math.min(limit, 250));
-                res.json({ success: true, count: data.length, data });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch top coins' });
-            }
-        });
-
-        // ========================================
-        // SENTIMENT ROUTES (Fear & Greed + Polymarket)
-        // ========================================
-        this.app.get('/api/sentiment/fear-greed', async (req, res) => {
-            try {
-                const data = await this.fearGreedService.getHistoryWithTrend();
-                res.json({ success: true, data });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch Fear & Greed' });
-            }
-        });
-
-        this.app.get('/api/sentiment/polymarket', async (req, res) => {
-            try {
-                const report = await this.polymarketService.getCryptoSentimentReport();
-                res.json({ success: true, data: report });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch Polymarket sentiment' });
-            }
-        });
-
-        this.app.get('/api/sentiment/polymarket/search', async (req, res) => {
-            try {
-                const query = req.query.q as string;
-                if (!query) {
-                    return res.status(400).json({ success: false, error: 'Query parameter "q" is required' });
-                }
-                const markets = await this.polymarketService.searchMarkets(query);
-                res.json({ success: true, count: markets.length, data: markets });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to search Polymarket' });
-            }
-        });
-
-        // ========================================
-        // POLYMARKET TRADER TRACKING ROUTES
-        // ========================================
-        this.app.get('/api/polymarket/top-traders', async (req, res) => {
-            try {
-                const limit = parseInt(req.query.limit as string) || 20;
-                const traders = await this.polymarketTraderService.getTopTraders(limit);
-                res.json({ success: true, count: traders.length, data: traders });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch top traders' });
-            }
-        });
-
-        this.app.get('/api/polymarket/trader/:address', async (req, res) => {
-            try {
-                const address = req.params.address;
-                const name = req.query.name as string | undefined;
-                if (!address || !address.startsWith('0x')) {
-                    return res.status(400).json({ success: false, error: 'Valid Ethereum address required (0x...)' });
-                }
-                const profile = await this.polymarketTraderService.buildTraderProfile(address, name);
-                res.json({ success: true, data: profile });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch trader profile' });
-            }
-        });
-
-        this.app.get('/api/sentiment/overview', async (req, res) => {
-            try {
-                const [fearGreed, polymarket] = await Promise.allSettled([
-                    this.fearGreedService.getHistoryWithTrend(),
-                    this.polymarketService.getCryptoSentimentReport()
-                ]);
-
-                res.json({
-                    success: true,
-                    data: {
-                        fearGreed: fearGreed.status === 'fulfilled' ? fearGreed.value : null,
-                        polymarket: polymarket.status === 'fulfilled' ? polymarket.value : null,
-                        timestamp: Date.now()
-                    }
-                });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch sentiment overview' });
-            }
-        });
-
-        // ========================================
-        // DEFI LLAMA ROUTES
-        // ========================================
-        this.app.get('/api/defi/overview', async (req, res) => {
-            try {
-                const overview = await this.defiLlamaService.getDeFiOverview();
-                res.json({ success: true, data: overview });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch DeFi overview' });
-            }
-        });
-
-        this.app.get('/api/defi/protocols', async (req, res) => {
-            try {
-                const limit = parseInt(req.query.limit as string) || 30;
-                const protocols = await this.defiLlamaService.getProtocols(limit);
-                res.json({ success: true, count: protocols.length, data: protocols });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch protocols' });
-            }
-        });
-
-        this.app.get('/api/defi/chains', async (req, res) => {
-            try {
-                const chains = await this.defiLlamaService.getChains();
-                res.json({ success: true, count: chains.length, data: chains });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch chains' });
-            }
-        });
-
-        // ========================================
-        // ON-CHAIN ROUTES (Bitcoin)
-        // ========================================
-        this.app.get('/api/onchain/btc', async (req, res) => {
-            try {
-                const stats = await this.blockchainService.getStats();
-                res.json({ success: true, data: stats });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch BTC on-chain' });
-            }
-        });
-
-        this.app.get('/api/onchain/mempool', async (req, res) => {
-            try {
-                const mempool = await this.blockchainService.getMempoolCount();
-                res.json({ success: true, data: mempool });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch mempool' });
-            }
-        });
-
-        // ========================================
-        // WLFI TOKEN ROUTES
-        // ========================================
-        this.app.get('/api/wlfi/price', async (req, res) => {
-            try {
-                // Try to fetch WLFI price from CoinGecko
-                // WLFI might be identified as 'world-liberty-financial' on CoinGecko
-                const coingeckoId = 'world-liberty-financial';
-
-                // Mock data fallback if not found on CoinGecko
-                const mockData = {
-                    price: 0.0482,
-                    change24h: 3.2,
-                    marketCap: 261000000,
-                    volume24h: 12400000,
-                    updatedAt: new Date().toISOString()
-                };
-
-                try {
-                    // Attempt to fetch real data from CoinGecko
-                    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true`);
-                    const data = await response.json() as Record<string, any>;
-
-                    if (data && data[coingeckoId]) {
-                        const tokenData = data[coingeckoId] as Record<string, number>;
-                        return res.json({
-                            success: true,
-                            data: {
-                                price: tokenData.usd || mockData.price,
-                                change24h: tokenData.usd_24h_change || mockData.change24h,
-                                marketCap: tokenData.usd_market_cap || mockData.marketCap,
-                                volume24h: tokenData.usd_24h_vol || mockData.volume24h,
-                                updatedAt: new Date().toISOString()
-                            }
-                        });
-                    }
-                } catch (e) {
-                    // Fall through to mock data
-                }
-
-                // Return mock data if CoinGecko fails or token not found
-                res.json({ success: true, data: mockData });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch WLFI price' });
-            }
-        });
-
-        this.app.get('/api/wlfi/markets', async (req, res) => {
-            try {
-                // Search Polymarket for WLFI and Trump crypto-related markets
-                const wlfiMarkets = await this.polymarketService.searchMarkets('WLFI', 10);
-                const trumpCryptoMarkets = await this.polymarketService.searchMarkets('Trump crypto', 10);
-
-                res.json({
-                    success: true,
-                    data: {
-                        wlfiMarkets: wlfiMarkets.slice(0, 5),
-                        trumpCryptoMarkets: trumpCryptoMarkets.slice(0, 5),
-                        timestamp: Date.now()
-                    }
-                });
-            } catch (error) {
-                res.status(500).json({ success: false, error: 'Failed to fetch WLFI markets' });
-            }
+        claudeRoutes(this.app, {
+            anthropicService: this.anthropicService,
+            fearGreedService: this.fearGreedService,
+            defiLlamaService: this.defiLlamaService,
+            blockchainService: this.blockchainService,
+            polymarketService: this.polymarketService
         });
 
         // ========================================
