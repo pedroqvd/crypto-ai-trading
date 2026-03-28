@@ -19,6 +19,9 @@ import { PolymarketService } from './services/sentiment/PolymarketService';
 import { PolymarketTraderService } from './services/sentiment/PolymarketTraderService';
 import { DeFiLlamaService } from './services/defi/DeFiLlamaService';
 import { BlockchainService } from './services/onchain/BlockchainService';
+import { WLFINewsService } from './services/wlfi/WLFINewsService';
+import { WLFIInfluencerService } from './services/wlfi/WLFIInfluencerService';
+import { WLFIAgentOrchestrator } from './services/wlfi/WLFIAgentOrchestrator';
 
 import { marketRoutes } from './routes/market';
 import { sentimentRoutes } from './routes/sentiment';
@@ -58,6 +61,9 @@ class CryptoAITradingServer {
     private defiLlamaService!: DeFiLlamaService;
     private blockchainService!: BlockchainService;
     private polymarketTraderService!: PolymarketTraderService;
+    private wlfiNewsService!: WLFINewsService;
+    private wlfiInfluencerService!: WLFIInfluencerService;
+    private wlfiOrchestrator!: WLFIAgentOrchestrator;
     private port: number;
 
     constructor() {
@@ -92,6 +98,15 @@ class CryptoAITradingServer {
         this.defiLlamaService = new DeFiLlamaService();
         this.blockchainService = new BlockchainService();
         this.polymarketTraderService = new PolymarketTraderService();
+        this.wlfiNewsService = new WLFINewsService();
+        this.wlfiInfluencerService = new WLFIInfluencerService();
+        this.wlfiOrchestrator = new WLFIAgentOrchestrator(
+            this.coinGeckoService,
+            this.wlfiNewsService,
+            this.wlfiInfluencerService,
+            this.polymarketService
+        );
+        this.wlfiOrchestrator.startAllAgents();
 
         console.log('✅ Todos os serviços inicializados');
     }
@@ -202,7 +217,10 @@ class CryptoAITradingServer {
         });
 
         wlfiRoutes(this.app, {
-            polymarketService: this.polymarketService
+            polymarketService: this.polymarketService,
+            newsService: this.wlfiNewsService,
+            influencerService: this.wlfiInfluencerService,
+            orchestrator: this.wlfiOrchestrator
         });
 
         claudeRoutes(this.app, {
@@ -329,6 +347,15 @@ class CryptoAITradingServer {
                 }
             });
 
+            socket.on('subscribeWLFI', async () => {
+                try {
+                    const overview = await this.wlfiOrchestrator.getOverview();
+                    socket.emit('wlfiUpdate', overview);
+                } catch (error) {
+                    socket.emit('error', { message: 'Failed to fetch WLFI data' });
+                }
+            });
+
             socket.on('disconnect', () => {
                 console.log('🔌 Cliente desconectado:', socket.id);
             });
@@ -348,6 +375,16 @@ class CryptoAITradingServer {
                 console.error('❌ Erro na atualização:', error);
             }
         }, 15000);
+
+        // WLFI updates every 30 seconds
+        setInterval(async () => {
+            try {
+                const overview = await this.wlfiOrchestrator.getOverview();
+                this.io.emit('wlfiUpdate', overview);
+            } catch (error) {
+                // silent
+            }
+        }, 30000);
     }
 
     public start(): void {

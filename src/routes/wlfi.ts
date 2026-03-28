@@ -1,12 +1,18 @@
 import express from 'express';
 import { PolymarketService } from '../services/sentiment/PolymarketService';
+import { WLFINewsService } from '../services/wlfi/WLFINewsService';
+import { WLFIInfluencerService } from '../services/wlfi/WLFIInfluencerService';
+import { WLFIAgentOrchestrator } from '../services/wlfi/WLFIAgentOrchestrator';
 
 interface WlfiServices {
     polymarketService: PolymarketService;
+    newsService: WLFINewsService;
+    influencerService: WLFIInfluencerService;
+    orchestrator: WLFIAgentOrchestrator;
 }
 
 export function wlfiRoutes(app: express.Application, services: WlfiServices): void {
-    const { polymarketService } = services;
+    const { polymarketService, newsService, influencerService, orchestrator } = services;
 
     // ========================================
     // WLFI TOKEN ROUTES
@@ -71,6 +77,77 @@ export function wlfiRoutes(app: express.Application, services: WlfiServices): vo
             });
         } catch (error) {
             res.status(500).json({ success: false, error: 'Failed to fetch WLFI markets' });
+        }
+    });
+
+    // ========================================
+    // WLFI NEWS
+    // ========================================
+    app.get('/api/wlfi/news', async (req, res) => {
+        try {
+            const limit = parseInt(req.query.limit as string) || 20;
+            const news = await newsService.getLatestNews(limit);
+            res.json({ success: true, data: news, timestamp: Date.now() });
+        } catch (error) {
+            res.status(500).json({ success: false, error: 'Failed to fetch WLFI news' });
+        }
+    });
+
+    // ========================================
+    // WLFI INFLUENCERS
+    // ========================================
+    app.get('/api/wlfi/influencers', async (req, res) => {
+        try {
+            const limit = parseInt(req.query.limit as string) || 25;
+            const report = await influencerService.getInfluencerReport();
+            report.topInfluencers = report.topInfluencers.slice(0, limit);
+            res.json({ success: true, data: report, timestamp: Date.now() });
+        } catch (error) {
+            res.status(500).json({ success: false, error: 'Failed to fetch influencers' });
+        }
+    });
+
+    app.get('/api/wlfi/influencers/posts', async (req, res) => {
+        try {
+            const limit = parseInt(req.query.limit as string) || 20;
+            const posts = await influencerService.getRecentPosts(limit);
+            res.json({ success: true, data: posts, timestamp: Date.now() });
+        } catch (error) {
+            res.status(500).json({ success: false, error: 'Failed to fetch influencer posts' });
+        }
+    });
+
+    // ========================================
+    // WLFI AGENT SYSTEM
+    // ========================================
+    app.get('/api/wlfi/overview', async (req, res) => {
+        try {
+            const overview = await orchestrator.getOverview();
+            res.json({ success: true, data: overview });
+        } catch (error) {
+            res.status(500).json({ success: false, error: 'Failed to fetch WLFI overview' });
+        }
+    });
+
+    app.get('/api/wlfi/agents', async (req, res) => {
+        try {
+            const statuses = orchestrator.getAgentStatuses();
+            const messages = orchestrator.getMessageLog(30);
+            const alerts = orchestrator.getAlerts(20);
+            const insights = orchestrator.getInsights();
+            res.json({ success: true, data: { agents: statuses, messages, alerts, insights }, timestamp: Date.now() });
+        } catch (error) {
+            res.status(500).json({ success: false, error: 'Failed to fetch agent data' });
+        }
+    });
+
+    app.get('/api/wlfi/alerts', async (req, res) => {
+        try {
+            const limit = parseInt(req.query.limit as string) || 20;
+            const alerts = orchestrator.getAlerts(limit);
+            res.json({ success: true, data: alerts, timestamp: Date.now() });
+        } catch (error) {
+            res.status(500).json({ success: false, error: 'Failed to fetch alerts' });
         }
     });
 }
