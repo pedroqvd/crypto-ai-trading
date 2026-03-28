@@ -456,6 +456,10 @@ function renderWLFI() {
   renderWLFIAnalysis();
   renderWLFIRisks();
   fetchWLFIPrice();
+  fetchWLFIOverview();
+  fetchWLFIInfluencers();
+  fetchWLFIAgents();
+  initWLFIWebSocket();
 }
 
 async function fetchWLFIPrice() {
@@ -488,5 +492,301 @@ function updateWLFIPrice(price, change) {
 
 function refreshWLFI() {
   fetchWLFIPrice();
+  fetchWLFIOverview();
   if (typeof showToast === 'function') showToast('WLFI atualizado', 'info');
 }
+
+
+// ================================================
+// LIVE API FETCHERS
+// ================================================
+
+async function fetchWLFIOverview() {
+  try {
+    const res = await fetch('/api/wlfi/overview');
+    if (!res.ok) return;
+    const json = await res.json();
+    if (!json.success || !json.data) return;
+    const d = json.data;
+
+    // Update price from overview
+    if (d.price) {
+      updateWLFIPrice(d.price.current, d.price.change24h);
+      // Update token info card with live data
+      const mcEl = document.querySelector('#wlfi-token-info');
+      if (mcEl) {
+        const infoPrice = mcEl.querySelector('#wlfi-info-price');
+        if (infoPrice) infoPrice.textContent = '$' + d.price.current.toFixed(4);
+      }
+    }
+
+    // Render alerts panel
+    if (d.alerts && d.alerts.length > 0) {
+      renderWLFIAlerts(d.alerts);
+    }
+
+    // Render whale activity
+    if (d.whaleActivity) {
+      renderWLFIWhales(d.whaleActivity);
+    }
+
+    // Update sentiment in analysis panel
+    if (d.sentiment) {
+      renderWLFISentimentBar(d.sentiment);
+    }
+  } catch (e) {
+    console.log('WLFI overview unavailable');
+  }
+}
+
+async function fetchWLFIInfluencers() {
+  try {
+    const res = await fetch('/api/wlfi/influencers?limit=25');
+    if (!res.ok) return;
+    const json = await res.json();
+    if (!json.success || !json.data) return;
+
+    renderWLFIInfluencersLive(json.data);
+  } catch (e) {
+    console.log('WLFI influencers unavailable');
+  }
+}
+
+async function fetchWLFIAgents() {
+  try {
+    const res = await fetch('/api/wlfi/agents');
+    if (!res.ok) return;
+    const json = await res.json();
+    if (!json.success || !json.data) return;
+
+    renderWLFIAgentPanel(json.data);
+  } catch (e) {
+    console.log('WLFI agents unavailable');
+  }
+}
+
+
+// ================================================
+// LIVE RENDERERS (append to existing panels)
+// ================================================
+
+function renderWLFIAlerts(alerts) {
+  const el = document.getElementById('wlfi-analysis');
+  if (!el) return;
+
+  const severityColors = { high: '#ff4757', medium: '#ffa500', low: '#00ff88' };
+  const typeIcons = { price: '📈', news: '📰', whale: '🐋', sentiment: '💭', governance: '🏛️' };
+
+  const alertsHtml = alerts.slice(0, 5).map(a => `
+    <div style="padding:10px 12px;background:rgba(${a.severity === 'high' ? '255,71,87' : a.severity === 'medium' ? '255,165,0' : '0,255,136'},0.08);border-left:3px solid ${severityColors[a.severity]};border-radius:4px;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+        <span>${typeIcons[a.type] || '⚡'}</span>
+        <span style="font-size:0.82em;font-weight:600;color:#e0e0e0;">${a.title}</span>
+        <span style="margin-left:auto;font-size:0.65em;color:#666;">${a.source}</span>
+      </div>
+      <div style="font-size:0.75em;color:#999;line-height:1.3;">${a.description}</div>
+    </div>
+  `).join('');
+
+  // Prepend alerts before existing analysis content
+  const existing = el.innerHTML;
+  el.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.5px;color:#00d4ff;font-weight:600;margin-bottom:8px;">🔔 Alertas em Tempo Real</div>
+      ${alertsHtml}
+    </div>
+  ` + existing;
+}
+
+function renderWLFIWhales(whaleData) {
+  const el = document.getElementById('wlfi-correlations');
+  if (!el) return;
+
+  const txns = whaleData.recentTransactions || [];
+  const typeColors = { buy: '#00ff88', sell: '#ff4757', transfer: '#00d4ff' };
+  const typeLabels = { buy: 'COMPRA', sell: 'VENDA', transfer: 'TRANSFER' };
+
+  const whaleHtml = txns.slice(0, 5).map(t => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:4px;">
+      <span style="font-size:0.65em;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(${t.type === 'buy' ? '0,255,136' : t.type === 'sell' ? '255,71,87' : '0,212,255'},0.15);color:${typeColors[t.type]};">${typeLabels[t.type] || t.type.toUpperCase()}</span>
+      <span style="font-size:0.85em;font-weight:600;color:#e0e0e0;">${t.amount}</span>
+      <span style="font-size:0.75em;color:#666;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.wallet}</span>
+      <span style="font-size:0.7em;color:#555;">${t.time}</span>
+    </div>
+  `).join('');
+
+  const existing = el.innerHTML;
+  el.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.5px;color:#00d4ff;font-weight:600;margin-bottom:8px;">🐋 Whale Activity <span style="color:#00ff88;font-size:0.9em;">(Net: ${whaleData.netFlow24h})</span></div>
+      ${whaleHtml}
+    </div>
+  ` + existing;
+}
+
+function renderWLFISentimentBar(sentiment) {
+  const container = document.getElementById('wlfi-risks');
+  if (!container) return;
+
+  const scoreColor = sentiment.score > 60 ? '#00ff88' : sentiment.score > 40 ? '#ffa500' : '#ff4757';
+
+  const barHtml = `
+    <div style="padding:12px 14px;background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.12);border-radius:8px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:0.75em;text-transform:uppercase;letter-spacing:0.5px;color:#00d4ff;font-weight:600;">📊 Sentiment Score</span>
+        <span style="font-size:1.2em;font-weight:700;color:${scoreColor};">${sentiment.score}/100</span>
+      </div>
+      <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px;">
+        <div style="width:${sentiment.bullish}%;background:#00ff88;border-radius:4px 0 0 4px;" title="Bullish ${sentiment.bullish}%"></div>
+        <div style="width:${sentiment.neutral}%;background:#ffa500;" title="Neutral ${sentiment.neutral}%"></div>
+        <div style="width:${sentiment.bearish}%;background:#ff4757;border-radius:0 4px 4px 0;" title="Bearish ${sentiment.bearish}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.7em;">
+        <span style="color:#00ff88;">🟢 Bull ${sentiment.bullish}%</span>
+        <span style="color:#ffa500;">🟡 Neutro ${sentiment.neutral}%</span>
+        <span style="color:#ff4757;">🔴 Bear ${sentiment.bearish}%</span>
+      </div>
+    </div>
+  `;
+
+  // Prepend before existing risk cards
+  const existing = container.innerHTML;
+  container.innerHTML = barHtml + existing;
+}
+
+function renderWLFIInfluencersLive(report) {
+  const el = document.getElementById('wlfi-x-accounts');
+  if (!el) return;
+
+  const catColors = {
+    official: { bg: 'rgba(0,212,255,0.15)', color: '#00d4ff' },
+    whale: { bg: 'rgba(255,165,0,0.15)', color: '#ffa500' },
+    analyst: { bg: 'rgba(255,193,7,0.15)', color: '#ffc107' },
+    media: { bg: 'rgba(0,255,136,0.15)', color: '#00ff88' },
+    community: { bg: 'rgba(155,89,182,0.15)', color: '#9b59b6' },
+    politics: { bg: 'rgba(30,64,175,0.15)', color: '#3b82f6' },
+    defi_expert: { bg: 'rgba(14,165,233,0.15)', color: '#0ea5e9' },
+  };
+
+  const influencers = report.topInfluencers || [];
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.5px;color:#00d4ff;font-weight:600;">Top ${influencers.length} Influencers</span>
+      <span style="font-size:0.7em;color:#666;">Reach: ${report.totalReach || '132M'}</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${influencers.map((i, idx) => {
+        const cat = catColors[i.category] || catColors.community;
+        const sentColor = i.sentiment === 'bullish' ? '#00ff88' : i.sentiment === 'bearish' ? '#ff4757' : '#888';
+        return `
+          <div class="x-account" style="display:flex;align-items:center;gap:8px;padding:8px 10px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:${i.avatarColor};display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.65em;font-weight:700;flex-shrink:0;">${i.avatarInitials}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap:4px;">
+                <span style="font-size:0.8em;font-weight:600;color:#e1e1e1;">${i.name}</span>
+                ${i.verified ? '<span style="color:#1da1f2;font-size:0.7em;">✓</span>' : ''}
+              </div>
+              <div style="font-size:0.7em;color:#666;">${i.handle} · ${i.followers}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <span style="font-size:0.6em;text-transform:uppercase;letter-spacing:0.3px;padding:2px 6px;border-radius:3px;background:${cat.bg};color:${cat.color};font-weight:600;">${i.category}</span>
+              <div style="font-size:0.65em;color:${sentColor};margin-top:2px;">${i.recentPosts} posts</div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderWLFIAgentPanel(data) {
+  const el = document.getElementById('wlfi-analysis');
+  if (!el) return;
+
+  const agents = data.agents || [];
+  const messages = data.messages || [];
+  const insights = data.insights || [];
+
+  const statusColors = { active: '#00ff88', idle: '#ffa500', error: '#ff4757' };
+  const statusLabels = { active: '🟢 Ativo', idle: '🟡 Idle', error: '🔴 Erro' };
+
+  const agentCards = agents.map(a => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:4px;">
+      <span style="width:6px;height:6px;border-radius:50%;background:${statusColors[a.status]};flex-shrink:0;"></span>
+      <span style="font-size:0.78em;font-weight:600;color:#e0e0e0;flex:1;">${a.name}</span>
+      <span style="font-size:0.65em;color:#666;">${a.dataPoints} pts</span>
+      <span style="font-size:0.6em;color:#555;">${(a.interval / 1000)}s</span>
+    </div>
+  `).join('');
+
+  const msgLog = messages.slice(-5).reverse().map(m => `
+    <div style="font-size:0.7em;color:#666;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03);">
+      <span style="color:#00d4ff;">${m.from}</span> → <span style="color:#888;">${m.to}</span>
+      <span style="color:#555;margin-left:4px;">[${m.type}]</span>
+    </div>
+  `).join('');
+
+  const insightsList = insights.map(i => `
+    <div style="font-size:0.78em;color:#ccc;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);line-height:1.4;">${i}</div>
+  `).join('');
+
+  // Replace analysis content with agent system view
+  el.innerHTML = `
+    <div style="margin-bottom:14px;">
+      <div style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.5px;color:#00d4ff;font-weight:600;margin-bottom:8px;">🤖 Agentes Ativos</div>
+      <div style="display:flex;flex-direction:column;gap:4px;">${agentCards}</div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <div style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.5px;color:#00d4ff;font-weight:600;margin-bottom:8px;">💬 Message Log</div>
+      ${msgLog}
+    </div>
+    <div>
+      <div style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.5px;color:#00d4ff;font-weight:600;margin-bottom:8px;">💡 Insights</div>
+      ${insightsList}
+    </div>
+  `;
+}
+
+
+// ================================================
+// WEBSOCKET REAL-TIME UPDATES
+// ================================================
+
+var _wlfiSocket = null;
+
+function initWLFIWebSocket() {
+  if (_wlfiSocket) return;
+  if (typeof io === 'undefined') return;
+
+  try {
+    _wlfiSocket = io();
+
+    _wlfiSocket.on('wlfiUpdate', function(data) {
+      if (!data || !data.price) return;
+
+      // Update price
+      updateWLFIPrice(data.price.current, data.price.change24h);
+
+      // Update agent statuses if visible
+      if (data.agents) {
+        var agentEl = document.getElementById('wlfi-analysis');
+        if (agentEl && agentEl.querySelector('[class*="agent"]')) {
+          fetchWLFIAgents();
+        }
+      }
+    });
+
+    _wlfiSocket.emit('subscribeWLFI');
+  } catch (e) {
+    console.log('WLFI WebSocket unavailable');
+  }
+}
+
+// Auto-refresh every 60 seconds when on WLFI tab
+setInterval(function() {
+  var wlfiSection = document.getElementById('wlfi-section');
+  if (wlfiSection && wlfiSection.classList.contains('active')) {
+    fetchWLFIOverview();
+  }
+}, 60000);
