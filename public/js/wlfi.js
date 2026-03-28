@@ -459,6 +459,10 @@ function renderWLFI() {
   fetchWLFIOverview();
   fetchWLFIInfluencers();
   fetchWLFIAgents();
+  fetchWLFIOnChain();
+  fetchWLFITechnical();
+  fetchWLFIPerformance();
+  fetchWLFILiquidations();
   initWLFIWebSocket();
 }
 
@@ -783,10 +787,314 @@ function initWLFIWebSocket() {
   }
 }
 
+// ================================================
+// ON-CHAIN TRACKING
+// ================================================
+async function fetchWLFIOnChain() {
+  try {
+    var res = await fetch('/api/wlfi/onchain');
+    if (!res.ok) return;
+    var json = await res.json();
+    if (json.success) renderWLFIOnChain(json.data);
+  } catch (e) { console.log('On-chain fetch error', e); }
+}
+
+function renderWLFIOnChain(data) {
+  var el = document.getElementById('wlfi-onchain');
+  if (!el) return;
+
+  var tvl = data.tvl || {};
+  var whales = (data.whaleWallets || []).slice(0, 10);
+  var flows = (data.recentFlows || []).slice(0, 10);
+
+  var html = '<div class="tvl-stat-grid">';
+  html += '<div class="tvl-stat-box"><div class="tvl-stat-val">$' + fmtNum(tvl.totalTVL) + '</div><div class="tvl-stat-label">TVL Total</div></div>';
+  html += '<div class="tvl-stat-box"><div class="tvl-stat-val" style="color:' + (tvl.tvlChange24h >= 0 ? '#00e676' : '#ff5252') + '">' + (tvl.tvlChange24h >= 0 ? '+' : '') + (tvl.tvlChange24h || 0).toFixed(2) + '%</div><div class="tvl-stat-label">TVL 24h</div></div>';
+  html += '<div class="tvl-stat-box"><div class="tvl-stat-val">' + fmtNum(data.totalHolders || 0) + '</div><div class="tvl-stat-label">Holders</div></div>';
+  html += '</div>';
+
+  // TVL by chain
+  if (tvl.chains && tvl.chains.length) {
+    html += '<div style="margin-bottom:1rem;">';
+    tvl.chains.forEach(function(c) {
+      html += '<div class="tvl-chain-bar"><span style="color:#e0e0e0;font-size:0.8rem;min-width:70px">' + c.name + '</span>';
+      html += '<div class="tvl-bar-fill" style="width:' + c.percentage + '%;"></div>';
+      html += '<span style="color:#888;font-size:0.75rem">$' + fmtNum(c.tvl) + ' (' + c.percentage + '%)</span></div>';
+    });
+    html += '</div>';
+  }
+
+  // Top Whales
+  html += '<h4 style="color:var(--primary);margin:0.5rem 0;font-size:0.85rem"><i class="fas fa-whale"></i> Top Whale Wallets</h4>';
+  whales.forEach(function(w) {
+    var chgClass = w.change24h >= 0 ? 'pos' : 'neg';
+    html += '<div class="onchain-whale-row">';
+    html += '<div><div class="whale-label">' + w.label + '</div><div class="whale-address">' + w.address.slice(0,6) + '...' + w.address.slice(-4) + '</div></div>';
+    html += '<div style="text-align:right"><div class="whale-balance">$' + fmtNum(w.balanceUSD) + '</div>';
+    html += '<div class="whale-pct">' + w.percentOfSupply.toFixed(1) + '% supply</div>';
+    html += '<div class="whale-change ' + chgClass + '">' + (w.change24h >= 0 ? '+' : '') + w.change24h.toFixed(1) + '%</div></div>';
+    html += '</div>';
+  });
+
+  // Recent Flows
+  html += '<h4 style="color:var(--primary);margin:0.75rem 0 0.5rem;font-size:0.85rem"><i class="fas fa-exchange-alt"></i> Recent Token Flows</h4>';
+  flows.forEach(function(f) {
+    html += '<div class="flow-row">';
+    html += '<span class="flow-badge ' + f.type + '">' + f.type + '</span>';
+    html += '<span style="color:#e0e0e0">' + fmtNum(f.amount) + ' WLFI</span>';
+    html += '<span style="color:#888">($' + fmtNum(f.amountUSD) + ')</span>';
+    html += '<span style="color:#aaa;margin-left:auto;font-size:0.7rem">' + timeAgo(f.timestamp) + '</span>';
+    html += '</div>';
+  });
+
+  el.innerHTML = html;
+}
+
+// ================================================
+// TECHNICAL INDICATORS
+// ================================================
+async function fetchWLFITechnical() {
+  try {
+    var res = await fetch('/api/wlfi/technical');
+    if (!res.ok) return;
+    var json = await res.json();
+    if (json.success) renderWLFITechnical(json.data);
+  } catch (e) { console.log('Technical fetch error', e); }
+}
+
+function renderWLFITechnical(data) {
+  var el = document.getElementById('wlfi-technical');
+  if (!el) return;
+
+  var html = '';
+
+  // Overall Score
+  var scoreColor = data.overallScore > 20 ? '#00e676' : data.overallScore < -20 ? '#ff5252' : '#ffc107';
+  html += '<div class="tech-overall-score">';
+  html += '<div class="tech-score-num" style="color:' + scoreColor + '">' + (data.overallScore > 0 ? '+' : '') + data.overallScore + '</div>';
+  html += '<div><span class="tech-signal ' + data.overallSignal + '">' + data.overallSignal.replace('_', ' ') + '</span></div>';
+  html += '<div class="tech-score-label">Score Geral do Indicador</div>';
+  html += '</div>';
+
+  // RSI
+  if (data.rsi) {
+    html += '<div class="tech-indicator-card">';
+    html += '<div class="tech-indicator-title"><h4>RSI (14)</h4><span class="tech-signal ' + data.rsi.signal + '">' + data.rsi.signal + '</span></div>';
+    html += '<div class="tech-values"><div class="tech-val-item"><span class="tech-val-label">Valor</span><span class="tech-val-num">' + data.rsi.current.toFixed(2) + '</span></div>';
+    html += '<div class="tech-val-item"><span class="tech-val-label">Zona</span><span class="tech-val-num">' + (data.rsi.current > 70 ? 'Sobrecompra' : data.rsi.current < 30 ? 'Sobrevenda' : 'Neutro') + '</span></div></div>';
+    html += '</div>';
+  }
+
+  // MACD
+  if (data.macd) {
+    html += '<div class="tech-indicator-card">';
+    html += '<div class="tech-indicator-title"><h4>MACD (12,26,9)</h4><span class="tech-signal ' + data.macd.signal + '">' + data.macd.signal + '</span></div>';
+    html += '<div class="tech-values">';
+    html += '<div class="tech-val-item"><span class="tech-val-label">MACD</span><span class="tech-val-num">' + data.macd.macdLine.toFixed(6) + '</span></div>';
+    html += '<div class="tech-val-item"><span class="tech-val-label">Signal</span><span class="tech-val-num">' + data.macd.signalLine.toFixed(6) + '</span></div>';
+    html += '<div class="tech-val-item"><span class="tech-val-label">Histograma</span><span class="tech-val-num" style="color:' + (data.macd.histogram >= 0 ? '#00e676' : '#ff5252') + '">' + data.macd.histogram.toFixed(6) + '</span></div>';
+    html += '</div></div>';
+  }
+
+  // Bollinger Bands
+  if (data.bollinger) {
+    html += '<div class="tech-indicator-card">';
+    html += '<div class="tech-indicator-title"><h4>Bollinger Bands (20,2)</h4><span class="tech-signal ' + data.bollinger.signal + '">' + data.bollinger.signal + '</span></div>';
+    html += '<div class="tech-values">';
+    html += '<div class="tech-val-item"><span class="tech-val-label">Superior</span><span class="tech-val-num">$' + data.bollinger.upper.toFixed(4) + '</span></div>';
+    html += '<div class="tech-val-item"><span class="tech-val-label">Média</span><span class="tech-val-num">$' + data.bollinger.middle.toFixed(4) + '</span></div>';
+    html += '<div class="tech-val-item"><span class="tech-val-label">Inferior</span><span class="tech-val-num">$' + data.bollinger.lower.toFixed(4) + '</span></div>';
+    html += '<div class="tech-val-item"><span class="tech-val-label">%B</span><span class="tech-val-num">' + (data.bollinger.percentB * 100).toFixed(1) + '%</span></div>';
+    html += '</div></div>';
+  }
+
+  // Moving Averages
+  if (data.movingAverages) {
+    var ma = data.movingAverages;
+    html += '<div class="tech-indicator-card">';
+    html += '<div class="tech-indicator-title"><h4>Médias Móveis</h4><span class="tech-signal ' + ma.trend + '">' + ma.trend + '</span></div>';
+    html += '<div class="tech-ma-grid">';
+    html += '<div class="tech-ma-item"><div class="tech-ma-name">SMA 20</div><div class="tech-ma-val">$' + ma.sma20.toFixed(4) + '</div></div>';
+    html += '<div class="tech-ma-item"><div class="tech-ma-name">SMA 50</div><div class="tech-ma-val">$' + ma.sma50.toFixed(4) + '</div></div>';
+    html += '<div class="tech-ma-item"><div class="tech-ma-name">SMA 200</div><div class="tech-ma-val">$' + ma.sma200.toFixed(4) + '</div></div>';
+    html += '<div class="tech-ma-item"><div class="tech-ma-name">EMA 12</div><div class="tech-ma-val">$' + ma.ema12.toFixed(4) + '</div></div>';
+    html += '<div class="tech-ma-item"><div class="tech-ma-name">EMA 26</div><div class="tech-ma-val">$' + ma.ema26.toFixed(4) + '</div></div>';
+    html += '<div class="tech-ma-item"><div class="tech-ma-name">' + (ma.goldenCross ? 'Golden Cross' : ma.deathCross ? 'Death Cross' : 'Sem Cruzamento') + '</div><div class="tech-ma-val" style="color:' + (ma.goldenCross ? '#00e676' : ma.deathCross ? '#ff5252' : '#888') + '">' + (ma.goldenCross ? '✓' : ma.deathCross ? '✗' : '—') + '</div></div>';
+    html += '</div></div>';
+  }
+
+  // Volume
+  if (data.volume) {
+    var v = data.volume;
+    html += '<div class="tech-indicator-card">';
+    html += '<div class="tech-indicator-title"><h4>Volume</h4></div>';
+    html += '<div class="tech-values">';
+    html += '<div class="tech-val-item"><span class="tech-val-label">24h</span><span class="tech-val-num">$' + fmtNum(v.current24h) + '</span></div>';
+    html += '<div class="tech-val-item"><span class="tech-val-label">Média 7d</span><span class="tech-val-num">$' + fmtNum(v.average7d) + '</span></div>';
+    html += '<div class="tech-val-item"><span class="tech-val-label">Compra</span><span class="tech-val-num" style="color:#00e676">' + v.buyPercentage.toFixed(0) + '%</span></div>';
+    html += '<div class="tech-val-item"><span class="tech-val-label">Venda</span><span class="tech-val-num" style="color:#ff5252">' + (100 - v.buyPercentage).toFixed(0) + '%</span></div>';
+    html += '</div></div>';
+  }
+
+  el.innerHTML = html;
+}
+
+// ================================================
+// PERFORMANCE COMPARISON
+// ================================================
+async function fetchWLFIPerformance() {
+  try {
+    var res = await fetch('/api/wlfi/performance');
+    if (!res.ok) return;
+    var json = await res.json();
+    if (json.success) renderWLFIPerformance(json.data);
+  } catch (e) { console.log('Performance fetch error', e); }
+}
+
+function renderWLFIPerformance(data) {
+  var el = document.getElementById('wlfi-performance');
+  if (!el) return;
+
+  var allTokens = [data.wlfi].concat(data.comparisons || []);
+  var html = '<table class="perf-table"><thead><tr>';
+  html += '<th>Token</th><th>Preço</th><th>1h</th><th>24h</th><th>7d</th><th>30d</th><th>MktCap</th>';
+  html += '</tr></thead><tbody>';
+
+  allTokens.forEach(function(t) {
+    if (!t) return;
+    var isWLFI = t.symbol === 'WLFI';
+    html += '<tr class="' + (isWLFI ? 'perf-highlight' : '') + '">';
+    html += '<td style="font-weight:600;color:' + (isWLFI ? 'var(--primary)' : '#e0e0e0') + '">' + t.symbol + '</td>';
+    html += '<td>$' + (t.price < 1 ? t.price.toFixed(4) : fmtNum(t.price)) + '</td>';
+    html += '<td class="' + (t.change1h >= 0 ? 'pos' : 'neg') + '">' + (t.change1h >= 0 ? '+' : '') + (t.change1h || 0).toFixed(1) + '%</td>';
+    html += '<td class="' + (t.change24h >= 0 ? 'pos' : 'neg') + '">' + (t.change24h >= 0 ? '+' : '') + (t.change24h || 0).toFixed(1) + '%</td>';
+    html += '<td class="' + (t.change7d >= 0 ? 'pos' : 'neg') + '">' + (t.change7d >= 0 ? '+' : '') + (t.change7d || 0).toFixed(1) + '%</td>';
+    html += '<td class="' + (t.change30d >= 0 ? 'pos' : 'neg') + '">' + (t.change30d >= 0 ? '+' : '') + (t.change30d || 0).toFixed(1) + '%</td>';
+    html += '<td>$' + fmtNum(t.marketCap) + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  // Outperforming / Underperforming
+  if (data.outperforming && data.outperforming.length) {
+    html += '<div style="margin-top:1rem"><span style="color:#00e676;font-size:0.8rem;font-weight:600">WLFI superando: </span>';
+    html += '<span style="color:#e0e0e0;font-size:0.8rem">' + data.outperforming.join(', ') + '</span></div>';
+  }
+  if (data.underperforming && data.underperforming.length) {
+    html += '<div style="margin-top:0.3rem"><span style="color:#ff5252;font-size:0.8rem;font-weight:600">Perdendo para: </span>';
+    html += '<span style="color:#e0e0e0;font-size:0.8rem">' + data.underperforming.join(', ') + '</span></div>';
+  }
+
+  // Correlations
+  if (data.correlations && data.correlations.length) {
+    html += '<h4 style="color:var(--primary);margin:1rem 0 0.5rem;font-size:0.85rem">Correlações</h4>';
+    html += '<div class="perf-corr-grid">';
+    data.correlations.forEach(function(c) {
+      var corrColor = c.correlation30d > 0.6 ? '#00e676' : c.correlation30d > 0.3 ? '#ffc107' : c.correlation30d > -0.3 ? '#888' : '#ff5252';
+      html += '<div class="perf-corr-item"><span class="perf-corr-pair">' + c.tokenA + '/' + c.tokenB + '</span>';
+      html += '<span class="perf-corr-val" style="color:' + corrColor + '">' + c.correlation30d.toFixed(2) + '</span></div>';
+    });
+    html += '</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+// ================================================
+// LIQUIDATION TRACKER
+// ================================================
+async function fetchWLFILiquidations() {
+  try {
+    var res = await fetch('/api/wlfi/liquidations');
+    if (!res.ok) return;
+    var json = await res.json();
+    if (json.success) renderWLFILiquidations(json.data);
+  } catch (e) { console.log('Liquidation fetch error', e); }
+}
+
+function renderWLFILiquidations(data) {
+  var el = document.getElementById('wlfi-liquidations');
+  if (!el) return;
+
+  var stats = data.stats || {};
+  var html = '';
+
+  // Stats grid
+  html += '<div class="liq-stats-grid">';
+  html += '<div class="liq-stat-box"><div class="liq-stat-val total">$' + fmtNum(stats.totalUSD24h || 0) + '</div><div class="liq-stat-label">Total 24h</div></div>';
+  html += '<div class="liq-stat-box"><div class="liq-stat-val longs">$' + fmtNum(stats.longsUSD || 0) + '</div><div class="liq-stat-label">Longs Liquidados</div></div>';
+  html += '<div class="liq-stat-box"><div class="liq-stat-val shorts">$' + fmtNum(stats.shortsUSD || 0) + '</div><div class="liq-stat-label">Shorts Liquidados</div></div>';
+  html += '</div>';
+
+  // At risk
+  html += '<div style="display:flex;gap:1rem;margin-bottom:1rem">';
+  html += '<div class="liq-stat-box" style="flex:1"><div class="liq-stat-val longs">$' + fmtNum(data.atRiskLongs || 0) + '</div><div class="liq-stat-label">Longs em Risco (5%)</div></div>';
+  html += '<div class="liq-stat-box" style="flex:1"><div class="liq-stat-val shorts">$' + fmtNum(data.atRiskShorts || 0) + '</div><div class="liq-stat-label">Shorts em Risco (5%)</div></div>';
+  html += '</div>';
+
+  // Liquidation Levels
+  var levels = (data.liquidationLevels || []).slice(0, 10);
+  if (levels.length) {
+    html += '<h4 style="color:var(--primary);margin:0.5rem 0;font-size:0.85rem">Níveis de Liquidação</h4>';
+    var maxVal = 1;
+    levels.forEach(function(l) { maxVal = Math.max(maxVal, l.totalLongs, l.totalShorts); });
+    levels.forEach(function(l) {
+      html += '<div class="liq-level-bar">';
+      html += '<span style="min-width:55px;color:#e0e0e0">$' + l.price.toFixed(4) + '</span>';
+      html += '<div class="liq-bar-long" style="width:' + (l.totalLongs / maxVal * 80) + 'px" title="Longs: $' + fmtNum(l.totalLongs) + '"></div>';
+      html += '<div class="liq-bar-short" style="width:' + (l.totalShorts / maxVal * 80) + 'px" title="Shorts: $' + fmtNum(l.totalShorts) + '"></div>';
+      html += '<span style="color:#888">' + l.count + '</span>';
+      html += '</div>';
+    });
+  }
+
+  // Recent Liquidations
+  var recent = (data.recentLiquidations || []).slice(0, 10);
+  if (recent.length) {
+    html += '<h4 style="color:var(--primary);margin:0.75rem 0 0.5rem;font-size:0.85rem">Liquidações Recentes</h4>';
+    recent.forEach(function(liq) {
+      html += '<div class="liq-event-row">';
+      html += '<span class="liq-type-badge ' + liq.type + '">' + liq.type + '</span>';
+      html += '<span style="color:#e0e0e0;font-weight:600">$' + fmtNum(liq.amountUSD) + '</span>';
+      html += '<span style="color:#888">' + liq.platform + '</span>';
+      html += '<span style="color:#aaa;font-size:0.7rem">' + timeAgo(liq.timestamp) + '</span>';
+      html += '</div>';
+    });
+  }
+
+  el.innerHTML = html;
+}
+
+// ================================================
+// HELPER FUNCTIONS
+// ================================================
+function fmtNum(n) {
+  if (n == null) return '0';
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toFixed ? n.toFixed(0) : String(n);
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  var diff = Date.now() - new Date(ts).getTime();
+  var mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'agora';
+  if (mins < 60) return mins + 'm atrás';
+  var hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h atrás';
+  return Math.floor(hrs / 24) + 'd atrás';
+}
+
 // Auto-refresh every 60 seconds when on WLFI tab
 setInterval(function() {
   var wlfiSection = document.getElementById('wlfi-section');
   if (wlfiSection && wlfiSection.classList.contains('active')) {
     fetchWLFIOverview();
+    fetchWLFIOnChain();
+    fetchWLFITechnical();
+    fetchWLFIPerformance();
+    fetchWLFILiquidations();
   }
 }, 60000);

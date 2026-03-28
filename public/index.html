@@ -750,6 +750,122 @@
             gap: 1rem;
         }
 
+        /* On-Chain Tracking */
+        .onchain-whale-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.6rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .onchain-whale-row:last-child { border-bottom: none; }
+        .whale-label { font-weight: 600; color: #e0e0e0; font-size: 0.85rem; }
+        .whale-address { font-family: monospace; font-size: 0.75rem; color: #888; }
+        .whale-balance { color: var(--primary); font-weight: 700; }
+        .whale-pct { color: #aaa; font-size: 0.75rem; }
+        .whale-change.pos { color: #00e676; }
+        .whale-change.neg { color: #ff5252; }
+        .flow-row {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.8rem;
+        }
+        .flow-badge {
+            padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        }
+        .flow-badge.inflow { background: rgba(0,230,118,0.15); color: #00e676; }
+        .flow-badge.outflow { background: rgba(255,82,82,0.15); color: #ff5252; }
+        .flow-badge.transfer { background: rgba(100,181,246,0.15); color: #64b5f6; }
+        .tvl-chain-bar {
+            display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+        }
+        .tvl-bar-fill {
+            height: 20px; border-radius: 4px; background: var(--primary); min-width: 4px;
+        }
+        .tvl-stat-grid {
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;
+        }
+        .tvl-stat-box {
+            background: rgba(10,10,15,0.6); border-radius: 8px; padding: 0.75rem; text-align: center;
+        }
+        .tvl-stat-val { font-size: 1.3rem; font-weight: 700; color: var(--primary); }
+        .tvl-stat-label { font-size: 0.7rem; color: #888; margin-top: 0.25rem; }
+
+        /* Technical Indicators */
+        .tech-indicator-card {
+            background: rgba(10,10,15,0.5); border-radius: 10px; padding: 1rem; margin-bottom: 0.75rem;
+        }
+        .tech-indicator-title {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;
+        }
+        .tech-indicator-title h4 { margin: 0; color: #e0e0e0; font-size: 0.9rem; }
+        .tech-signal {
+            padding: 3px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        }
+        .tech-signal.bullish, .tech-signal.buy, .tech-signal.strong_buy, .tech-signal.oversold { background: rgba(0,230,118,0.2); color: #00e676; }
+        .tech-signal.bearish, .tech-signal.sell, .tech-signal.strong_sell, .tech-signal.overbought { background: rgba(255,82,82,0.2); color: #ff5252; }
+        .tech-signal.neutral, .tech-signal.sideways { background: rgba(255,193,7,0.2); color: #ffc107; }
+        .tech-values { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .tech-val-item { display: flex; justify-content: space-between; font-size: 0.8rem; }
+        .tech-val-label { color: #888; }
+        .tech-val-num { color: #e0e0e0; font-weight: 600; }
+        .tech-overall-score {
+            text-align: center; padding: 1.5rem; background: rgba(10,10,15,0.7); border-radius: 12px; margin-bottom: 1rem;
+        }
+        .tech-score-num { font-size: 2.5rem; font-weight: 800; }
+        .tech-score-label { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
+        .tech-ma-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+        .tech-ma-item { text-align: center; background: rgba(10,10,15,0.4); border-radius: 8px; padding: 0.5rem; }
+        .tech-ma-name { font-size: 0.7rem; color: #888; }
+        .tech-ma-val { font-size: 0.85rem; font-weight: 600; color: #e0e0e0; }
+
+        /* Performance Comparison */
+        .perf-table { width: 100%; border-collapse: collapse; }
+        .perf-table th {
+            text-align: left; padding: 0.5rem; font-size: 0.7rem; color: #888;
+            text-transform: uppercase; border-bottom: 1px solid var(--border);
+        }
+        .perf-table td { padding: 0.5rem; font-size: 0.8rem; }
+        .perf-table tr:hover { background: rgba(255,255,255,0.03); }
+        .perf-table .pos { color: #00e676; }
+        .perf-table .neg { color: #ff5252; }
+        .perf-sparkline { width: 80px; height: 24px; }
+        .perf-highlight { background: rgba(0,200,255,0.05); }
+        .perf-corr-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+        .perf-corr-item {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(10,10,15,0.4); border-radius: 8px; padding: 0.6rem 0.8rem;
+        }
+        .perf-corr-pair { font-size: 0.8rem; color: #e0e0e0; }
+        .perf-corr-val { font-weight: 700; font-size: 0.85rem; }
+
+        /* Liquidation Tracker */
+        .liq-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
+        .liq-stat-box {
+            background: rgba(10,10,15,0.6); border-radius: 8px; padding: 0.75rem; text-align: center;
+        }
+        .liq-stat-val { font-size: 1.2rem; font-weight: 700; }
+        .liq-stat-val.longs { color: #00e676; }
+        .liq-stat-val.shorts { color: #ff5252; }
+        .liq-stat-val.total { color: var(--primary); }
+        .liq-stat-label { font-size: 0.7rem; color: #888; margin-top: 0.2rem; }
+        .liq-event-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.8rem;
+        }
+        .liq-type-badge {
+            padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        }
+        .liq-type-badge.long { background: rgba(0,230,118,0.15); color: #00e676; }
+        .liq-type-badge.short { background: rgba(255,82,82,0.15); color: #ff5252; }
+        .liq-level-bar {
+            display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.75rem;
+        }
+        .liq-bar-long { height: 14px; background: rgba(0,230,118,0.4); border-radius: 3px; }
+        .liq-bar-short { height: 14px; background: rgba(255,82,82,0.4); border-radius: 3px; }
+        .liq-heatmap { display: flex; gap: 2px; flex-wrap: wrap; margin-top: 0.5rem; }
+        .liq-heat-cell {
+            width: 18px; height: 18px; border-radius: 3px; cursor: pointer; position: relative;
+        }
+
         /* Update Cards */
         .upd-card {
             background: rgba(30, 30, 45, 0.9);
@@ -1733,6 +1849,41 @@ body {
                     <div class="wlfi-panel">
                         <div class="wlfi-header"><i class="fas fa-lightbulb"></i> Analysis</div>
                         <div class="wlfi-content" id="wlfi-analysis"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: On-Chain + Technical Indicators + Performance + Liquidations -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                <!-- On-Chain Tracking -->
+                <div class="wlfi-panel">
+                    <div class="wlfi-header"><i class="fas fa-link"></i> On-Chain Tracking</div>
+                    <div class="wlfi-content" id="wlfi-onchain" style="max-height: 500px; overflow-y: auto;">
+                        <div style="color: #888; text-align: center; padding: 2rem;">Carregando dados on-chain...</div>
+                    </div>
+                </div>
+
+                <!-- Technical Indicators -->
+                <div class="wlfi-panel">
+                    <div class="wlfi-header"><i class="fas fa-chart-line"></i> Indicadores Técnicos</div>
+                    <div class="wlfi-content" id="wlfi-technical" style="max-height: 500px; overflow-y: auto;">
+                        <div style="color: #888; text-align: center; padding: 2rem;">Carregando indicadores...</div>
+                    </div>
+                </div>
+
+                <!-- Performance Comparison -->
+                <div class="wlfi-panel">
+                    <div class="wlfi-header"><i class="fas fa-trophy"></i> Performance vs Mercado</div>
+                    <div class="wlfi-content" id="wlfi-performance" style="max-height: 500px; overflow-y: auto;">
+                        <div style="color: #888; text-align: center; padding: 2rem;">Carregando comparativo...</div>
+                    </div>
+                </div>
+
+                <!-- Liquidation Tracker -->
+                <div class="wlfi-panel">
+                    <div class="wlfi-header"><i class="fas fa-fire"></i> Liquidation Tracker</div>
+                    <div class="wlfi-content" id="wlfi-liquidations" style="max-height: 500px; overflow-y: auto;">
+                        <div style="color: #888; text-align: center; padding: 2rem;">Carregando liquidações...</div>
                     </div>
                 </div>
             </div>

@@ -22,6 +22,10 @@ import { BlockchainService } from './services/onchain/BlockchainService';
 import { WLFINewsService } from './services/wlfi/WLFINewsService';
 import { WLFIInfluencerService } from './services/wlfi/WLFIInfluencerService';
 import { WLFIAgentOrchestrator } from './services/wlfi/WLFIAgentOrchestrator';
+import { WLFIOnChainService } from './services/wlfi/WLFIOnChainService';
+import { WLFITechnicalService } from './services/wlfi/WLFITechnicalService';
+import { WLFIPerformanceService } from './services/wlfi/WLFIPerformanceService';
+import { WLFILiquidationService } from './services/wlfi/WLFILiquidationService';
 
 import { marketRoutes } from './routes/market';
 import { sentimentRoutes } from './routes/sentiment';
@@ -64,6 +68,10 @@ class CryptoAITradingServer {
     private wlfiNewsService!: WLFINewsService;
     private wlfiInfluencerService!: WLFIInfluencerService;
     private wlfiOrchestrator!: WLFIAgentOrchestrator;
+    private wlfiOnChainService!: WLFIOnChainService;
+    private wlfiTechnicalService!: WLFITechnicalService;
+    private wlfiPerformanceService!: WLFIPerformanceService;
+    private wlfiLiquidationService!: WLFILiquidationService;
     private port: number;
 
     constructor() {
@@ -107,6 +115,10 @@ class CryptoAITradingServer {
             this.polymarketService
         );
         this.wlfiOrchestrator.startAllAgents();
+        this.wlfiOnChainService = new WLFIOnChainService();
+        this.wlfiTechnicalService = new WLFITechnicalService();
+        this.wlfiPerformanceService = new WLFIPerformanceService();
+        this.wlfiLiquidationService = new WLFILiquidationService();
 
         console.log('✅ Todos os serviços inicializados');
     }
@@ -220,7 +232,11 @@ class CryptoAITradingServer {
             polymarketService: this.polymarketService,
             newsService: this.wlfiNewsService,
             influencerService: this.wlfiInfluencerService,
-            orchestrator: this.wlfiOrchestrator
+            orchestrator: this.wlfiOrchestrator,
+            onChainService: this.wlfiOnChainService,
+            technicalService: this.wlfiTechnicalService,
+            performanceService: this.wlfiPerformanceService,
+            liquidationService: this.wlfiLiquidationService
         });
 
         claudeRoutes(this.app, {
