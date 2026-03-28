@@ -119,16 +119,16 @@
 <body>
   <div class="container">
     <h1>Claude Code Insights</h1>
-    <p class="subtitle">117 messages across 6 sessions (9 total) | 2026-03-24 to 2026-03-24</p>
+    <p class="subtitle">85 messages across 7 sessions (11 total) | 2026-03-24 to 2026-03-27</p>
 
     
     <div class="at-a-glance">
       <div class="glance-title">At a Glance</div>
       <div class="glance-sections">
-        <div class="glance-section"><strong>What's working:</strong> You have a clear architectural vision for your crypto dashboard and you persistently drove toward it despite repeated setbacks. Your read-heavy approach—having Claude examine existing code before making changes—was key to your successful sessions, especially the clean end-to-end API integration that made it all the way to a committed, building codebase. <a href="#section-wins" class="see-more">Impressive Things You Did →</a></div>
-        <div class="glance-section"><strong>What's hindering you:</strong> On Claude&apos;s side, the biggest issue is destructive overwrites—Claude repeatedly replaced your entire dashboard instead of adding sections alongside it, then burned through usage limits trying to fix its own mistakes. On your side, requesting multiple new sections in a single session without explicit constraints on what to preserve gave Claude too much room to go off the rails. <a href="#section-friction" class="see-more">Where Things Go Wrong →</a></div>
-        <div class="glance-section"><strong>Quick wins to try:</strong> Try creating a custom skill (a reusable /command) that instructs Claude to never overwrite existing components and to commit working state before adding new features—this would have prevented most of your friction in a single day. Also, break multi-section work into one-section-per-session to keep tasks scoped and reduce the risk of cascading failures. <a href="#section-features" class="see-more">Features to Try →</a></div>
-        <div class="glance-section"><strong>Ambitious workflows:</strong> As models improve, you&apos;ll be able to spin up parallel sub-agents to build independent features like your Polymarket and WLFI sections simultaneously in isolated files, then merge them cleanly. Pair that with test-driven iteration—writing snapshot tests for your existing dashboard before adding features—so Claude can autonomously catch and self-correct any destructive overwrites before you ever see them. <a href="#section-horizon" class="see-more">On the Horizon →</a></div>
+        <div class="glance-section"><strong>What's working:</strong> You have a clear architectural vision for your crypto dashboard and you&apos;ve been effective at breaking work into structured tasks. Your strongest session—building out the full API integration layer with services, routes, and a clean push—shows that when you scope work tightly, you and Claude produce solid results. <a href="#section-wins" class="see-more">Impressive Things You Did →</a></div>
+        <div class="glance-section"><strong>What's hindering you:</strong> On Claude&apos;s side, the biggest issue is destructive overwrites—Claude repeatedly replaced your entire working dashboard instead of adding sections alongside it, then burned through usage limits trying to fix its own mistakes. On your side, requesting multiple large sections in a single session without committing working state first left you vulnerable when things went sideways, with no safe rollback point. <a href="#section-friction" class="see-more">Where Things Go Wrong →</a></div>
+        <div class="glance-section"><strong>Quick wins to try:</strong> Try creating a custom slash command (Custom Skill) that enforces rules like &quot;never modify existing sections, only add new ones&quot; and &quot;commit before and after each change&quot;—this directly addresses your most painful failure pattern. Also, for bugs, ask Claude to diagnose the root cause and explain it before applying any fix, so you avoid the repeated superficial CSS patches you ran into. <a href="#section-features" class="see-more">Features to Try →</a></div>
+        <div class="glance-section"><strong>Ambitious workflows:</strong> As models get more capable, you&apos;ll be able to spin up parallel sub-agents to build each dashboard section independently (Polymarket, WLFI, original) and merge them in a final integration step—turning multi-day sprawl into a single coordinated session. Pairing that with auto-generated visual regression tests would let Claude catch CSS conflicts like the specificity issue autonomously, without burning your time on misdirected fixes. <a href="#section-horizon" class="see-more">On the Horizon →</a></div>
       </div>
     </div>
     
@@ -145,11 +145,11 @@
     </nav>
 
     <div class="stats-row">
-      <div class="stat"><div class="stat-value">117</div><div class="stat-label">Messages</div></div>
-      <div class="stat"><div class="stat-value">+1,228/-16</div><div class="stat-label">Lines</div></div>
-      <div class="stat"><div class="stat-value">11</div><div class="stat-label">Files</div></div>
-      <div class="stat"><div class="stat-value">1</div><div class="stat-label">Days</div></div>
-      <div class="stat"><div class="stat-value">117</div><div class="stat-label">Msgs/Day</div></div>
+      <div class="stat"><div class="stat-value">85</div><div class="stat-label">Messages</div></div>
+      <div class="stat"><div class="stat-value">+3,357/-25</div><div class="stat-label">Lines</div></div>
+      <div class="stat"><div class="stat-value">12</div><div class="stat-label">Files</div></div>
+      <div class="stat"><div class="stat-value">2</div><div class="stat-label">Days</div></div>
+      <div class="stat"><div class="stat-value">42.5</div><div class="stat-label">Msgs/Day</div></div>
     </div>
 
     
@@ -158,42 +158,34 @@
       
         <div class="project-area">
           <div class="area-header">
-            <span class="area-name">Crypto Dashboard Section Expansion</span>
-            <span class="area-count">~4 sessions</span>
-          </div>
-          <div class="area-desc">User repeatedly attempted to add new Polymarket trader and WLFI token sections to an existing crypto dashboard. Claude consistently overwrote the entire existing dashboard instead of adding sections alongside it, destroying previous work and requiring multiple frustrated retry sessions across the day.</div>
-        </div>
-      
-        <div class="project-area">
-          <div class="area-header">
-            <span class="area-name">Dashboard UI Overhaul &amp; Completion</span>
+            <span class="area-name">Crypto Dashboard Core Build</span>
             <span class="area-count">~2 sessions</span>
           </div>
-          <div class="area-desc">Continuation sessions focused on completing a 3-section crypto dashboard layout. In one successful session Claude completed all sections and fixed a TypeScript error, while a sub-agent UI overhaul task hit usage limits without meaningful progress.</div>
+          <div class="area-desc">Initial construction of a multi-section crypto dashboard with API integrations for Polymarket market sentiment, WLFI tokens, and other crypto data. Claude successfully created services, routes, and TypeScript backend code, pushing clean builds. This was the most successful area of work.</div>
         </div>
       
         <div class="project-area">
           <div class="area-header">
-            <span class="area-name">Crypto API Integration</span>
+            <span class="area-name">Dashboard Section Expansion (Polymarket &amp; WLFI)</span>
+            <span class="area-count">~4 sessions</span>
+          </div>
+          <div class="area-desc">Repeated attempts to add new Polymarket trader and WLFI token sections to the existing dashboard. Claude consistently overwrote the entire existing dashboard instead of adding alongside it, then stalled, hit usage limits, and timed out before completing fixes. This was the primary source of frustration across the project.</div>
+        </div>
+      
+        <div class="project-area">
+          <div class="area-header">
+            <span class="area-name">CSS &amp; UI Bug Fixes</span>
             <span class="area-count">~1 sessions</span>
           </div>
-          <div class="area-desc">User requested integration of multiple crypto APIs including Polymarket for market sentiment data. Claude successfully created all necessary services, routes, and pushed clean-building code, representing the most successful session of the day.</div>
+          <div class="area-desc">Debugging buggy/identical-looking Polymarket and WLFI pages. Claude initially pursued superficial CSS fixes multiple times before identifying the real root cause—a CSS specificity conflict causing section overlap. The misdirected debugging attempts added friction before resolution.</div>
         </div>
       
         <div class="project-area">
           <div class="area-header">
-            <span class="area-name">TypeScript &amp; Build Error Resolution</span>
+            <span class="area-name">TypeScript Error Resolution</span>
             <span class="area-count">~1 sessions</span>
           </div>
-          <div class="area-desc">Fixing TypeScript type errors encountered during dashboard development, specifically a response.json() typing issue resolved with a Record&lt;string, any&gt; cast. This was part of the broader dashboard build effort using TypeScript as the primary language.</div>
-        </div>
-      
-        <div class="project-area">
-          <div class="area-header">
-            <span class="area-name">Usage Limit &amp; Stalling Recovery</span>
-            <span class="area-count">~3 sessions</span>
-          </div>
-          <div class="area-desc">Multiple sessions were significantly impacted by Claude hitting usage limits, timing out, and stalling during execution. Users had to restart sessions repeatedly to recover from incomplete work, contributing to high frustration levels across the day&apos;s work.</div>
+          <div class="area-desc">Fixing TypeScript type errors encountered during the dashboard build, including a response.json() type issue resolved with a Record&lt;string, any&gt; cast. Claude handled this targeted debugging task effectively as part of a broader session.</div>
         </div>
       
     </div>
@@ -203,33 +195,33 @@
       <div class="chart-card">
         <div class="chart-title">What You Wanted</div>
         <div class="bar-row">
-        <div class="bar-label">Ui Overhaul</div>
+        <div class="bar-label">Bug Fix</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#2563eb"></div></div>
+        <div class="bar-value">3</div>
+      </div>
+<div class="bar-row">
+        <div class="bar-label">Ui Feature Addition</div>
+        <div class="bar-track"><div class="bar-fill" style="width:66.66666666666666%;background:#2563eb"></div></div>
+        <div class="bar-value">2</div>
+      </div>
+<div class="bar-row">
+        <div class="bar-label">Ui Overhaul</div>
+        <div class="bar-track"><div class="bar-fill" style="width:66.66666666666666%;background:#2563eb"></div></div>
         <div class="bar-value">2</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">Add New Section</div>
-        <div class="bar-track"><div class="bar-fill" style="width:100%;background:#2563eb"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="width:66.66666666666666%;background:#2563eb"></div></div>
         <div class="bar-value">2</div>
       </div>
 <div class="bar-row">
-        <div class="bar-label">Ui Feature Addition</div>
-        <div class="bar-track"><div class="bar-fill" style="width:100%;background:#2563eb"></div></div>
-        <div class="bar-value">2</div>
-      </div>
-<div class="bar-row">
-        <div class="bar-label">Fix Destructive Changes</div>
-        <div class="bar-track"><div class="bar-fill" style="width:50%;background:#2563eb"></div></div>
+        <div class="bar-label">Build Dashboard Sections</div>
+        <div class="bar-track"><div class="bar-fill" style="width:33.33333333333333%;background:#2563eb"></div></div>
         <div class="bar-value">1</div>
       </div>
 <div class="bar-row">
-        <div class="bar-label">Content Section Creation</div>
-        <div class="bar-track"><div class="bar-fill" style="width:50%;background:#2563eb"></div></div>
-        <div class="bar-value">1</div>
-      </div>
-<div class="bar-row">
-        <div class="bar-label">Status Summary</div>
-        <div class="bar-track"><div class="bar-fill" style="width:50%;background:#2563eb"></div></div>
+        <div class="bar-label">Question About Delay</div>
+        <div class="bar-track"><div class="bar-fill" style="width:33.33333333333333%;background:#2563eb"></div></div>
         <div class="bar-value">1</div>
       </div>
       </div>
@@ -238,32 +230,32 @@
         <div class="bar-row">
         <div class="bar-label">Bash</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#0891b2"></div></div>
-        <div class="bar-value">86</div>
+        <div class="bar-value">103</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">Read</div>
-        <div class="bar-track"><div class="bar-fill" style="width:86.04651162790698%;background:#0891b2"></div></div>
-        <div class="bar-value">74</div>
+        <div class="bar-track"><div class="bar-fill" style="width:93.20388349514563%;background:#0891b2"></div></div>
+        <div class="bar-value">96</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">Edit</div>
-        <div class="bar-track"><div class="bar-fill" style="width:22.093023255813954%;background:#0891b2"></div></div>
-        <div class="bar-value">19</div>
+        <div class="bar-track"><div class="bar-fill" style="width:25.24271844660194%;background:#0891b2"></div></div>
+        <div class="bar-value">26</div>
+      </div>
+<div class="bar-row">
+        <div class="bar-label">TodoWrite</div>
+        <div class="bar-track"><div class="bar-fill" style="width:6.796116504854369%;background:#0891b2"></div></div>
+        <div class="bar-value">7</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">Agent</div>
-        <div class="bar-track"><div class="bar-fill" style="width:10.465116279069768%;background:#0891b2"></div></div>
-        <div class="bar-value">9</div>
-      </div>
-<div class="bar-row">
-        <div class="bar-label">Mcp  Github  Pull Request Read</div>
-        <div class="bar-track"><div class="bar-fill" style="width:10.465116279069768%;background:#0891b2"></div></div>
-        <div class="bar-value">9</div>
+        <div class="bar-track"><div class="bar-fill" style="width:6.796116504854369%;background:#0891b2"></div></div>
+        <div class="bar-value">7</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">ToolSearch</div>
-        <div class="bar-track"><div class="bar-fill" style="width:9.30232558139535%;background:#0891b2"></div></div>
-        <div class="bar-value">8</div>
+        <div class="bar-track"><div class="bar-fill" style="width:5.825242718446602%;background:#0891b2"></div></div>
+        <div class="bar-value">6</div>
       </div>
       </div>
     </div>
@@ -274,26 +266,26 @@
         <div class="bar-row">
         <div class="bar-label">TypeScript</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#10b981"></div></div>
-        <div class="bar-value">46</div>
+        <div class="bar-value">49</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">HTML</div>
-        <div class="bar-track"><div class="bar-fill" style="width:54.347826086956516%;background:#10b981"></div></div>
-        <div class="bar-value">25</div>
+        <div class="bar-track"><div class="bar-fill" style="width:91.83673469387756%;background:#10b981"></div></div>
+        <div class="bar-value">45</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">JavaScript</div>
-        <div class="bar-track"><div class="bar-fill" style="width:23.91304347826087%;background:#10b981"></div></div>
-        <div class="bar-value">11</div>
+        <div class="bar-track"><div class="bar-fill" style="width:40.816326530612244%;background:#10b981"></div></div>
+        <div class="bar-value">20</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">CSS</div>
-        <div class="bar-track"><div class="bar-fill" style="width:10.869565217391305%;background:#10b981"></div></div>
-        <div class="bar-value">5</div>
+        <div class="bar-track"><div class="bar-fill" style="width:8.16326530612245%;background:#10b981"></div></div>
+        <div class="bar-value">4</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">JSON</div>
-        <div class="bar-track"><div class="bar-fill" style="width:4.3478260869565215%;background:#10b981"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="width:4.081632653061225%;background:#10b981"></div></div>
         <div class="bar-value">2</div>
       </div>
       </div>
@@ -302,11 +294,11 @@
         <div class="bar-row">
         <div class="bar-label">Iterative Refinement</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#8b5cf6"></div></div>
-        <div class="bar-value">5</div>
+        <div class="bar-value">6</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">Single Task</div>
-        <div class="bar-track"><div class="bar-fill" style="width:20%;background:#8b5cf6"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="width:16.666666666666664%;background:#8b5cf6"></div></div>
         <div class="bar-value">1</div>
       </div>
       </div>
@@ -315,9 +307,9 @@
     
     <h2 id="section-usage">How You Use Claude Code</h2>
     <div class="narrative">
-      <p>You had an incredibly frustrating day wrestling with Claude Code across 6 sessions, all on a single day, trying to build out a crypto dashboard with Polymarket trader and WLFI token sections. <strong>Your core pattern is additive iteration</strong> — you have existing work you want to preserve and you ask Claude to build new sections alongside it. Unfortunately, Claude repeatedly misunderstood this intent and <strong>overwrote your entire dashboard instead of extending it</strong>, which became the defining friction of your experience. You&apos;d start a session, discover Claude had destroyed your previous work, try to get it fixed, hit usage limits, and then have to start another session to pick up the pieces. With 117 messages across 6 sessions but only 1 commit, it&apos;s clear most of your time was spent in recovery loops rather than productive building.</p>
-<p>Your tool usage tells an interesting story: <strong>86 Bash calls and 74 Read calls but only 19 Edits and 1 Write</strong> suggest you spent far more time inspecting and debugging than actually producing new code. The heavy use of Read indicates you were frequently checking whether Claude had preserved or destroyed your existing work. You also leaned on TodoWrite (6 uses) and sub-agents (9 uses), suggesting you tried to break the work into structured tasks to get better results. Despite all the friction — excessive changes, wrong approaches, stalled execution, and usage limit hits appearing across nearly every session — you persisted and eventually got two fully achieved outcomes, including a clean build with all services and routes pushed. <strong>You&apos;re tenacious but reactive</strong>, spending most of your energy course-correcting rather than being able to trust Claude to execute autonomously.</p>
-      <div class="key-insight"><strong>Key pattern:</strong> You repeatedly attempt additive feature work on an existing codebase but get trapped in frustrating recovery cycles when Claude makes destructive overwrites instead of incremental additions.</div>
+      <p>You are building a crypto dashboard with multiple sections (Polymarket traders, WLFI token data) and your interactions with Claude Code have been <strong>deeply frustrating</strong>. Your typical pattern is to request additive changes — asking Claude to add new sections alongside existing work — but Claude <strong>repeatedly overwrote your entire dashboard</strong> instead of extending it. This happened across at least 4 separate sessions, suggesting you kept coming back to retry the same task after failures. With 161 hours logged across just 7 sessions and only 85 messages, you tend to <strong>let Claude run autonomously for extended periods</strong> rather than micromanaging, which backfired when Claude went down wrong paths, hit usage limits, and stalled out without completing work.</p>
+<p>Your satisfaction data tells a stark story: <strong>12 out of 16 satisfaction signals were dissatisfied or frustrated</strong>, and only 3 out of 7 sessions achieved their goals. The core friction pattern is clear — Claude kept taking a &quot;replace everything&quot; approach when you wanted incremental additions, and by the time the destructive changes were noticed, usage limits had already been hit. When things did work, like the initial API integration session where Claude created all services and routes cleanly, the results were strong. The successful CSS debugging session also shows that when Claude eventually identifies root causes (like the specificity conflict causing section overlap), it can deliver. But <strong>your trust has been eroded by repeated destruction of working code</strong>, and the ratio of rework to forward progress is extremely high.</p>
+      <div class="key-insight"><strong>Key pattern:</strong> You delegate large autonomous tasks expecting incremental additions, but suffer repeated setbacks when Claude destructively overwrites existing work instead of building on it.</div>
     </div>
     
 
@@ -331,36 +323,36 @@
       </div>
 <div class="bar-row">
         <div class="bar-label">10-30s</div>
-        <div class="bar-track"><div class="bar-fill" style="width:9.375%;background:#6366f1"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="width:11.11111111111111%;background:#6366f1"></div></div>
         <div class="bar-value">3</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">30s-1m</div>
-        <div class="bar-track"><div class="bar-fill" style="width:0%;background:#6366f1"></div></div>
-        <div class="bar-value">0</div>
+        <div class="bar-track"><div class="bar-fill" style="width:3.7037037037037033%;background:#6366f1"></div></div>
+        <div class="bar-value">1</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">1-2m</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#6366f1"></div></div>
-        <div class="bar-value">32</div>
+        <div class="bar-value">27</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">2-5m</div>
-        <div class="bar-track"><div class="bar-fill" style="width:62.5%;background:#6366f1"></div></div>
-        <div class="bar-value">20</div>
+        <div class="bar-track"><div class="bar-fill" style="width:55.55555555555556%;background:#6366f1"></div></div>
+        <div class="bar-value">15</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">5-15m</div>
-        <div class="bar-track"><div class="bar-fill" style="width:40.625%;background:#6366f1"></div></div>
-        <div class="bar-value">13</div>
+        <div class="bar-track"><div class="bar-fill" style="width:33.33333333333333%;background:#6366f1"></div></div>
+        <div class="bar-value">9</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">>15m</div>
-        <div class="bar-track"><div class="bar-fill" style="width:12.5%;background:#6366f1"></div></div>
-        <div class="bar-value">4</div>
+        <div class="bar-track"><div class="bar-fill" style="width:11.11111111111111%;background:#6366f1"></div></div>
+        <div class="bar-value">3</div>
       </div>
       <div style="font-size: 12px; color: #64748b; margin-top: 8px;">
-        Median: 158.3s &bull; Average: 251.4s
+        Median: 88.3s &bull; Average: 226.0s
       </div>
     </div>
 
@@ -370,15 +362,15 @@
       
         <div style="display: flex; gap: 24px; margin: 12px 0;">
           <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">6</div>
+            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">4</div>
             <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Overlap Events</div>
           </div>
           <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">5</div>
+            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">4</div>
             <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Sessions Involved</div>
           </div>
           <div style="text-align: center;">
-            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">59%</div>
+            <div style="font-size: 24px; font-weight: 700; color: #7c3aed;">56%</div>
             <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Of Messages</div>
           </div>
         </div>
@@ -414,18 +406,18 @@
       <div class="bar-row">
         <div class="bar-label">Afternoon (12-18)</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#8b5cf6"></div></div>
-        <div class="bar-value">82</div>
+        <div class="bar-value">62</div>
       </div>
 
       <div class="bar-row">
         <div class="bar-label">Evening (18-24)</div>
-        <div class="bar-track"><div class="bar-fill" style="width:37.80487804878049%;background:#8b5cf6"></div></div>
-        <div class="bar-value">31</div>
+        <div class="bar-track"><div class="bar-fill" style="width:30.64516129032258%;background:#8b5cf6"></div></div>
+        <div class="bar-value">19</div>
       </div>
 
       <div class="bar-row">
         <div class="bar-label">Night (0-6)</div>
-        <div class="bar-track"><div class="bar-fill" style="width:4.878048780487805%;background:#8b5cf6"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="width:6.451612903225806%;background:#8b5cf6"></div></div>
         <div class="bar-value">4</div>
       </div></div>
       </div>
@@ -434,29 +426,39 @@
         <div class="bar-row">
         <div class="bar-label">File Too Large</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#dc2626"></div></div>
-        <div class="bar-value">5</div>
+        <div class="bar-value">4</div>
+      </div>
+<div class="bar-row">
+        <div class="bar-label">File Not Found</div>
+        <div class="bar-track"><div class="bar-fill" style="width:25%;background:#dc2626"></div></div>
+        <div class="bar-value">1</div>
+      </div>
+<div class="bar-row">
+        <div class="bar-label">Other</div>
+        <div class="bar-track"><div class="bar-fill" style="width:25%;background:#dc2626"></div></div>
+        <div class="bar-value">1</div>
       </div>
       </div>
     </div>
 
     
     <h2 id="section-wins">Impressive Things You Did</h2>
-    <p class="section-intro">You&apos;ve been intensively building a crypto dashboard in TypeScript over a single day, pushing through significant friction to get multiple data sections integrated.</p>
+    <p class="section-intro">Over 7 sessions across 4 days, you&apos;ve been building a multi-section crypto dashboard with Polymarket and WLFI integrations, though you&apos;ve hit significant friction with Claude overwriting existing work.</p>
     <div class="big-wins">
       
         <div class="big-win">
-          <div class="big-win-title">Persistent Multi-Section Dashboard Vision</div>
-          <div class="big-win-desc">You had a clear architectural vision for a 3-section crypto dashboard combining your original work with Polymarket traders and WLFI token data. Despite repeated setbacks where Claude overwrote your existing work, you kept re-engaging sessions until all three sections were successfully delivered.</div>
+          <div class="big-win-title">Full-Stack API Integration</div>
+          <div class="big-win-desc">You successfully orchestrated Claude to create complete crypto API integrations including services, routes, and a clean build pushed to your repo. Your approach of tackling the backend plumbing in a dedicated session yielded your strongest outcome across all sessions.</div>
         </div>
       
         <div class="big-win">
-          <div class="big-win-title">Full API Integration Pipeline</div>
-          <div class="big-win-desc">In your most successful session, you orchestrated the creation of multiple crypto API services, routes, and a clean build pushed to your repo. This end-to-end workflow—from API integration through to a committed, building codebase—shows you know how to drive Claude toward production-ready output.</div>
+          <div class="big-win-title">Persistent Iterative Dashboard Building</div>
+          <div class="big-win-desc">Despite repeated setbacks where Claude overwrote your existing dashboard, you kept coming back with clear instructions about what needed to be preserved and what needed to be added. Your persistence across 5+ related sessions shows strong project continuity and a clear architectural vision for the multi-section layout.</div>
         </div>
       
         <div class="big-win">
-          <div class="big-win-title">Heavy Read-First Investigation Pattern</div>
-          <div class="big-win-desc">With 74 Read calls and 86 Bash executions across your sessions, you consistently had Claude examine existing code before making changes. This read-heavy approach helped you catch destructive overwrites and course-correct, and was key to the sessions that actually succeeded.</div>
+          <div class="big-win-title">Effective TodoWrite Task Management</div>
+          <div class="big-win-desc">You leveraged TodoWrite and sub-agent delegation to break your dashboard build into structured tasks, which paid off in sessions where Claude successfully completed all defined sections. This structured approach helped your most successful sessions stay focused and deliver complete results.</div>
         </div>
       
     </div>
@@ -469,6 +471,11 @@
         <div class="bar-label">Multi-file Changes</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#16a34a"></div></div>
         <div class="bar-value">2</div>
+      </div>
+<div class="bar-row">
+        <div class="bar-label">Good Debugging</div>
+        <div class="bar-track"><div class="bar-fill" style="width:50%;background:#16a34a"></div></div>
+        <div class="bar-value">1</div>
       </div>
       </div>
       <div class="chart-card">
@@ -484,6 +491,11 @@
         <div class="bar-value">2</div>
       </div>
 <div class="bar-row">
+        <div class="bar-label">Mostly Achieved</div>
+        <div class="bar-track"><div class="bar-fill" style="width:50%;background:#8b5cf6"></div></div>
+        <div class="bar-value">1</div>
+      </div>
+<div class="bar-row">
         <div class="bar-label">Fully Achieved</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#8b5cf6"></div></div>
         <div class="bar-value">2</div>
@@ -493,25 +505,25 @@
 
     
     <h2 id="section-friction">Where Things Go Wrong</h2>
-    <p class="section-intro">Your sessions are dominated by Claude destructively overwriting your existing work and then running out of usage limits before it can recover, leaving you worse off than when you started.</p>
+    <p class="section-intro">Your sessions are dominated by Claude repeatedly overwriting your existing work and running out of usage limits before fixing the damage, turning simple additive tasks into multi-session struggles.</p>
     <div class="friction-categories">
       
         <div class="friction-category">
           <div class="friction-title">Destructive Overwrites Instead of Incremental Changes</div>
-          <div class="friction-desc">Claude repeatedly replaced your entire existing dashboard instead of adding new sections alongside it, destroying previous work. You should explicitly instruct Claude to preserve existing code and only append or insert new sections, or ask it to show a diff before applying changes.</div>
-          <ul class="friction-examples"><li>You asked to add Polymarket and WLFI sections to your dashboard, but Claude rewrote the entire file, wiping out all your original work</li><li>Across at least 3 separate sessions you had to re-attempt the same additions because Claude kept overwriting rather than extending, turning a simple feature addition into a multi-session ordeal</li></ul>
+          <div class="friction-desc">Claude repeatedly replaced your entire existing dashboard instead of adding new sections alongside it, destroying previous work and forcing you into recovery mode. You could mitigate this by explicitly instructing Claude to only append/add code and never modify existing sections, or by committing your working state before requesting additions.</div>
+          <ul class="friction-examples"><li>Across at least 4 sessions, Claude overwrote your working dashboard when asked to add Polymarket and WLFI sections, requiring you to re-do work multiple times</li><li>What should have been a single additive task (add 2 new sections) turned into a multi-day struggle because each attempt destroyed the original rather than building on it</li></ul>
         </div>
       
         <div class="friction-category">
-          <div class="friction-title">Usage Limit Exhaustion During Recovery</div>
-          <div class="friction-desc">You hit usage limits 3 times, and critically these limits were reached while Claude was trying to fix its own mistakes rather than making forward progress. Breaking your requests into smaller, scoped tasks would reduce the risk of burning through limits on damage control.</div>
-          <ul class="friction-examples"><li>Claude overwrote your dashboard, then ran out of usage trying to restore it, leaving you with broken code and no way to continue</li><li>One entire session was just a sub-agent reporting it had hit the usage limit with no actual deliverable produced</li></ul>
+          <div class="friction-title">Usage Limit Exhaustion Mid-Recovery</div>
+          <div class="friction-desc">You hit usage limits 3 times, and critically these occurred while Claude was trying to fix its own mistakes, leaving you with broken code and no remaining capacity. Consider breaking large tasks into smaller, independently committable units so a limit hit doesn&apos;t leave you worse off than when you started.</div>
+          <ul class="friction-examples"><li>Claude overwrote your dashboard then ran out of usage before it could restore the original work, leaving you with a broken state across multiple sessions</li><li>A sub-agent UI overhaul task hit the usage limit with no visible outcome, wasting an entire session&apos;s worth of capacity</li></ul>
         </div>
       
         <div class="friction-category">
-          <div class="friction-title">Repeated Stalling and Timeout Loops</div>
-          <div class="friction-desc">Claude stalled or timed out 4 times across your sessions, often in cycles where it would attempt a fix, stall, retry, and stall again. You could mitigate this by keeping individual tasks smaller and confirming intermediate results before moving to the next step.</div>
-          <ul class="friction-examples"><li>In one session Claude timed out multiple times trying to rebuild the 3-section dashboard, delivering almost nothing despite many attempts</li><li>Claude repeatedly stalled while trying to fix the overwritten dashboard, burning through your entire session without completing the restoration</li></ul>
+          <div class="friction-title">Misdiagnosed Root Causes Leading to Repeated Superficial Fixes</div>
+          <div class="friction-desc">When you reported bugs, Claude applied surface-level CSS fixes multiple times before identifying the actual root cause, wasting your time and messages. You could help by providing more specific symptoms (e.g., &apos;Section X is rendering on top of Section Y&apos;) to steer Claude toward structural issues faster.</div>
+          <ul class="friction-examples"><li>Claude fixed missing trader styles multiple times before discovering a CSS specificity conflict was causing Polymarket to always display over other sections</li><li>The buggy/identical pages issue required multiple misdirected fix attempts because Claude didn&apos;t investigate the DOM structure or specificity conflicts upfront</li></ul>
         </div>
       
     </div>
@@ -521,47 +533,47 @@
       <div class="chart-card">
         <div class="chart-title">Primary Friction Types</div>
         <div class="bar-row">
-        <div class="bar-label">Excessive Changes</div>
-        <div class="bar-track"><div class="bar-fill" style="width:100%;background:#dc2626"></div></div>
-        <div class="bar-value">4</div>
-      </div>
-<div class="bar-row">
         <div class="bar-label">Wrong Approach</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#dc2626"></div></div>
+        <div class="bar-value">6</div>
+      </div>
+<div class="bar-row">
+        <div class="bar-label">Excessive Changes</div>
+        <div class="bar-track"><div class="bar-fill" style="width:66.66666666666666%;background:#dc2626"></div></div>
         <div class="bar-value">4</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">Stalled Execution</div>
-        <div class="bar-track"><div class="bar-fill" style="width:100%;background:#dc2626"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="width:66.66666666666666%;background:#dc2626"></div></div>
         <div class="bar-value">4</div>
-      </div>
-<div class="bar-row">
-        <div class="bar-label">Usage Limit Hits</div>
-        <div class="bar-track"><div class="bar-fill" style="width:75%;background:#dc2626"></div></div>
-        <div class="bar-value">3</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">Buggy Code</div>
         <div class="bar-track"><div class="bar-fill" style="width:50%;background:#dc2626"></div></div>
-        <div class="bar-value">2</div>
+        <div class="bar-value">3</div>
+      </div>
+<div class="bar-row">
+        <div class="bar-label">Usage Limit Hits</div>
+        <div class="bar-track"><div class="bar-fill" style="width:50%;background:#dc2626"></div></div>
+        <div class="bar-value">3</div>
       </div>
       </div>
       <div class="chart-card">
         <div class="chart-title">Inferred Satisfaction (model-estimated)</div>
         <div class="bar-row">
         <div class="bar-label">Frustrated</div>
-        <div class="bar-track"><div class="bar-fill" style="width:66.66666666666666%;background:#eab308"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="width:50%;background:#eab308"></div></div>
         <div class="bar-value">4</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">Dissatisfied</div>
         <div class="bar-track"><div class="bar-fill" style="width:100%;background:#eab308"></div></div>
-        <div class="bar-value">6</div>
+        <div class="bar-value">8</div>
       </div>
 <div class="bar-row">
         <div class="bar-label">Likely Satisfied</div>
         <div class="bar-track"><div class="bar-fill" style="width:50%;background:#eab308"></div></div>
-        <div class="bar-value">3</div>
+        <div class="bar-value">4</div>
       </div>
       </div>
     </div>
@@ -577,38 +589,34 @@
       </div>
       
         <div class="claude-md-item">
-          <input type="checkbox" id="cmd-0" class="cmd-checkbox" checked data-text="Add at the very top of CLAUDE.md as the first section, before any other instructions\n\n## Critical Rule: NEVER Overwrite Existing Work
-When asked to ADD new sections, components, or features, you MUST preserve all existing code. Read the current file first, understand its structure, then surgically add new code alongside it. NEVER replace or rewrite existing sections unless explicitly asked to. If unsure, ask before modifying.">
+          <input type="checkbox" id="cmd-0" class="cmd-checkbox" checked data-text="Add as a top-level section near the top of CLAUDE.md, right after any project description\n\n## Critical Rule: Never Overwrite Existing Work
+When adding new sections, components, or features to an existing page/dashboard, ALWAYS preserve the existing code. Never replace or rewrite existing sections - only ADD alongside them. Before editing any file, read the full file first and identify what must be preserved.">
           <label for="cmd-0">
-            <code class="cmd-code">## Critical Rule: NEVER Overwrite Existing Work
-When asked to ADD new sections, components, or features, you MUST preserve all existing code. Read the current file first, understand its structure, then surgically add new code alongside it. NEVER replace or rewrite existing sections unless explicitly asked to. If unsure, ask before modifying.</code>
+            <code class="cmd-code">## Critical Rule: Never Overwrite Existing Work
+When adding new sections, components, or features to an existing page/dashboard, ALWAYS preserve the existing code. Never replace or rewrite existing sections - only ADD alongside them. Before editing any file, read the full file first and identify what must be preserved.</code>
             <button class="copy-btn" onclick="copyCmdItem(0)">Copy</button>
           </label>
-          <div class="cmd-why">In 4+ sessions, Claude destroyed existing dashboard work by replacing it entirely instead of adding new sections alongside it - this was the #1 source of frustration.</div>
+          <div class="cmd-why">In 4+ sessions, Claude overwrote/destroyed the existing dashboard instead of adding new sections alongside it - this was the #1 source of frustration.</div>
         </div>
       
         <div class="claude-md-item">
           <input type="checkbox" id="cmd-1" class="cmd-checkbox" checked data-text="Add under a ## Development Workflow section\n\n## Incremental Changes Only
-For UI work: make changes in small, testable increments. After each file edit, verify the existing functionality still works before proceeding. Never refactor or restructure code that wasn&apos;t part of the request.">
+For UI work: make changes incrementally, one section at a time. After each section, verify the build compiles and existing functionality still works before moving to the next. Never attempt to build 3+ sections in a single edit.">
           <label for="cmd-1">
             <code class="cmd-code">## Incremental Changes Only
-For UI work: make changes in small, testable increments. After each file edit, verify the existing functionality still works before proceeding. Never refactor or restructure code that wasn&apos;t part of the request.</code>
+For UI work: make changes incrementally, one section at a time. After each section, verify the build compiles and existing functionality still works before moving to the next. Never attempt to build 3+ sections in a single edit.</code>
             <button class="copy-btn" onclick="copyCmdItem(1)">Copy</button>
           </label>
-          <div class="cmd-why">Multiple sessions showed Claude making excessive changes and wrong approaches, leading to stalled execution and usage limit hits before work could be completed.</div>
+          <div class="cmd-why">Multiple sessions stalled because Claude tried to do too much at once, hit usage limits, and left work in a broken state.</div>
         </div>
       
         <div class="claude-md-item">
-          <input type="checkbox" id="cmd-2" class="cmd-checkbox" checked data-text="Add under a ## Code Standards section\n\n## TypeScript Conventions
-- When handling API responses, always type them properly. Use `Record&lt;string, any&gt;` or specific interfaces for `response.json()` return values.
-- This is a TypeScript-first project. Do not write untyped JavaScript.">
+          <input type="checkbox" id="cmd-2" class="cmd-checkbox" checked data-text="Add under a ## Debugging section\n\nWhen debugging CSS/UI issues, check for CSS specificity conflicts and z-index/display issues FIRST before fixing superficial styling problems.">
           <label for="cmd-2">
-            <code class="cmd-code">## TypeScript Conventions
-- When handling API responses, always type them properly. Use `Record&lt;string, any&gt;` or specific interfaces for `response.json()` return values.
-- This is a TypeScript-first project. Do not write untyped JavaScript.</code>
+            <code class="cmd-code">When debugging CSS/UI issues, check for CSS specificity conflicts and z-index/display issues FIRST before fixing superficial styling problems.</code>
             <button class="copy-btn" onclick="copyCmdItem(2)">Copy</button>
           </label>
-          <div class="cmd-why">TypeScript dominates the codebase (46 uses) and a TypeScript typing error on response.json() was a friction point that required fixing.</div>
+          <div class="cmd-why">In the bug fix session, Claude wasted multiple attempts fixing surface-level CSS before finding the real root cause was a specificity conflict.</div>
         </div>
       
     </div>
@@ -618,20 +626,46 @@ For UI work: make changes in small, testable increments. After each file edit, v
     <div class="features-section">
       
         <div class="feature-card">
-          <div class="feature-title">Hooks</div>
-          <div class="feature-oneliner">Auto-run shell commands at specific lifecycle events like pre-edit or post-edit.</div>
-          <div class="feature-why"><strong>Why for you:</strong> Your biggest problem is Claude overwriting existing files. A pre-edit hook could create automatic backups of files before Claude modifies them, so destructive changes can be instantly reverted.</div>
+          <div class="feature-title">Custom Skills</div>
+          <div class="feature-oneliner">Reusable prompts that enforce workflows with a single /command</div>
+          <div class="feature-why"><strong>Why for you:</strong> You could create a /add-section skill that explicitly instructs Claude to read existing code first, preserve it, and only append new sections - preventing the repeated overwrite problem</div>
           
           <div class="feature-examples">
             <div class="feature-example">
               <div class="example-code-row">
-                <code class="example-code">// .claude/settings.json
+                <code class="example-code">mkdir -p .claude/skills/add-section &amp;&amp; cat &gt; .claude/skills/add-section/SKILL.md &lt;&lt; &apos;EOF&apos;
+# Add Section Skill
+1. Read the ENTIRE target file first
+2. Identify all existing sections and components
+3. List what exists and confirm with user before editing
+4. ONLY append new code - never remove or replace existing sections
+5. After editing, run `npx tsc --noEmit` to verify no type errors
+6. Verify the existing sections still render correctly
+EOF</code>
+                <button class="copy-btn" onclick="copyText(this)">Copy</button>
+              </div>
+            </div>
+          </div>
+          
+        </div>
+      
+        <div class="feature-card">
+          <div class="feature-title">Hooks</div>
+          <div class="feature-oneliner">Auto-run shell commands at lifecycle events like before/after edits</div>
+          <div class="feature-why"><strong>Why for you:</strong> A pre-edit hook could run TypeScript type checking automatically, catching errors like the Record&lt;string, any&gt; issue early instead of after the fact. A post-edit hook could verify builds still pass.</div>
+          
+          <div class="feature-examples">
+            <div class="feature-example">
+              <div class="example-code-row">
+                <code class="example-code">// Add to .claude/settings.json
 {
   &quot;hooks&quot;: {
-    &quot;PreToolUse&quot;: [{
-      &quot;matcher&quot;: &quot;Edit|Write&quot;,
-      &quot;command&quot;: &quot;cp \&quot;$CLAUDE_FILE_PATH\&quot; \&quot;$CLAUDE_FILE_PATH.bak\&quot; 2&gt;/dev/null || true&quot;
-    }]
+    &quot;postToolExecution&quot;: [
+      {
+        &quot;matcher&quot;: &quot;Edit|Write&quot;,
+        &quot;command&quot;: &quot;npx tsc --noEmit 2&gt;&amp;1 | head -20&quot;
+      }
+    ]
   }
 }</code>
                 <button class="copy-btn" onclick="copyText(this)">Copy</button>
@@ -642,36 +676,14 @@ For UI work: make changes in small, testable increments. After each file edit, v
         </div>
       
         <div class="feature-card">
-          <div class="feature-title">Custom Skills</div>
-          <div class="feature-oneliner">Reusable prompts that enforce your workflow with a single /command.</div>
-          <div class="feature-why"><strong>Why for you:</strong> You repeatedly add new dashboard sections and Claude keeps doing it wrong. A /add-section skill could encode your exact requirements: read existing file, preserve everything, add new component alongside existing ones.</div>
-          
-          <div class="feature-examples">
-            <div class="feature-example">
-              <div class="example-code-row">
-                <code class="example-code">// .claude/skills/add-section/SKILL.md
-# Add Dashboard Section
-1. FIRST: Read the entire target file and list all existing sections/components
-2. Confirm with user what you found before making changes
-3. Create the new section as a SEPARATE component file
-4. Import and add it alongside existing sections - do NOT modify existing section code
-5. Verify all previous sections still render correctly</code>
-                <button class="copy-btn" onclick="copyText(this)">Copy</button>
-              </div>
-            </div>
-          </div>
-          
-        </div>
-      
-        <div class="feature-card">
           <div class="feature-title">Task Agents</div>
-          <div class="feature-oneliner">Spawn focused sub-agents for parallel or exploratory work.</div>
-          <div class="feature-why"><strong>Why for you:</strong> You already use Agents (9 calls) but your sessions keep hitting usage limits on large tasks. Breaking work into smaller sub-agent tasks (one per dashboard section) would reduce the blast radius of any single failure.</div>
+          <div class="feature-oneliner">Spawn focused sub-agents for exploration before making changes</div>
+          <div class="feature-why"><strong>Why for you:</strong> Before adding sections to your dashboard, a sub-agent could map out the existing file structure and components so the main agent knows exactly what to preserve - preventing the overwrite problem</div>
           
           <div class="feature-examples">
             <div class="feature-example">
               <div class="example-code-row">
-                <code class="example-code">Add the Polymarket trader section as a standalone component. Use a sub-agent to explore the existing dashboard structure first, then a separate agent to build just the new component without touching existing files.</code>
+                <code class="example-code">Use an agent to analyze the current dashboard structure: list every component, route, and CSS file, and document what each section renders. Then use that map to plan where to add new sections without touching existing ones.</code>
                 <button class="copy-btn" onclick="copyText(this)">Copy</button>
               </div>
             </div>
@@ -687,14 +699,14 @@ For UI work: make changes in small, testable increments. After each file edit, v
     <div class="patterns-section">
       
         <div class="pattern-card">
-          <div class="pattern-title">Scope-lock your requests to prevent overwrites</div>
-          <div class="pattern-summary">Explicitly tell Claude which files to NOT touch and which to only append to.</div>
-          <div class="pattern-detail">4 out of 6 sessions failed because Claude replaced your entire dashboard instead of adding to it. This pattern of destructive edits is preventable by being explicit about scope in your prompts. Tell Claude exactly which files are read-only and which should only have additions.</div>
+          <div class="pattern-title">Break large UI tasks into explicit steps</div>
+          <div class="pattern-summary">Instead of asking for 3 sections at once, request one section at a time with verification between each.</div>
+          <div class="pattern-detail">Multiple sessions failed because Claude attempted to build 3 dashboard sections in one go, hit usage limits mid-work, and left everything broken. By requesting one section per prompt and verifying it works before moving on, you avoid catastrophic failures and can resume cleanly if limits are hit.</div>
           
           <div class="copyable-prompt-section">
             <div class="prompt-label">Paste into Claude Code:</div>
             <div class="copyable-prompt-row">
-              <code class="copyable-prompt">Add a new Polymarket traders section to the dashboard. IMPORTANT: Do NOT modify any existing components or sections. First, read the current dashboard file and list what exists. Then create the new section as a separate component and import it alongside the existing ones. Show me the diff before applying.</code>
+              <code class="copyable-prompt">Add ONLY the Polymarket traders section to the existing dashboard. Do NOT modify any existing sections. After adding it, run the build to verify everything compiles. Stop and show me the result before doing anything else.</code>
               <button class="copy-btn" onclick="copyText(this)">Copy</button>
             </div>
           </div>
@@ -702,14 +714,14 @@ For UI work: make changes in small, testable increments. After each file edit, v
         </div>
       
         <div class="pattern-card">
-          <div class="pattern-title">Checkpoint before large changes</div>
-          <div class="pattern-summary">Ask Claude to commit working state before adding new features.</div>
-          <div class="pattern-detail">You had only 1 commit across 6 sessions with 230 hours of work. When Claude overwrites your code and hits usage limits, you lose everything with no rollback point. Committing after each successful section gives you safe restore points.</div>
+          <div class="pattern-title">Explicitly state preservation requirements upfront</div>
+          <div class="pattern-summary">Start every session by telling Claude what must NOT change.</div>
+          <div class="pattern-detail">The overwrite problem happened in 4+ sessions because Claude wasn&apos;t anchored on what to preserve. Being explicit about what exists and must remain untouched gives Claude guardrails. This is especially important for your dashboard where multiple sections coexist.</div>
           
           <div class="copyable-prompt-section">
             <div class="prompt-label">Paste into Claude Code:</div>
             <div class="copyable-prompt-row">
-              <code class="copyable-prompt">Before making any changes, commit the current working state with message &apos;checkpoint: working dashboard before adding new sections&apos;. Then proceed with adding the Polymarket section only.</code>
+              <code class="copyable-prompt">The dashboard currently has these sections: [Original Crypto Dashboard]. These must remain completely untouched. I want you to ADD a new WLFI token section BELOW the existing content. Read the full file first and confirm you understand the existing structure before making any edits.</code>
               <button class="copy-btn" onclick="copyText(this)">Copy</button>
             </div>
           </div>
@@ -717,14 +729,14 @@ For UI work: make changes in small, testable increments. After each file edit, v
         </div>
       
         <div class="pattern-card">
-          <div class="pattern-title">Break multi-section work into single-section sessions</div>
-          <div class="pattern-summary">Request one new section per session instead of multiple at once.</div>
-          <div class="pattern-detail">Sessions asking for 2-3 new sections at once consistently hit usage limits and stalled. The one session that fully achieved its goal was a continuation that focused on completing existing work. Smaller scoped requests finish reliably and reduce the cost of any single failure.</div>
+          <div class="pattern-title">Ask Claude to diagnose before fixing</div>
+          <div class="pattern-summary">For bugs, ask Claude to identify the root cause first before applying any fix.</div>
+          <div class="pattern-detail">In your CSS bug session, Claude applied multiple superficial fixes before finding the real specificity conflict. Forcing a diagnosis-first approach saves time and avoids churn. This is especially valuable for CSS issues where symptoms can mislead.</div>
           
           <div class="copyable-prompt-section">
             <div class="prompt-label">Paste into Claude Code:</div>
             <div class="copyable-prompt-row">
-              <code class="copyable-prompt">In this session, we&apos;re ONLY adding the Polymarket traders section. Do not work on WLFI or any other section. Keep changes minimal and focused.</code>
+              <code class="copyable-prompt">The Polymarket and WLFI pages look buggy and identical. Before making ANY changes, investigate the root cause. Check for CSS specificity conflicts, z-index issues, and display/visibility problems. Tell me what you find BEFORE editing anything.</code>
               <button class="copy-btn" onclick="copyText(this)">Copy</button>
             </div>
           </div>
@@ -737,53 +749,47 @@ For UI work: make changes in small, testable increments. After each file edit, v
 
     
     <h2 id="section-horizon">On the Horizon</h2>
-    <p class="section-intro">Your sessions reveal a critical pattern: Claude repeatedly overwrites existing work during UI additions, turning simple feature additions into frustrating multi-session recovery efforts — a problem that targeted prompting strategies and architectural guardrails can solve.</p>
+    <p class="section-intro">Your Claude Code sessions reveal a pattern where ambitious multi-section dashboard builds are derailed by overwrites and usage limits—problems that better-scoped autonomous workflows can eliminate.</p>
     <div class="horizon-section">
       
         <div class="horizon-card">
-          <div class="horizon-title">Prevent Destructive Overwrites With Diff-Only Constraints</div>
-          <div class="horizon-possible">Instead of letting Claude rewrite entire files when adding new sections, you can constrain it to surgical, additive-only edits that preserve all existing work. This eliminates the #1 friction point across your sessions — the repeated destruction of your dashboard — and could have collapsed 5+ frustrated sessions into one successful one.</div>
-          <div class="horizon-tip"><strong>Getting started:</strong> Add a CLAUDE.md rule or system prompt instruction that explicitly forbids full-file rewrites. Use Claude Code&apos;s Edit tool with targeted line ranges instead of Write.</div>
-          <div class="pattern-prompt"><div class="prompt-label">Paste into Claude Code:</div><code>IMPORTANT: Do NOT rewrite or replace existing files. Only make additive, surgical edits. Before editing any file, first Read the entire file, then use the Edit tool to insert new code at specific locations. Never use the Write tool to overwrite an existing file. If adding a new dashboard section, identify the exact insertion points (imports, component declarations, JSX render locations, route registrations) and edit each one individually. Confirm the existing content is preserved after each edit by reading the file again.</code><button class="copy-btn" onclick="copyText(this)">Copy</button></div>
+          <div class="horizon-title">Protect Existing Work With Additive-Only Constraints</div>
+          <div class="horizon-possible">Instead of risking full-file overwrites, Claude can be instructed to treat existing code as immutable and only append new sections. Combined with git snapshots before each change, you&apos;d never lose working code again—turning your most frustrating failure pattern into a non-issue.</div>
+          <div class="horizon-tip"><strong>Getting started:</strong> Use a CLAUDE.md project instruction that enforces additive-only edits, and have Claude commit a snapshot before any structural change.</div>
+          <div class="pattern-prompt"><div class="prompt-label">Paste into Claude Code:</div><code>Before making any changes, run `git stash` or commit the current working state with message &apos;snapshot: before adding new section&apos;. Then ADD the following new dashboard sections WITHOUT modifying or replacing any existing sections, components, or routes. Read every existing file you plan to touch first and confirm you understand the current structure before editing. New sections to add: [describe sections]. If you&apos;re unsure whether a change is additive, ask me before proceeding.</code><button class="copy-btn" onclick="copyText(this)">Copy</button></div>
         </div>
       
         <div class="horizon-card">
-          <div class="horizon-title">Parallel Sub-Agents For Multi-Section Features</div>
-          <div class="horizon-possible">Your dashboard additions (Polymarket traders, WLFI token, API integrations) are independent features that can be built simultaneously by parallel sub-agents, each working on isolated service files, components, and routes. This would cut your 230-hour workflow dramatically and avoid the cascading usage limit hits that stalled 3 of your 6 sessions.</div>
-          <div class="horizon-tip"><strong>Getting started:</strong> Use Claude Code&apos;s Agent tool to spawn dedicated sub-agents per feature, each with a scoped task and explicit instructions not to modify shared files until integration. Use TodoWrite to coordinate the merge.</div>
-          <div class="pattern-prompt"><div class="prompt-label">Paste into Claude Code:</div><code>Break this into parallel sub-agent tasks. For each new dashboard section, spawn a separate Agent with these instructions:
+          <div class="horizon-title">Parallel Sub-Agents For Independent Dashboard Sections</div>
+          <div class="horizon-possible">Your dashboard has naturally independent sections (Polymarket traders, WLFI token, original crypto). Each can be built by a separate sub-agent working in parallel—services, routes, and UI components all generated simultaneously, then integrated in a final step. This could cut your 161-hour spread across sessions down dramatically.</div>
+          <div class="horizon-tip"><strong>Getting started:</strong> Use the Agent tool to spawn parallel sub-tasks, each scoped to one section with clear interface contracts, then a final integration pass.</div>
+          <div class="pattern-prompt"><div class="prompt-label">Paste into Claude Code:</div><code>I need 3 dashboard sections built in parallel. Use sub-agents for each:
 
-Agent 1 - Polymarket Traders Section:
-- Create src/services/polymarket.ts with API integration
-- Create src/components/PolymarketTraders.tsx as a standalone component
-- Create src/routes/polymarket.ts for the API route
-- Do NOT modify any existing files
+Agent 1 - Polymarket Traders: Create services/polymarket.ts, routes/polymarket.ts, and components/PolymarketSection.tsx. Export a &lt;PolymarketSection /&gt; component that accepts no props and fetches its own data.
 
-Agent 2 - WLFI Token Section:
-- Create src/services/wlfi.ts with API integration
-- Create src/components/WLFIToken.tsx as a standalone component
-- Create src/routes/wlfi.ts for the API route
-- Do NOT modify any existing files
+Agent 2 - WLFI Token: Create services/wlfi.ts, routes/wlfi.ts, and components/WLFISection.tsx. Export a &lt;WLFISection /&gt; component with the same pattern.
 
-After both agents complete, I will integrate the new components into the existing dashboard layout with surgical edits only. Use TodoWrite to track each agent&apos;s status.</code><button class="copy-btn" onclick="copyText(this)">Copy</button></div>
+Agent 3 - Integration: WAIT for Agents 1 and 2 to finish, then import both new components into the existing Dashboard.tsx, adding them below the current content without modifying existing sections. Run `npm run build` and fix any TypeScript errors.
+
+Each agent should read the existing project structure first and not touch files outside their scope.</code><button class="copy-btn" onclick="copyText(this)">Copy</button></div>
         </div>
       
         <div class="horizon-card">
-          <div class="horizon-title">Test-Driven Iteration To Catch Regressions</div>
-          <div class="horizon-possible">By writing snapshot or render tests for your existing dashboard before adding features, Claude can iterate autonomously against those tests and immediately catch when existing sections get destroyed. This converts the silent overwrites that plagued your sessions into loud, instant failures that self-correct.</div>
-          <div class="horizon-tip"><strong>Getting started:</strong> Have Claude generate component tests with Vitest or Jest before starting any feature work, then run tests after every edit to validate nothing broke.</div>
-          <div class="pattern-prompt"><div class="prompt-label">Paste into Claude Code:</div><code>Before making any changes to the dashboard, do the following:
-1. Read all existing dashboard component files and the main layout
-2. Create a test file tests/dashboard-existing.test.tsx that:
-   - Renders the main dashboard component
-   - Asserts that each existing section heading/element is present (use getByText or getByTestId)
-   - Asserts the expected number of child sections
-3. Run the tests with `npx vitest run tests/dashboard-existing.test.tsx` and confirm they pass
-4. Now add the new Polymarket and WLFI sections using surgical Edit-only changes
-5. After EVERY edit, re-run the test suite. If any existing test fails, immediately revert that edit and try a different approach
-6. Add new tests for the new sections as you build them
+          <div class="horizon-title">Test-Driven Iteration To Catch CSS Conflicts</div>
+          <div class="horizon-possible">Your hardest-to-debug issue was a CSS specificity conflict causing section overlap—something Claude misdiagnosed multiple times. By writing visual regression tests or DOM assertion tests upfront, Claude can iterate autonomously against concrete pass/fail criteria instead of guessing at surface-level fixes.</div>
+          <div class="horizon-tip"><strong>Getting started:</strong> Have Claude write component tests with Testing Library that assert visibility and layout before touching any CSS, then loop fixes until all tests pass.</div>
+          <div class="pattern-prompt"><div class="prompt-label">Paste into Claude Code:</div><code>Before fixing any CSS or layout bugs, write tests first:
 
-Never proceed to the next edit if tests are failing.</code><button class="copy-btn" onclick="copyText(this)">Copy</button></div>
+1. Create __tests__/dashboard-sections.test.tsx using @testing-library/react
+2. For each section (Original, Polymarket, WLFI), write tests that:
+   - Assert the section container renders and is visible
+   - Assert sections don&apos;t have overlapping CSS (check computed display/visibility)
+   - Assert clicking each nav tab shows only the correct section
+3. Run the tests with `npx jest --verbose` and show me the failures
+4. THEN fix the CSS/layout issues, re-running tests after each change until all pass
+5. Do NOT move on from a fix attempt without running the test suite
+
+This is the current bug: sections are overlapping due to CSS specificity conflicts. The Polymarket section displays over other sections regardless of active tab.</code><button class="copy-btn" onclick="copyText(this)">Copy</button></div>
         </div>
       
     </div>
@@ -791,8 +797,8 @@ Never proceed to the next edit if tests are failing.</code><button class="copy-b
 
     
     <div class="fun-ending">
-      <div class="fun-headline">"Claude kept nuking the entire dashboard like a demolition crew asked to add a window"</div>
-      <div class="fun-detail">Across multiple sessions on March 24th, the user repeatedly asked Claude to ADD new sections to their crypto dashboard — and Claude kept overwriting the entire existing dashboard instead, destroying previous work. This happened at least 3 separate times, each followed by stalling out and hitting usage limits before it could even fix the mess it made.</div>
+      <div class="fun-headline">"Claude kept nuking the entire dashboard instead of adding new sections — destroying the user&apos;s work at least 4 separate times across multiple sessions"</div>
+      <div class="fun-detail">Across nearly every session over 4 days, the user just wanted to ADD Polymarket and WLFI sections to their existing crypto dashboard. Instead, Claude repeatedly overwrote the entire original dashboard, then stalled out or hit usage limits before it could even fix the mess it made. The user had to keep coming back, only to watch their work get destroyed again.</div>
     </div>
     
 
@@ -838,7 +844,7 @@ Never proceed to the next edit if tests are failing.</code><button class="copy-b
       }
     }
     // Timezone selector for time of day chart (data is from our own analytics, not user input)
-    const rawHourCounts = {"2":4,"16":6,"17":76,"18":31};
+    const rawHourCounts = {"0":2,"2":2,"16":6,"17":56,"18":12,"19":7};
     function updateHourHistogram(offsetFromPT) {
       const periods = [
         { label: "Morning (6-12)", range: [6,7,8,9,10,11] },
