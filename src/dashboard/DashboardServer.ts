@@ -148,6 +148,21 @@ export class DashboardServer {
       res.json(this.engine.getRiskManager().getStatus());
     });
 
+    // Reset circuit breaker (manual override — auth protected)
+    this.app.post('/api/risk/reset', (req, res) => {
+      const riskManager = this.engine.getRiskManager();
+      const status = riskManager.getStatus();
+
+      if (!status.circuitBreaker) {
+        res.status(400).json({ error: 'Circuit breaker não está ativo.' });
+        return;
+      }
+
+      riskManager.resetCircuitBreaker();
+      logger.warn('Dashboard', '⚠️ Circuit breaker resetado manualmente via dashboard');
+      res.json({ success: true, message: 'Circuit breaker resetado. Trading reativado.' });
+    });
+
     // Notifications
     this.app.get('/api/notifications', (req, res) => {
       const count = parseInt(req.query.count as string) || 50;

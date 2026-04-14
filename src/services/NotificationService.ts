@@ -123,7 +123,9 @@ export class NotificationService {
     for (const listener of this.listeners) {
       try {
         listener(notification);
-      } catch { /* don't crash */ }
+      } catch (err) {
+        logger.warn('Notifications', `Listener error: ${err instanceof Error ? err.message : err}`);
+      }
     }
 
     // Send to Discord webhook if configured
@@ -158,7 +160,7 @@ export class NotificationService {
         }],
       });
     } catch (err) {
-      logger.debug('Notifications', 'Discord webhook failed (non-critical)');
+      logger.warn('Notifications', `Discord webhook falhou: ${err instanceof Error ? err.message : err}`);
     }
   }
 }

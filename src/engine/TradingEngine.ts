@@ -58,6 +58,7 @@ export class TradingEngine extends EventEmitter {
   private decisionLog: DecisionLog[] = [];
   private maxDecisionLog = 200;
   private activeMarketIds: Set<string> = new Set(); // Markets we already have positions in
+  private lastDailyReportDate = '';                  // Track daily report sends
 
   constructor() {
     super();
@@ -147,6 +148,9 @@ export class TradingEngine extends EventEmitter {
 
     // Step 5: Monitor — check existing positions
     await this.monitorPositions();
+
+    // Step 6: Daily report — send once per day on first cycle of the day
+    await this.maybeSendDailyReport();
 
     // Emit status update for dashboard
     this.emit('statusUpdate', this.getStatus());
@@ -264,10 +268,16 @@ export class TradingEngine extends EventEmitter {
         continue;
       }
 
-      // Risk check
+      // Risk check — detect circuit breaker activation to trigger notification
+      const circuitBreakerWasActive = this.riskManager.getStatus().circuitBreaker;
       const riskCheck = this.riskManager.checkTrade(kelly.finalStake, opp.marketId);
       if (!riskCheck.allowed) {
         this.logDecision('risk', riskCheck.reason);
+
+        // Notify if circuit breaker just activated (not already active before this check)
+        if (!circuitBreakerWasActive && this.riskManager.getStatus().circuitBreaker) {
+          await this.notifications.notifyRiskAlert(riskCheck.reason);
+        }
         continue;
       }
 
@@ -393,6 +403,35 @@ export class TradingEngine extends EventEmitter {
 
   getRiskManager(): RiskManager {
     return this.riskManager;
+  }
+
+  // ========================================
+  // DAILY REPORT
+  // ========================================
+  private async maybeSendDailyReport(): Promise<void> {
+    const today = new Date().toISOString().split('T')[0];
+    if (today === this.lastDailyReportDate) return;
+
+    this.lastDailyReportDate = today;
+    const stats = this.journal.getStats();
+    const riskStatus = this.riskManager.getStatus();
+
+    await this.notifications.notifyDailyReport({
+      date: today,
+      trades: stats.totalTrades,
+      openTrades: stats.openTrades,
+      wins: stats.wins,
+      losses: stats.losses,
+      winRate: stats.winRate.toFixed(1),
+      pnl: stats.totalPnl.toFixed(2),
+      bankroll: riskStatus.bankroll.toFixed(2),
+      drawdownPct: riskStatus.drawdownPct.toFixed(1),
+      avgEdge: (stats.avgEdge * 100).toFixed(1),
+      bestTrade: stats.bestTrade.toFixed(2),
+      worstTrade: stats.worstTrade.toFixed(2),
+    });
+
+    this.logDecision('system', `📊 Relatório diário enviado para ${today}`);
   }
 
   private logDecision(type: DecisionLog['type'], message: string, data?: Record<string, unknown>): void {
