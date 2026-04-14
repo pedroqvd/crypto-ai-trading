@@ -55,6 +55,7 @@
     riskPositions: $('risk-positions'),
     riskDailyLoss: $('risk-daily-loss'),
     riskCircuit: $('risk-circuit'),
+    resetCircuitBtn: $('reset-circuit-btn'),
     decisionsFeed: $('decisions-feed'),
     journalBody: $('journal-body'),
     notificationsFeed: $('notifications-feed'),
@@ -235,13 +236,15 @@
     els.riskDailyLoss.textContent = '$' + formatNumber(risk.dailyLoss);
     els.riskDailyLoss.className = 'risk-value-large ' + (risk.dailyLoss > 0 ? 'risk-danger' : '');
 
-    // Circuit breaker
+    // Circuit breaker — show/hide reset button based on state
     if (risk.circuitBreaker) {
       els.riskCircuit.textContent = '🚨 ATIVO';
       els.riskCircuit.className = 'risk-value-large risk-danger';
+      if (els.resetCircuitBtn) els.resetCircuitBtn.classList.remove('hidden');
     } else {
       els.riskCircuit.textContent = '✅ OK';
       els.riskCircuit.className = 'risk-value-large risk-ok';
+      if (els.resetCircuitBtn) els.resetCircuitBtn.classList.add('hidden');
     }
   }
 
@@ -415,6 +418,44 @@
       document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
       socket.disconnect();
       window.location.href = '/login';
+    });
+  }
+
+  // ========================================
+  // RESET CIRCUIT BREAKER
+  // ========================================
+  if (els.resetCircuitBtn) {
+    els.resetCircuitBtn.addEventListener('click', async () => {
+      if (!confirm('Resetar o circuit breaker e retomar operações? Certifique-se de que as condições de mercado são favoráveis.')) {
+        return;
+      }
+
+      els.resetCircuitBtn.disabled = true;
+      els.resetCircuitBtn.textContent = '⏳ Resetando...';
+
+      try {
+        const res = await authFetch('/api/risk/reset', { method: 'POST' });
+        if (res.ok) {
+          els.riskCircuit.textContent = '✅ OK';
+          els.riskCircuit.className = 'risk-value-large risk-ok';
+          els.resetCircuitBtn.classList.add('hidden');
+          addNotification({
+            type: 'system',
+            title: '🔄 Circuit Breaker Resetado',
+            message: 'O circuit breaker foi desativado manualmente. Bot retomará operações no próximo ciclo.',
+            timestamp: new Date().toISOString(),
+          });
+        } else {
+          const data = await res.json().catch(() => ({}));
+          alert('Erro ao resetar circuit breaker: ' + (data.error || res.statusText));
+        }
+      } catch (err) {
+        alert('Erro de rede ao resetar circuit breaker.');
+        console.error(err);
+      } finally {
+        els.resetCircuitBtn.disabled = false;
+        els.resetCircuitBtn.textContent = '🔄 Resetar';
+      }
     });
   }
 

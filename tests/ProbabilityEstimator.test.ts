@@ -53,10 +53,11 @@ describe('ProbabilityEstimator', () => {
       expect(result).toHaveProperty('signals');
     });
 
-    it('returns 6 signals', () => {
+    it('returns 7 signals (includes Market Calibration)', () => {
       const market = makeMarket();
       const result = estimator.estimate(market, [market]);
-      expect(result.signals).toHaveLength(6);
+      expect(result.signals).toHaveLength(7);
+      expect(result.signals.map(s => s.name)).toContain('Market Calibration');
     });
 
     it('estimatedTrueProb is between 0.01 and 0.99', () => {

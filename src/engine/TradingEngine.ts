@@ -98,6 +98,16 @@ export class TradingEngine extends EventEmitter {
     logger.info('Engine', `⏱️ Scan Interval: ${config.scanIntervalMs / 1000}s`);
     logger.info('Engine', `🚀 ========================================\n`);
 
+    // ── ITEM 7: PRIVATE_KEY validation before first cycle ──────────────
+    // Fail early with a clear message instead of letting CLOB init fail silently
+    if (!config.dryRun && !config.privateKey) {
+      logger.error('Engine', '❌ PRIVATE_KEY não configurada! O modo LIVE requer uma chave privada válida.');
+      logger.error('Engine', '   Configure PRIVATE_KEY no arquivo .env e reinicie o bot.');
+      this.logDecision('system', 'Startup abortado: PRIVATE_KEY não configurada para modo LIVE');
+      this.running = false;
+      return;
+    }
+
     this.logDecision('system', `Engine iniciado em modo ${mode}. Bankroll: $${config.bankroll}`);
     await this.notifications.notifySystemEvent(`Bot iniciado em modo ${mode}. Bankroll: $${config.bankroll}`);
 
@@ -152,10 +162,15 @@ export class TradingEngine extends EventEmitter {
     // Step 4: Execute — size and place trades for the best opportunities
     await this.executeOpportunities(opportunities);
 
-    // Step 5: Monitor — check existing positions
+    // Step 5: Monitor — check existing positions and stale orders
     await this.monitorPositions();
 
-    // Step 6: Daily report — send once per day on first cycle of the day
+    // Step 6: Balance sync — every 10 cycles, reconcile on-chain balance with RiskManager
+    if (this.cycleCount % 10 === 0) {
+      await this.syncBalance();
+    }
+
+    // Step 7: Daily report — send once per day on first cycle of the day
     await this.maybeSendDailyReport();
 
     // Emit status update for dashboard
@@ -183,6 +198,11 @@ export class TradingEngine extends EventEmitter {
     const filtered = markets.filter(m => {
       // Skip markets we already have positions in
       if (this.activeMarketIds.has(m.id)) return false;
+
+      // ── ITEM 4: Skip negRisk markets — require different handling ──
+      // negRisk markets have mutually exclusive outcomes and different
+      // collateral rules; skip until proper support is implemented.
+      if (m.negRisk) return false;
 
       // Minimum liquidity
       if (m.liquidity < config.minLiquidity) return false;
@@ -347,14 +367,66 @@ export class TradingEngine extends EventEmitter {
 
     logger.debug('Engine', `Monitorando ${openTrades.length} posições abertas`);
 
+    // ── ITEM 3: Fetch open orders once for stale-order detection ────────
+    // Only relevant in live mode; dry-run orders are always treated as filled.
+    let openOrderIds: Set<string> = new Set();
+    if (!config.dryRun) {
+      const openOrders = await this.clobApi.getOpenOrders();
+      for (const order of openOrders as Array<{ id?: string; orderID?: string }>) {
+        const id = order.id || order.orderID;
+        if (id) openOrderIds.add(id);
+      }
+    }
+
+    const STALE_ORDER_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const now = Date.now();
+
     for (const trade of openTrades) {
-      // Check if market is still active
+      // ── ITEM 3: Stale order cancellation ──────────────────────────────
+      // If a trade has been 'open' for >24h and its order is still sitting
+      // unfilled on the CLOB, cancel it to free capital.
+      if (!config.dryRun && !trade.dryRun) {
+        const tradeAge = now - new Date(trade.timestamp).getTime();
+        if (tradeAge > STALE_ORDER_MS && openOrderIds.has(trade.id)) {
+          logger.warn('Engine', `Ordem não preenchida há >24h: "${trade.question.substring(0, 40)}..." — cancelando`);
+          const cancelled = await this.clobApi.cancelOrder(trade.id);
+          if (cancelled) {
+            this.journal.cancelTrade(trade.id);
+            this.riskManager.closePosition(trade.stake, 0);
+            this.activeMarketIds.delete(trade.marketId);
+            this.logDecision('monitor',
+              `🚫 Ordem stale cancelada: "${trade.question.substring(0, 50)}..." (>24h sem preenchimento)`
+            );
+          }
+          continue; // Skip resolution check for cancelled orders
+        }
+      }
+
+      // ── ITEM 2: Market resolution check ───────────────────────────────
       const market = await this.gammaApi.getMarketById(trade.marketId);
 
       if (market && market.closed) {
-        // Market resolved! Determine outcome
-        const won = (trade.side === 'BUY_YES' && market.yesPrice >= 0.95) ||
-                    (trade.side === 'BUY_NO' && market.noPrice >= 0.95);
+        // Determine resolution using precise price thresholds.
+        // Polymarket resolves: YES winner → yesPrice → 1.0, noPrice → 0.0
+        //                      NO winner  → yesPrice → 0.0, noPrice → 1.0
+        const resolvedYes = market.yesPrice >= 0.99;
+        const resolvedNo  = market.noPrice  >= 0.99;
+
+        if (!resolvedYes && !resolvedNo) {
+          // Market is closed but resolution prices haven't settled (data lag,
+          // or INVALID/disputed resolution). Skip and retry next cycle.
+          logger.warn('Engine',
+            `Mercado fechado com preços ambíguos: "${trade.question.substring(0, 40)}..." ` +
+            `yesPrice=${market.yesPrice.toFixed(3)} noPrice=${market.noPrice.toFixed(3)}`
+          );
+          this.logDecision('monitor',
+            `⚠️ Resultado ambíguo para "${trade.question.substring(0, 50)}..." — aguardando resolução definitiva`
+          );
+          continue;
+        }
+
+        const won = (trade.side === 'BUY_YES' && resolvedYes) ||
+                    (trade.side === 'BUY_NO'  && resolvedNo);
 
         const exitPrice = won ? 1.0 : 0.0;
         this.journal.resolveTrade(trade.id, won, exitPrice);
@@ -373,6 +445,37 @@ export class TradingEngine extends EventEmitter {
 
         this.emit('tradeResolved', { trade, won, pnl });
       }
+    }
+  }
+
+  // ========================================
+  // ITEM 5: BALANCE SYNC
+  // Reconcile on-chain USDC balance with RiskManager every 10 cycles.
+  // Alerts on divergence > 5% so manual intervention can happen early.
+  // ========================================
+  private async syncBalance(): Promise<void> {
+    logger.debug('Engine', 'Sincronizando saldo on-chain...');
+
+    const onChainBalance = await this.clobApi.getBalance();
+    const engineBalance  = this.riskManager.getStatus().bankroll;
+
+    if (engineBalance <= 0) return; // Guard against division by zero at startup
+
+    const divergencePct = Math.abs(onChainBalance - engineBalance) / engineBalance * 100;
+
+    if (divergencePct > 5) {
+      const msg =
+        `Divergência de saldo detectada: on-chain $${onChainBalance.toFixed(2)} ` +
+        `vs engine $${engineBalance.toFixed(2)} (${divergencePct.toFixed(1)}%)`;
+
+      logger.warn('Engine', msg);
+      this.logDecision('system', `⚠️ ${msg}`);
+      await this.notifications.notifyRiskAlert(msg);
+    } else {
+      logger.debug('Engine',
+        `Saldo sincronizado — on-chain $${onChainBalance.toFixed(2)}, ` +
+        `engine $${engineBalance.toFixed(2)} (divergência ${divergencePct.toFixed(1)}%)`
+      );
     }
   }
 

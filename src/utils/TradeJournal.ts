@@ -100,6 +100,18 @@ export class TradeJournal {
     logger.info('TradeJournal', `Trade resolved: ${trade.status} "${trade.question}" P&L: $${trade.pnl?.toFixed(2)}`);
   }
 
+  cancelTrade(tradeId: string): void {
+    const trade = this.trades.find(t => t.id === tradeId);
+    if (!trade) return;
+
+    trade.status = 'cancelled';
+    trade.pnl = 0;
+    trade.resolvedAt = new Date().toISOString();
+
+    this.saveToDisk();
+    logger.info('TradeJournal', `Trade cancelled: "${trade.question}"`);
+  }
+
   getDailyReport(date: string, bankrollStart: number): DailyReport {
     const dayTrades = this.trades.filter(t => t.timestamp.startsWith(date));
     const closed = dayTrades.filter(t => t.status !== 'open');
