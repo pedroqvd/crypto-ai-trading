@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Polymarket AI Trader</title>
+  <meta name="description" content="Autenticação segura para o Polymarket AI Trader">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/login.css">
+</head>
+<body>
+  <div class="login-container">
+    <!-- Background effects -->
+    <div class="bg-orb bg-orb-1"></div>
+    <div class="bg-orb bg-orb-2"></div>
+    <div class="bg-orb bg-orb-3"></div>
+
+    <div class="login-card glass">
+      <div class="login-header">
+        <div class="login-logo">🤖</div>
+        <h1>Polymarket AI Trader</h1>
+        <p class="login-subtitle">Acesso restrito — Apenas proprietário autorizado</p>
+      </div>
+
+      <form id="login-form" autocomplete="off">
+        <div class="form-group">
+          <label for="email">
+            <span class="label-icon">📧</span>
+            E-mail
+          </label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            required
+            autocomplete="email"
+            placeholder="seu@email.com"
+            spellcheck="false"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="password">
+            <span class="label-icon">🔑</span>
+            Senha
+          </label>
+          <div class="password-wrapper">
+            <input
+              type="password"
+              id="password"
+              name="password"
+              required
+              autocomplete="current-password"
+              placeholder="••••••••"
+              minlength="8"
+            >
+            <button type="button" id="toggle-password" class="toggle-password" tabindex="-1" aria-label="Toggle password visibility">
+              👁️
+            </button>
+          </div>
+        </div>
+
+        <div id="error-message" class="error-message" hidden>
+          <span class="error-icon">⚠️</span>
+          <span id="error-text"></span>
+        </div>
+
+        <button type="submit" id="login-btn" class="login-btn">
+          <span id="btn-text">Entrar</span>
+          <span id="btn-loading" class="loading-spinner" hidden></span>
+        </button>
+      </form>
+
+      <div class="login-footer">
+        <div class="security-badges">
+          <span class="security-badge">🔒 Criptografia AES-256</span>
+          <span class="security-badge">🛡️ Sessão JWT</span>
+          <span class="security-badge">⏱️ Rate Limiting</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="login-warning">
+      <p>⚠️ Este sistema é de uso exclusivo. Tentativas não autorizadas são registradas.</p>
+    </div>
+  </div>
+
+  <script src="/js/login.js"></script>
+</body>
+</html>

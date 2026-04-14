@@ -155,3 +155,6 @@ coverage/
 # IDE
 .vscode/
 .idea/
+
+# Trading data (positions, trade history)
+data/

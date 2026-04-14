@@ -1,16 +1,70 @@
-## Critical Rule: NEVER Overwrite Existing Work
-When asked to ADD new sections, components, or features, you MUST preserve all existing code. Read the current file first, understand its structure, then surgically add new code alongside it. NEVER replace or rewrite existing sections unless explicitly asked to. If unsure, ask before modifying.
+# Polymarket AI Autonomous Trader
 
-## Development Workflow
+## Project Essence
+Bot **100% autônomo** que opera no Polymarket. A IA escaneia mercados, identifica mispricings, calcula edge, dimensiona posições com Kelly e executa trades. O usuário acompanha via dashboard web.
 
-## Surgical Edits Only
-Do NOT rewrite or replace existing files. Only make additive, surgical edits. Before editing any file, first Read the entire file, then use the Edit tool to insert new code at specific locations. Never use the Write tool to overwrite an existing file. If adding a new dashboard section, identify the exact insertion points (imports, component declarations, JSX render locations, route registrations) and edit each one individually. Confirm the existing content is preserved after each edit by reading the file again.
+## Core Formulas
 
-## Incremental Changes Only
-For UI work: make changes in small, testable increments. After each file edit, verify the existing functionality still works before proceeding. Never refactor or restructure code that wasn't part of the request.
+### 1. Identificação de Erros de Precificação (Edge)
+```
+Edge = P_true - P_implied
 
-## Code Standards
+P_true    = Probabilidade real estimada pelo modelo
+P_implied = Preço de mercado (probabilidade implícita)
+```
 
-## TypeScript Conventions
-- When handling API responses, always type them properly. Use `Record<string, any>` or specific interfaces for `response.json()` return values.
-- This is a TypeScript-first project. Do not write untyped JavaScript.
+### 2. Cálculo Refinado de Valor Esperado (EV)
+```
+EV_yes = P_true × (1/q - 1) × (1 - fee) - (1 - P_true)
+EV_no  = (1 - P_true) × (1/(1-q) - 1) × (1 - fee) - P_true
+
+q = preço de mercado do YES
+fee = ~2% (200 bps taker fee)
+```
+
+### 3. Fórmula de Kelly para Controle de Posição
+```
+f* = (p - q) / (1 - q)
+stake = bankroll × (KELLY_FRACTION × f*)
+
+Safety: stake ≤ bankroll × MAX_POSITION_PCT
+        stake ≤ market_liquidity × 10%
+```
+
+## Architecture
+- **Engine**: `src/engine/` — TradingEngine (loop autônomo), Config
+- **Analysis**: `src/analysis/` — ProbabilityEstimator, EdgeCalculator, KellyCalculator
+- **Services**: `src/services/` — GammaApiClient (market data), ClobApiClient (trading), NotificationService
+- **Risk**: `src/risk/` — RiskManager (circuit breakers, position limits)
+- **Dashboard**: `src/dashboard/` — DashboardServer (Express + WebSocket)
+- **UI**: `public/` — Real-time monitoring dashboard (read-only)
+- **Data**: `data/` — Persistent state (positions, trade history)
+
+## Development Guidelines
+- **Full Autonomy**: A IA gerencia TUDO. O dashboard é apenas leitura.
+- **Freedom to Refactor**: Refazer qualquer módulo se necessário.
+- **TypeScript Strict**: Sempre tipar. Evitar `any`.
+- **DRY-RUN First**: Sempre testar em dry-run antes de live.
+- **Risk First**: Nunca remover ou enfraquecer as proteções do RiskManager.
+
+## Tech Stack
+- TypeScript + Node.js
+- `@polymarket/clob-client` — SDK oficial do Polymarket
+- `ethers` v5 — Wallet e assinatura
+- Express + Socket.IO — Dashboard + WebSocket real-time
+- Axios — API calls
+
+## Environment Variables
+```
+PRIVATE_KEY=          # Wallet private key (Polygon)
+DRY_RUN=true          # true = simulação, false = trades reais
+BANKROLL=1000         # Capital em USDC
+KELLY_FRACTION=0.25   # Fração Kelly (0.25 = quarter-Kelly)
+MIN_EDGE=0.03         # Edge mínimo (3%)
+MIN_LIQUIDITY=5000    # Liquidez mínima do mercado
+MIN_VOLUME=10000      # Volume mínimo
+MAX_POSITION_PCT=0.05 # Máx 5% do bankroll por posição
+SCAN_INTERVAL_MS=60000 # Scan a cada 60 segundos
+DASHBOARD_PORT=3000
+DISCORD_WEBHOOK_URL=  # Opcional
+```

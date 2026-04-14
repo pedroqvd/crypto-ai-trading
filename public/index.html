@@ -1,1926 +1,213 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crypto AI Trading Dashboard</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        :root {
-            --primary: #00d4ff;
-            --success: #00ff88;
-            --danger: #ff4757;
-            --bg-dark: #0a0a0a;
-            --bg-card: rgba(20, 20, 30, 0.8);
-            --border: #333;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
-            color: #e1e1e1;
-            overflow-x: hidden;
-            min-height: 100vh;
-        }
-
-        /* Navigation Bar */
-        .nav-bar {
-            background: rgba(10, 10, 10, 0.95);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid var(--border);
-            padding: 0 2rem;
-            display: flex;
-            align-items: center;
-            gap: 3rem;
-            height: 70px;
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
-        }
-
-        .nav-logo {
-            color: var(--primary);
-            font-size: 1.5rem;
-            font-weight: 700;
-            white-space: nowrap;
-            margin-right: 2rem;
-        }
-
-        .nav-tabs {
-            display: flex;
-            gap: 0;
-        }
-
-        .nav-tab {
-            background: none;
-            border: none;
-            color: #888;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            padding: 0.75rem 1.5rem;
-            transition: all 0.3s ease;
-            border-bottom: 3px solid transparent;
-            margin-bottom: -1.5rem;
-            padding-bottom: calc(0.75rem + 1.5rem);
-        }
-
-        .nav-tab:hover {
-            color: var(--primary);
-        }
-
-        .nav-tab.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-        }
-
-        /* Sections Container */
-        .sections-container {
-            min-height: calc(100vh - 70px);
-            padding: 0;
-        }
-
-        .section {
-            display: none;
-            min-height: calc(100vh - 70px);
-        }
-
-        .section.active {
-            display: block;
-        }
-
-        #polymarket-section.active {
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Dashboard Section */
-        #dashboard-section {
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
-        }
-
-        .dashboard-container {
-            display: grid;
-            grid-template-columns: 300px 1fr;
-            min-height: calc(100vh - 70px);
-            gap: 20px;
-            padding: 20px;
-        }
-
-        .sidebar {
-            background: rgba(26, 26, 46, 0.8);
-            border-radius: 15px;
-            padding: 20px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            height: fit-content;
-        }
-
-        .main-content {
-            display: grid;
-            grid-template-rows: auto 1fr;
-            gap: 20px;
-        }
-
-        .header {
-            background: rgba(26, 26, 46, 0.8);
-            border-radius: 15px;
-            padding: 20px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .charts-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 20px;
-            height: calc(100vh - 200px);
-        }
-
-        .main-chart {
-            background: rgba(26, 26, 46, 0.8);
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            overflow: hidden;
-        }
-
-        .side-widgets {
-            display: grid;
-            grid-template-rows: 1fr 1fr;
-            gap: 20px;
-        }
-
-        .widget-card {
-            background: rgba(26, 26, 46, 0.8);
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            overflow: hidden;
-        }
-
-        .tradingview-widget-container {
-            width: 100%;
-            height: 100%;
-        }
-
-        .status-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .status-card {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 15px;
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .status-card h3 {
-            font-size: 0.9rem;
-            color: #888;
-            margin-bottom: 5px;
-        }
-
-        .status-card .value {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #00ff88;
-        }
-
-        .chat-container {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 15px;
-            margin-top: 20px;
-            height: 300px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            margin-bottom: 10px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 5px;
-        }
-
-        .chat-input {
-            display: flex;
-            gap: 10px;
-        }
-
-        .chat-input input {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            outline: none;
-        }
-
-        .chat-input button {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            background: #00ff88;
-            color: black;
-            cursor: pointer;
-            font-weight: bold;
-        }
-
-        .ticker-tape {
-            background: rgba(26, 26, 46, 0.8);
-            border-radius: 15px;
-            margin-bottom: 20px;
-            height: 80px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            overflow: hidden;
-        }
-
-        .connection-status {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #00ff88;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        .logo {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #00ff88;
-        }
-
-        .quick-actions {
-            margin-top: 20px;
-        }
-
-        .quick-actions button {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 10px;
-            border: none;
-            border-radius: 5px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .quick-actions button:hover {
-            background: rgba(0, 255, 136, 0.2);
-            transform: translateY(-2px);
-        }
-
-        /* Polymarket Section */
-        .polymarket-container {
-            display: grid;
-            grid-template-columns: 280px 1fr;
-            gap: 1rem;
-            padding: 1rem;
-            flex: 1;
-            min-height: 0;
-        }
-
-        .traders-sidebar {
-            background: var(--bg-card);
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .traders-list {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1rem;
-        }
-
-        .trader-item {
-            display: flex;
-            gap: 0.75rem;
-            padding: 0.75rem;
-            border-radius: 8px;
-            margin-bottom: 0.75rem;
-            background: rgba(30, 30, 45, 0.9);
-            border: 1px solid var(--border);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            align-items: center;
-        }
-
-        .trader-item.active {
-            background: rgba(0, 212, 255, 0.15);
-            border-color: var(--primary);
-        }
-
-        .trader-item:hover {
-            background: rgba(40, 40, 60, 0.9);
-            border-color: var(--primary);
-            transform: translateX(2px);
-        }
-
-        .trader-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 6px;
-            background: linear-gradient(135deg, var(--primary), var(--success));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            color: #000;
-            font-size: 0.9rem;
-            flex-shrink: 0;
-        }
-
-        .trader-info {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .trader-name {
-            font-weight: 600;
-            color: var(--primary);
-            font-size: 0.9rem;
-        }
-
-        .trader-meta {
-            font-size: 0.75rem;
-            color: #888;
-            margin-top: 0.25rem;
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .trader-roi-positive {
-            color: var(--success);
-            font-weight: 600;
-        }
-
-        .trader-roi-negative {
-            color: var(--danger);
-            font-weight: 600;
-        }
-
-        .trader-stats {
-            font-size: 0.75rem;
-            color: #888;
-            margin-top: 0.25rem;
-        }
-
-        .polymarket-main {
-            background: var(--bg-card);
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            padding: 1.5rem;
-        }
-
-        /* Polymarket Modal & Toast */
-        #modal-overlay {
-            display: none;
-            align-items: center;
-            justify-content: center;
-        }
-
-        #modal-overlay.open {
-            display: flex;
-        }
-
-        #toast.show {
-            opacity: 1 !important;
-        }
-
-        /* ---- Trader Profile ---- */
-        .profile-header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 1.5rem 1.5rem 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-        }
-
-        .profile-avatar {
-            width: 56px;
-            height: 56px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--primary), var(--success));
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.6rem;
-            font-weight: 700;
-            color: #000;
-            flex-shrink: 0;
-        }
-
-        .profile-name-block h1 {
-            font-size: 1.6rem;
-            font-weight: 700;
-            color: #e1e1e1;
-            margin: 0;
-        }
-
-        .profile-polymarket-link {
-            font-size: 0.8rem;
-            color: var(--primary);
-            text-decoration: none;
-            opacity: 0.8;
-        }
-
-        .profile-polymarket-link:hover { opacity: 1; text-decoration: underline; }
-
-        /* Stats bar */
-        .stats-bar {
-            display: flex;
-            gap: 0;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-        }
-
-        .stat-block {
-            flex: 1;
-            padding: 1rem 1.25rem;
-            border-right: 1px solid rgba(255,255,255,0.06);
-            text-align: center;
-        }
-
-        .stat-block:last-child { border-right: none; }
-
-        .stat-label {
-            font-size: 0.7rem;
-            color: #666;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
-            margin-bottom: 0.35rem;
-        }
-
-        .stat-value {
-            font-size: 1.1rem;
-            font-weight: 700;
-        }
-
-        .stat-value.positive { color: var(--success); }
-        .stat-value.negative { color: var(--danger); }
-        .stat-value.neutral  { color: #e1e1e1; }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            gap: 0;
-            padding: 1rem 1.5rem 0;
-        }
-
-        .tab-btn {
-            background: none;
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 6px 6px 0 0;
-            color: #888;
-            font-size: 0.85rem;
-            font-weight: 600;
-            cursor: pointer;
-            padding: 0.5rem 1.25rem;
-            transition: all 0.2s ease;
-        }
-
-        .tab-btn.active {
-            background: rgba(0,212,255,0.12);
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-
-        .tab-btn:hover:not(.active) { color: #ccc; }
-
-        .bets-count {
-            font-size: 0.8rem;
-            color: #666;
-            padding: 0.5rem 1.5rem 0;
-        }
-
-        /* Section title */
-        .section-title {
-            font-size: 0.75rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
-            padding: 1rem 1.5rem 0.5rem;
-        }
-
-        /* Monthly chart */
-        .monthly-chart-wrap {
-            padding: 0 1.5rem 1rem;
-            overflow-x: auto;
-        }
-
-        .monthly-chart {
-            display: flex;
-            align-items: flex-end;
-            gap: 0.75rem;
-            min-height: 120px;
-        }
-
-        .chart-bar-group {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            min-width: 60px;
-        }
-
-        .chart-bar-value {
-            font-size: 0.7rem;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        .chart-bar-value.positive { color: var(--success); }
-        .chart-bar-value.negative { color: var(--danger); }
-
-        .chart-bar-wrap {
-            width: 100%;
-            display: flex;
-            align-items: flex-end;
-            justify-content: center;
-            height: 88px;
-        }
-
-        .chart-bar {
-            width: 36px;
-            border-radius: 4px 4px 0 0;
-            transition: opacity 0.2s;
-        }
-
-        .chart-bar.positive { background: linear-gradient(180deg, var(--success), rgba(0,255,136,0.4)); }
-        .chart-bar.negative { background: linear-gradient(180deg, var(--danger), rgba(255,71,87,0.4)); }
-
-        .chart-month-label {
-            font-size: 0.7rem;
-            color: #666;
-            white-space: nowrap;
-        }
-
-        /* Bets table */
-        .bets-table-wrap {
-            padding: 0 1.5rem 1.5rem;
-            overflow-x: auto;
-        }
-
-        .bets-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.82rem;
-        }
-
-        .bets-table thead tr {
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-        }
-
-        .bets-table th {
-            color: #666;
-            font-weight: 600;
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-            padding: 0.5rem 0.75rem;
-            text-align: left;
-            white-space: nowrap;
-        }
-
-        .bets-table tbody tr {
-            border-bottom: 1px solid rgba(255,255,255,0.04);
-            transition: background 0.15s ease;
-        }
-
-        .bets-table tbody tr:hover { background: rgba(255,255,255,0.03); }
-
-        .bets-table td {
-            padding: 0.6rem 0.75rem;
-            vertical-align: middle;
-            color: #ccc;
-        }
-
-        .td-date { white-space: nowrap; color: #666 !important; font-size: 0.78rem; }
-        .td-event { max-width: 300px; }
-
-        .val-positive { color: var(--success); font-weight: 600; }
-        .val-negative { color: var(--danger); font-weight: 600; }
-        .val-neutral  { color: #ccc; }
-
-        /* Bet pills */
-        .bet-pill {
-            display: inline-block;
-            padding: 0.2rem 0.6rem;
-            border-radius: 4px;
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-
-        .bet-pill.yes  { background: rgba(0,255,136,0.15); color: var(--success); }
-        .bet-pill.no   { background: rgba(255,71,87,0.15); color: var(--danger); }
-        .bet-pill.team { background: rgba(0,212,255,0.15); color: var(--primary); }
-
-        /* Confidence bars */
-        .conf-wrap {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .conf-bars {
-            display: flex;
-            gap: 3px;
-            align-items: flex-end;
-        }
-
-        .conf-bar {
-            width: 5px;
-            border-radius: 2px;
-        }
-
-        .conf-bar.active  { background: var(--primary); }
-        .conf-bar.inactive { background: rgba(255,255,255,0.1); }
-
-        .conf-label {
-            font-size: 0.65rem;
-            color: #666;
-            white-space: nowrap;
-        }
-
-        #toast.success {
-            border-color: var(--success);
-            color: var(--success);
-        }
-
-        #toast.error {
-            border-color: var(--danger);
-            color: var(--danger);
-        }
-
-        #toast.info {
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-
-        /* WLFI Section */
-        #wlfi-section {
-            padding: 1rem;
-        }
-
-        .wlfi-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            height: calc(100vh - 90px);
-        }
-
-        .wlfi-left {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            overflow-y: auto;
-        }
-
-        .wlfi-right {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            overflow-y: auto;
-        }
-
-        .wlfi-panel {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .wlfi-header {
-            background: rgba(10, 10, 15, 0.9);
-            padding: 1rem;
-            border-bottom: 1px solid var(--border);
-            color: var(--primary);
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .wlfi-content {
-            padding: 1rem;
-            overflow-y: auto;
-        }
-
-        #wlfi-updates, #wlfi-posts, #wlfi-markets, #wlfi-correlations, #wlfi-analysis {
-            display: grid;
-            gap: 1rem;
-        }
-
-        /* On-Chain Tracking */
-        .onchain-whale-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 0.6rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-        .onchain-whale-row:last-child { border-bottom: none; }
-        .whale-label { font-weight: 600; color: #e0e0e0; font-size: 0.85rem; }
-        .whale-address { font-family: monospace; font-size: 0.75rem; color: #888; }
-        .whale-balance { color: var(--primary); font-weight: 700; }
-        .whale-pct { color: #aaa; font-size: 0.75rem; }
-        .whale-change.pos { color: #00e676; }
-        .whale-change.neg { color: #ff5252; }
-        .flow-row {
-            display: flex; align-items: center; gap: 0.5rem;
-            padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);
-            font-size: 0.8rem;
-        }
-        .flow-badge {
-            padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-        }
-        .flow-badge.inflow { background: rgba(0,230,118,0.15); color: #00e676; }
-        .flow-badge.outflow { background: rgba(255,82,82,0.15); color: #ff5252; }
-        .flow-badge.transfer { background: rgba(100,181,246,0.15); color: #64b5f6; }
-        .tvl-chain-bar {
-            display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
-        }
-        .tvl-bar-fill {
-            height: 20px; border-radius: 4px; background: var(--primary); min-width: 4px;
-        }
-        .tvl-stat-grid {
-            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;
-        }
-        .tvl-stat-box {
-            background: rgba(10,10,15,0.6); border-radius: 8px; padding: 0.75rem; text-align: center;
-        }
-        .tvl-stat-val { font-size: 1.3rem; font-weight: 700; color: var(--primary); }
-        .tvl-stat-label { font-size: 0.7rem; color: #888; margin-top: 0.25rem; }
-
-        /* Technical Indicators */
-        .tech-indicator-card {
-            background: rgba(10,10,15,0.5); border-radius: 10px; padding: 1rem; margin-bottom: 0.75rem;
-        }
-        .tech-indicator-title {
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;
-        }
-        .tech-indicator-title h4 { margin: 0; color: #e0e0e0; font-size: 0.9rem; }
-        .tech-signal {
-            padding: 3px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-        }
-        .tech-signal.bullish, .tech-signal.buy, .tech-signal.strong_buy, .tech-signal.oversold { background: rgba(0,230,118,0.2); color: #00e676; }
-        .tech-signal.bearish, .tech-signal.sell, .tech-signal.strong_sell, .tech-signal.overbought { background: rgba(255,82,82,0.2); color: #ff5252; }
-        .tech-signal.neutral, .tech-signal.sideways { background: rgba(255,193,7,0.2); color: #ffc107; }
-        .tech-values { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-        .tech-val-item { display: flex; justify-content: space-between; font-size: 0.8rem; }
-        .tech-val-label { color: #888; }
-        .tech-val-num { color: #e0e0e0; font-weight: 600; }
-        .tech-overall-score {
-            text-align: center; padding: 1.5rem; background: rgba(10,10,15,0.7); border-radius: 12px; margin-bottom: 1rem;
-        }
-        .tech-score-num { font-size: 2.5rem; font-weight: 800; }
-        .tech-score-label { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
-        .tech-ma-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
-        .tech-ma-item { text-align: center; background: rgba(10,10,15,0.4); border-radius: 8px; padding: 0.5rem; }
-        .tech-ma-name { font-size: 0.7rem; color: #888; }
-        .tech-ma-val { font-size: 0.85rem; font-weight: 600; color: #e0e0e0; }
-
-        /* Performance Comparison */
-        .perf-table { width: 100%; border-collapse: collapse; }
-        .perf-table th {
-            text-align: left; padding: 0.5rem; font-size: 0.7rem; color: #888;
-            text-transform: uppercase; border-bottom: 1px solid var(--border);
-        }
-        .perf-table td { padding: 0.5rem; font-size: 0.8rem; }
-        .perf-table tr:hover { background: rgba(255,255,255,0.03); }
-        .perf-table .pos { color: #00e676; }
-        .perf-table .neg { color: #ff5252; }
-        .perf-sparkline { width: 80px; height: 24px; }
-        .perf-highlight { background: rgba(0,200,255,0.05); }
-        .perf-corr-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
-        .perf-corr-item {
-            display: flex; justify-content: space-between; align-items: center;
-            background: rgba(10,10,15,0.4); border-radius: 8px; padding: 0.6rem 0.8rem;
-        }
-        .perf-corr-pair { font-size: 0.8rem; color: #e0e0e0; }
-        .perf-corr-val { font-weight: 700; font-size: 0.85rem; }
-
-        /* Liquidation Tracker */
-        .liq-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
-        .liq-stat-box {
-            background: rgba(10,10,15,0.6); border-radius: 8px; padding: 0.75rem; text-align: center;
-        }
-        .liq-stat-val { font-size: 1.2rem; font-weight: 700; }
-        .liq-stat-val.longs { color: #00e676; }
-        .liq-stat-val.shorts { color: #ff5252; }
-        .liq-stat-val.total { color: var(--primary); }
-        .liq-stat-label { font-size: 0.7rem; color: #888; margin-top: 0.2rem; }
-        .liq-event-row {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);
-            font-size: 0.8rem;
-        }
-        .liq-type-badge {
-            padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-        }
-        .liq-type-badge.long { background: rgba(0,230,118,0.15); color: #00e676; }
-        .liq-type-badge.short { background: rgba(255,82,82,0.15); color: #ff5252; }
-        .liq-level-bar {
-            display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.75rem;
-        }
-        .liq-bar-long { height: 14px; background: rgba(0,230,118,0.4); border-radius: 3px; }
-        .liq-bar-short { height: 14px; background: rgba(255,82,82,0.4); border-radius: 3px; }
-        .liq-heatmap { display: flex; gap: 2px; flex-wrap: wrap; margin-top: 0.5rem; }
-        .liq-heat-cell {
-            width: 18px; height: 18px; border-radius: 3px; cursor: pointer; position: relative;
-        }
-
-        /* Update Cards */
-        .upd-card {
-            background: rgba(30, 30, 45, 0.9);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .upd-card:hover {
-            border-color: var(--primary);
-            transform: translateY(-2px);
-        }
-
-        .upd-meta {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-            font-size: 0.75rem;
-        }
-
-        .upd-date {
-            color: #888;
-        }
-
-        .upd-badge {
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-weight: 600;
-            font-size: 0.65rem;
-        }
-
-        .upd-badge.official {
-            background: rgba(0, 212, 255, 0.2);
-            color: var(--primary);
-        }
-
-        .upd-badge.market {
-            background: rgba(0, 255, 136, 0.2);
-            color: var(--success);
-        }
-
-        .upd-badge.governance {
-            background: rgba(255, 193, 7, 0.2);
-            color: #ffc107;
-        }
-
-        .upd-title {
-            font-weight: 600;
-            color: #e1e1e1;
-            font-size: 0.9rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .upd-desc {
-            font-size: 0.8rem;
-            color: #aaa;
-            line-height: 1.4;
-        }
-
-        /* X Posts */
-        .xp {
-            background: rgba(30, 30, 45, 0.9);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .xp:hover {
-            border-color: var(--primary);
-        }
-
-        .xp-hdr {
-            display: flex;
-            gap: 0.75rem;
-            margin-bottom: 0.75rem;
-            align-items: flex-start;
-        }
-
-        .xp-ava {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-            font-size: 0.85rem;
-            flex-shrink: 0;
-        }
-
-        .xp-user {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .xp-name {
-            font-weight: 600;
-            color: #e1e1e1;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-
-        .xp-ck {
-            color: var(--primary);
-            font-size: 0.8rem;
-        }
-
-        .xp-handle {
-            color: #888;
-            font-size: 0.8rem;
-        }
-
-        .xp-time {
-            color: #888;
-            font-size: 0.75rem;
-        }
-
-        .xp-body {
-            color: #d1d1d1;
-            font-size: 0.85rem;
-            line-height: 1.5;
-            margin-bottom: 0.75rem;
-        }
-
-        .hi {
-            color: var(--primary);
-            font-weight: 600;
-        }
-
-        .tk {
-            color: var(--success);
-            font-weight: 600;
-        }
-
-        .ht {
-            color: #ffc107;
-        }
-
-        .mn {
-            color: var(--primary);
-        }
-
-        .xp-foot {
-            display: flex;
-            gap: 1rem;
-            font-size: 0.75rem;
-            color: #888;
-            flex-wrap: wrap;
-        }
-
-        .xp-st {
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-
-        .xp-sent {
-            padding: 0.25rem 0.5rem;
-            border-radius: 3px;
-            font-weight: 600;
-            font-size: 0.7rem;
-        }
-
-        .xp-sent.bull {
-            background: rgba(0, 255, 136, 0.2);
-            color: var(--success);
-        }
-
-        .xp-sent.bear {
-            background: rgba(255, 71, 87, 0.2);
-            color: var(--danger);
-        }
-
-        .xp-sent.neut {
-            background: rgba(136, 136, 136, 0.2);
-            color: #888;
-        }
-
-        /* Prediction Market Cards */
-        .pm-card {
-            background: rgba(30, 30, 45, 0.9);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .pm-card:hover {
-            border-color: var(--primary);
-        }
-
-        .pm-q {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #e1e1e1;
-            margin-bottom: 0.75rem;
-            line-height: 1.4;
-        }
-
-        .pm-bar {
-            display: flex;
-            height: 24px;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 0.5rem;
-            background: rgba(0, 0, 0, 0.3);
-        }
-
-        .pm-yes-bar {
-            background: linear-gradient(90deg, var(--success), rgba(0, 255, 136, 0.5));
-        }
-
-        .pm-no-bar {
-            flex: 1;
-            background: linear-gradient(90deg, rgba(255, 71, 87, 0.5), var(--danger));
-        }
-
-        .pm-probs {
-            display: flex;
-            gap: 0.5rem;
-            font-size: 0.75rem;
-            flex-wrap: wrap;
-        }
-
-        .pm-y {
-            color: var(--success);
-            font-weight: 600;
-        }
-
-        .pm-n {
-            color: var(--danger);
-            font-weight: 600;
-        }
-
-        .pm-v {
-            color: #888;
-        }
-
-        /* Correlation Bars */
-        .corr-row {
-            display: flex;
-            gap: 0.75rem;
-            align-items: center;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .corr-row:last-child {
-            border-bottom: none;
-        }
-
-        .corr-asset {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--primary);
-            width: 120px;
-            flex-shrink: 0;
-        }
-
-        .corr-track {
-            flex: 1;
-            height: 6px;
-            border-radius: 3px;
-            background: rgba(0, 0, 0, 0.3);
-            overflow: hidden;
-        }
-
-        .corr-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary), var(--success));
-        }
-
-        .corr-num {
-            width: 35px;
-            text-align: right;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #e1e1e1;
-        }
-
-        /* Analysis Items */
-        .anal-item {
-            display: flex;
-            gap: 1rem;
-            padding: 1rem;
-            background: rgba(30, 30, 45, 0.9);
-            border-left: 3px solid var(--primary);
-            border-radius: 4px;
-        }
-
-        .anal-icon {
-            font-size: 1.5rem;
-            flex-shrink: 0;
-        }
-
-        .anal-text {
-            font-size: 0.85rem;
-            line-height: 1.5;
-            color: #d1d1d1;
-        }
-
-        .anal-text strong {
-            color: var(--primary);
-        }
-
-        /* Price Display */
-        .wlfi-price-header {
-            padding: 1rem;
-            text-align: center;
-            border-bottom: 1px solid var(--border);
-            background: rgba(10, 10, 15, 0.9);
-        }
-
-        #wlfi-price {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--primary);
-            margin-bottom: 0.25rem;
-        }
-
-        #wlfi-chg {
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-
-        #wlfi-chg.pos {
-            color: var(--success);
-        }
-
-        #wlfi-chg.neg {
-            color: var(--danger);
-        }
-
-        /* Responsive */
-        @media (max-width: 1200px) {
-            .dashboard-container {
-                grid-template-columns: 1fr;
-            }
-
-            .charts-grid {
-                grid-template-columns: 1fr;
-                grid-template-rows: 400px 300px 300px;
-            }
-
-            .side-widgets {
-                grid-template-columns: 1fr 1fr;
-                grid-template-rows: 1fr;
-            }
-
-            .wlfi-container {
-                grid-template-columns: 1fr;
-            }
-
-            .polymarket-container {
-                grid-template-columns: 1fr;
-            }
-
-            .traders-sidebar {
-                max-height: 200px;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .nav-bar {
-                padding: 0 1rem;
-                gap: 1rem;
-            }
-
-            .nav-logo {
-                font-size: 1.2rem;
-                margin-right: 1rem;
-            }
-
-            .nav-tab {
-                padding: 0.5rem 0.75rem;
-                font-size: 0.9rem;
-            }
-
-            .dashboard-container {
-                padding: 10px;
-                gap: 10px;
-                grid-template-columns: 1fr;
-            }
-
-            .charts-grid {
-                grid-template-rows: 300px 250px 250px;
-            }
-
-            .side-widgets {
-                grid-template-columns: 1fr;
-                grid-template-rows: 1fr 1fr;
-            }
-
-            .header {
-                flex-direction: column;
-                gap: 10px;
-                text-align: center;
-            }
-        }
-
-/* ============================== */
-/* PREMIUM UI UPGRADE             */
-/* ============================== */
-
-/* Premium font imports */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-body {
-    font-family: 'Inter', 'Segoe UI', sans-serif !important;
-}
-
-/* Glass morphism cards */
-.wlfi-panel, .sidebar, .header, .main-chart, .widget-card, .traders-sidebar, .polymarket-main, .status-card, .chat-container {
-    background: rgba(15, 15, 25, 0.7) !important;
-    backdrop-filter: blur(20px) !important;
-    -webkit-backdrop-filter: blur(20px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.06) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
-}
-
-/* Premium nav bar */
-.nav-bar {
-    background: rgba(8, 8, 15, 0.98) !important;
-    border-bottom: 1px solid rgba(0, 212, 255, 0.15) !important;
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5) !important;
-}
-
-.nav-logo {
-    background: linear-gradient(135deg, #00d4ff, #00ff88);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    font-weight: 800 !important;
-    letter-spacing: -0.5px;
-}
-
-.nav-tab {
-    font-weight: 500 !important;
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-    font-size: 0.85rem !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-.nav-tab.active {
-    border-bottom-color: transparent !important;
-    background: linear-gradient(180deg, transparent 60%, rgba(0, 212, 255, 0.1));
-    color: #fff !important;
-    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
-}
-
-/* Glow accents */
-.wlfi-header, .chat-container h3 {
-    background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(0, 255, 136, 0.04)) !important;
-    border-bottom: 1px solid rgba(0, 212, 255, 0.15) !important;
-}
-
-/* Premium cards hover */
-.upd-card, .xp, .pm-card, .anal-item, .trader-item, .market-card {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    border: 1px solid rgba(255, 255, 255, 0.04) !important;
-}
-
-.upd-card:hover, .xp:hover, .pm-card:hover, .trader-item:hover, .market-card:hover {
-    border-color: rgba(0, 212, 255, 0.3) !important;
-    box-shadow: 0 0 20px rgba(0, 212, 255, 0.1), 0 8px 32px rgba(0, 0, 0, 0.3) !important;
-    transform: translateY(-2px) !important;
-}
-
-/* Badge upgrades */
-.upd-badge {
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-    font-size: 0.6rem !important;
-    font-weight: 700 !important;
-}
-
-/* Premium scrollbar */
-::-webkit-scrollbar {
-    width: 6px !important;
-}
-
-::-webkit-scrollbar-track {
-    background: transparent !important;
-}
-
-::-webkit-scrollbar-thumb {
-    background: rgba(0, 212, 255, 0.2) !important;
-    border-radius: 3px !important;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 212, 255, 0.4) !important;
-}
-
-/* Sentiment badges premium */
-.xp-sent {
-    border-radius: 12px !important;
-    padding: 0.2rem 0.6rem !important;
-    font-size: 0.65rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-}
-
-/* Premium prediction bars */
-.pm-bar {
-    height: 8px !important;
-    border-radius: 4px !important;
-}
-
-.pm-yes-bar {
-    background: linear-gradient(90deg, #00ff88, rgba(0, 255, 136, 0.6)) !important;
-    border-radius: 4px 0 0 4px !important;
-}
-
-/* Correlation bars premium */
-.corr-fill {
-    background: linear-gradient(90deg, #00d4ff, #00ff88) !important;
-    border-radius: 3px !important;
-    box-shadow: 0 0 8px rgba(0, 212, 255, 0.3) !important;
-}
-
-/* WLFI Token Info Card */
-.wlfi-info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-}
-
-.wlfi-info-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-}
-
-.wlfi-info-label {
-    font-size: 0.7rem;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 600;
-}
-
-.wlfi-info-value {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #e1e1e1;
-}
-
-/* Tokenomics donut */
-.tokenomics-chart {
-    display: flex;
-    align-items: center;
-    gap: 2rem;
-    padding: 1rem 0;
-}
-
-.tokenomics-donut {
-    width: 160px;
-    height: 160px;
-    border-radius: 50%;
-    position: relative;
-    flex-shrink: 0;
-}
-
-.tokenomics-donut::after {
-    content: '';
-    position: absolute;
-    inset: 30px;
-    background: rgba(15, 15, 25, 0.95);
-    border-radius: 50%;
-}
-
-.tokenomics-legend {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    flex: 1;
-}
-
-.tokenomics-legend-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-}
-
-.tokenomics-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.tokenomics-pct {
-    margin-left: auto;
-    font-weight: 700;
-    color: #e1e1e1;
-}
-
-/* Key People */
-.people-row {
-    display: flex;
-    gap: 1rem;
-    overflow-x: auto;
-    padding: 0.5rem 0;
-}
-
-.person-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 100px;
-    text-align: center;
-}
-
-.person-avatar {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: 700;
-    font-size: 0.9rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-}
-
-.person-name {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #e1e1e1;
-    line-height: 1.2;
-}
-
-.person-role {
-    font-size: 0.65rem;
-    color: #888;
-}
-
-/* X Accounts */
-.x-account {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem;
-    border-radius: 8px;
-    background: rgba(20, 20, 35, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    transition: all 0.3s ease;
-}
-
-.x-account:hover {
-    border-color: rgba(0, 212, 255, 0.2);
-    background: rgba(25, 25, 40, 0.8);
-}
-
-.x-account-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.x-account-name {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #e1e1e1;
-}
-
-.x-account-handle {
-    font-size: 0.75rem;
-    color: #888;
-}
-
-.x-account-desc {
-    font-size: 0.7rem;
-    color: #666;
-    margin-top: 0.15rem;
-}
-
-.x-account-meta {
-    text-align: right;
-    flex-shrink: 0;
-}
-
-.x-account-followers {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--primary);
-}
-
-.x-account-cat {
-    font-size: 0.6rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 0.15rem 0.4rem;
-    border-radius: 3px;
-    font-weight: 600;
-    margin-top: 0.25rem;
-    display: inline-block;
-}
-
-.x-account-cat.official { background: rgba(0, 212, 255, 0.15); color: var(--primary); }
-.x-account-cat.analyst { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
-.x-account-cat.media { background: rgba(0, 255, 136, 0.15); color: var(--success); }
-.x-account-cat.markets { background: rgba(155, 89, 182, 0.15); color: #9b59b6; }
-
-/* Risk cards */
-.risk-card {
-    display: flex;
-    gap: 0.75rem;
-    padding: 0.75rem;
-    border-radius: 8px;
-    background: rgba(20, 20, 35, 0.6);
-    border-left: 3px solid;
-}
-
-.risk-card.high { border-color: var(--danger); }
-.risk-card.medium { border-color: #ffa500; }
-.risk-card.low { border-color: var(--success); }
-
-.risk-level {
-    font-size: 0.6rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 700;
-    padding: 0.15rem 0.4rem;
-    border-radius: 3px;
-    align-self: flex-start;
-}
-
-.risk-level.high { background: rgba(255, 71, 87, 0.15); color: var(--danger); }
-.risk-level.medium { background: rgba(255, 165, 0, 0.15); color: #ffa500; }
-.risk-level.low { background: rgba(0, 255, 136, 0.15); color: var(--success); }
-
-.risk-info { flex: 1; }
-.risk-title { font-size: 0.85rem; font-weight: 600; color: #e1e1e1; margin-bottom: 0.2rem; }
-.risk-desc { font-size: 0.75rem; color: #888; line-height: 1.4; }
-
-/* Premium price header */
-.wlfi-price-header {
-    background: linear-gradient(135deg, rgba(0, 212, 255, 0.08), rgba(0, 255, 136, 0.04)) !important;
-    border: 1px solid rgba(0, 212, 255, 0.12) !important;
-    border-radius: 12px;
-    padding: 1.5rem !important;
-}
-
-#wlfi-price {
-    font-size: 2.5rem !important;
-    font-weight: 800 !important;
-    background: linear-gradient(135deg, #00d4ff, #00ff88);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polymarket AI Trader — Dashboard</title>
+  <meta name="description" content="Real-time monitoring dashboard for the Polymarket AI Autonomous Trader">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/dashboard.css">
 </head>
 <body>
-    <!-- Navigation Bar -->
-    <div class="nav-bar">
-        <div class="nav-logo">
-            <i class="fas fa-chart-line"></i> Crypto AI
-        </div>
-        <div class="nav-tabs">
-            <button class="nav-tab active" onclick="switchSection('dashboard')">Dashboard</button>
-            <button class="nav-tab" onclick="switchSection('polymarket')">Polymarket</button>
-            <button class="nav-tab" onclick="switchSection('wlfi')">WLFI Token</button>
-        </div>
+  <!-- ========================================
+       HEADER
+       ======================================== -->
+  <header id="header">
+    <div class="header-left">
+      <div class="logo">
+        <span class="logo-icon">🤖</span>
+        <h1>Polymarket AI Trader</h1>
+      </div>
+      <div id="bot-status" class="status-badge status-connecting">
+        <span class="status-dot"></span>
+        <span class="status-text">Conectando...</span>
+      </div>
     </div>
-
-    <!-- Sections Container -->
-    <div class="sections-container">
-        <!-- Dashboard Section -->
-        <div id="dashboard-section" class="section active">
-            <div class="dashboard-container">
-                <!-- Sidebar -->
-                <div class="sidebar">
-                    <div class="logo">
-                        <i class="fas fa-chart-line"></i> Crypto AI Trading
-                    </div>
-
-                    <div class="status-grid">
-                        <div class="status-card">
-                            <h3>Status</h3>
-                            <div class="value" id="connection-status">Online</div>
-                        </div>
-                        <div class="status-card">
-                            <h3>Análises</h3>
-                            <div class="value" id="analysis-count">0</div>
-                        </div>
-                    </div>
-
-                    <div class="quick-actions">
-                        <button onclick="runAnalysis()">
-                            <i class="fas fa-chart-area"></i> Análise Completa
-                        </button>
-                        <button onclick="updatePrices()">
-                            <i class="fas fa-sync"></i> Atualizar Preços
-                        </button>
-                        <button onclick="exportData()">
-                            <i class="fas fa-download"></i> Exportar Dados
-                        </button>
-                    </div>
-
-                    <!-- Chat Claude AI -->
-                    <div class="chat-container">
-                        <h3><i class="fas fa-robot"></i> Claude AI</h3>
-                        <div class="chat-messages" id="chat-messages">
-                            <div style="color: #888; font-style: italic;">
-                                Claude AI está pronto para análises...
-                            </div>
-                        </div>
-                        <div class="chat-input">
-                            <input type="text" id="chat-input" placeholder="Pergunte sobre o mercado...">
-                            <button onclick="sendMessage()">
-                                <i class="fas fa-paper-plane"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Main Content -->
-                <div class="main-content">
-                    <!-- Header -->
-                    <div class="header">
-                        <div>
-                            <h1>Dashboard de Trading</h1>
-                            <p>Análise em tempo real do mercado de criptomoedas</p>
-                        </div>
-                        <div class="connection-status">
-                            <div class="status-dot"></div>
-                            <span id="status-text">Conectado</span>
-                        </div>
-                    </div>
-
-                    <!-- Ticker Tape -->
-                    <div class="ticker-tape">
-                        <div class="tradingview-widget-container" id="ticker-tape-widget">
-                            <div class="tradingview-widget-container__widget"></div>
-                        </div>
-                    </div>
-
-                    <!-- Charts Grid -->
-                    <div class="charts-grid">
-                        <!-- Main Chart -->
-                        <div class="main-chart">
-                            <div class="tradingview-widget-container" id="main-chart-widget">
-                                <div class="tradingview-widget-container__widget"></div>
-                            </div>
-                        </div>
-
-                        <!-- Side Widgets -->
-                        <div class="side-widgets">
-                            <!-- Market Overview -->
-                            <div class="widget-card">
-                                <div class="tradingview-widget-container" id="market-overview-widget">
-                                    <div class="tradingview-widget-container__widget"></div>
-                                </div>
-                            </div>
-
-                            <!-- Crypto Heatmap -->
-                            <div class="widget-card">
-                                <div class="tradingview-widget-container" id="heatmap-widget">
-                                    <div class="tradingview-widget-container__widget"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Polymarket Section -->
-        <div id="polymarket-section" class="section">
-            <div class="polymarket-container">
-                <div class="traders-sidebar">
-                    <div style="padding: 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
-                        <span style="color: var(--primary); font-weight: 600;">Top Traders</span>
-                        <button onclick="openAddTrader()" style="background: var(--primary); color: #000; border: none; border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;">+ Add</button>
-                    </div>
-                    <div class="traders-list" id="traders-list">
-                        <!-- Populated by polymarket-ui.js -->
-                    </div>
-                </div>
-                <div class="polymarket-main" id="polymarket-main">
-                    <!-- Empty state: shown when no trader is selected -->
-                    <div id="empty-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #888; text-align: center; padding: 2rem;">
-                        <i class="fas fa-chart-bar" style="font-size: 3rem; margin-bottom: 1rem; color: var(--border);"></i>
-                        <p style="font-size: 1rem; margin-bottom: 0.5rem;">Selecione um trader para ver o perfil</p>
-                        <p style="font-size: 0.85rem;">ou adicione um novo trader pelo endereço Polymarket</p>
-                    </div>
-                    <!-- Trader profile: shown when a trader is selected -->
-                    <div id="trader-profile" style="display: none; overflow-y: auto; height: 100%;">
-                        <!-- Populated by polymarket-ui.js renderTraderProfile() -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Modal overlay for adding a trader -->
-            <div id="modal-overlay" onclick="handleOverlayClick(event)" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
-                <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; width: 100%; max-width: 440px; margin: 1rem;">
-                    <h2 style="color: var(--primary); margin-bottom: 1.5rem; font-size: 1.1rem;">Adicionar Trader</h2>
-                    <div style="margin-bottom: 1rem;">
-                        <label style="display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 0.4rem;">Endereço Polymarket *</label>
-                        <input id="input-address" type="text" placeholder="0x..." style="width: 100%; padding: 0.6rem 0.75rem; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 6px; color: #e1e1e1; font-size: 0.9rem; outline: none;">
-                    </div>
-                    <div style="margin-bottom: 1.5rem;">
-                        <label style="display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 0.4rem;">Nome (opcional)</label>
-                        <input id="input-name" type="text" placeholder="Ex: WhaleTrader" style="width: 100%; padding: 0.6rem 0.75rem; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 6px; color: #e1e1e1; font-size: 0.9rem; outline: none;">
-                    </div>
-                    <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
-                        <button onclick="closeAddTrader()" style="padding: 0.6rem 1.25rem; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: #aaa; cursor: pointer; font-size: 0.9rem;">Cancelar</button>
-                        <button onclick="addTrader()" style="padding: 0.6rem 1.25rem; background: var(--primary); border: none; border-radius: 6px; color: #000; cursor: pointer; font-size: 0.9rem; font-weight: 600;">Adicionar</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Toast notification -->
-            <div id="toast" style="position: fixed; bottom: 2rem; right: 2rem; z-index: 3000; padding: 0.75rem 1.25rem; border-radius: 8px; font-size: 0.9rem; font-weight: 500; pointer-events: none; opacity: 0; transition: opacity 0.3s ease; background: var(--bg-card); border: 1px solid var(--border); color: #e1e1e1;"></div>
-        </div>
-
-        <!-- WLFI Token Section -->
-        <div id="wlfi-section" class="section">
-            <div class="wlfi-container" style="grid-template-columns: 1fr 1fr 1fr; height: auto; padding-bottom: 2rem;">
-                <!-- Column 1: Token Info + Tokenomics + Key People + Risks -->
-                <div class="wlfi-left" style="gap: 1rem;">
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fas fa-coins"></i> Token Info</div>
-                        <div class="wlfi-content" id="wlfi-token-info"></div>
-                    </div>
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fas fa-chart-pie"></i> Tokenomics</div>
-                        <div class="wlfi-content" id="wlfi-tokenomics"></div>
-                    </div>
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fas fa-users"></i> Key People</div>
-                        <div class="wlfi-content" id="wlfi-key-people"></div>
-                    </div>
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fas fa-shield-alt"></i> Risk Assessment</div>
-                        <div class="wlfi-content" id="wlfi-risks"></div>
-                    </div>
-                </div>
-
-                <!-- Column 2: Price + News + Prediction Markets -->
-                <div style="display: flex; flex-direction: column; gap: 1rem; overflow-y: auto;">
-                    <div class="wlfi-price-header">
-                        <div id="wlfi-price">$0.0482</div>
-                        <div id="wlfi-chg" class="pos">▲ +3.2% (24h)</div>
-                    </div>
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fas fa-newspaper"></i> News & Updates</div>
-                        <div class="wlfi-content" id="wlfi-updates" style="max-height: 400px; overflow-y: auto;"></div>
-                    </div>
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fas fa-chart-bar"></i> Prediction Markets</div>
-                        <div class="wlfi-content" id="wlfi-markets"></div>
-                    </div>
-                </div>
-
-                <!-- Column 3: X Accounts + Influencer Posts + Correlations + Analysis -->
-                <div class="wlfi-right" style="gap: 1rem;">
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fab fa-x-twitter"></i> Accounts to Follow</div>
-                        <div class="wlfi-content" id="wlfi-x-accounts" style="max-height: 250px; overflow-y: auto;"></div>
-                    </div>
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fab fa-x-twitter"></i> Influencer Posts</div>
-                        <div class="wlfi-content" id="wlfi-posts" style="max-height: 300px; overflow-y: auto;"></div>
-                    </div>
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fas fa-link"></i> Correlations</div>
-                        <div class="wlfi-content" id="wlfi-correlations"></div>
-                    </div>
-                    <div class="wlfi-panel">
-                        <div class="wlfi-header"><i class="fas fa-lightbulb"></i> Analysis</div>
-                        <div class="wlfi-content" id="wlfi-analysis"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Row 2: On-Chain + Technical Indicators + Performance + Liquidations -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
-                <!-- On-Chain Tracking -->
-                <div class="wlfi-panel">
-                    <div class="wlfi-header"><i class="fas fa-link"></i> On-Chain Tracking</div>
-                    <div class="wlfi-content" id="wlfi-onchain" style="max-height: 500px; overflow-y: auto;">
-                        <div style="color: #888; text-align: center; padding: 2rem;">Carregando dados on-chain...</div>
-                    </div>
-                </div>
-
-                <!-- Technical Indicators -->
-                <div class="wlfi-panel">
-                    <div class="wlfi-header"><i class="fas fa-chart-line"></i> Indicadores Técnicos</div>
-                    <div class="wlfi-content" id="wlfi-technical" style="max-height: 500px; overflow-y: auto;">
-                        <div style="color: #888; text-align: center; padding: 2rem;">Carregando indicadores...</div>
-                    </div>
-                </div>
-
-                <!-- Performance Comparison -->
-                <div class="wlfi-panel">
-                    <div class="wlfi-header"><i class="fas fa-trophy"></i> Performance vs Mercado</div>
-                    <div class="wlfi-content" id="wlfi-performance" style="max-height: 500px; overflow-y: auto;">
-                        <div style="color: #888; text-align: center; padding: 2rem;">Carregando comparativo...</div>
-                    </div>
-                </div>
-
-                <!-- Liquidation Tracker -->
-                <div class="wlfi-panel">
-                    <div class="wlfi-header"><i class="fas fa-fire"></i> Liquidation Tracker</div>
-                    <div class="wlfi-content" id="wlfi-liquidations" style="max-height: 500px; overflow-y: auto;">
-                        <div style="color: #888; text-align: center; padding: 2rem;">Carregando liquidações...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="header-right">
+      <div class="header-stat">
+        <span class="header-stat-label">Bankroll</span>
+        <span id="header-bankroll" class="header-stat-value">$0.00</span>
+      </div>
+      <div class="header-stat">
+        <span class="header-stat-label">P&L Total</span>
+        <span id="header-pnl" class="header-stat-value pnl-neutral">$0.00</span>
+      </div>
+      <div class="header-stat">
+        <span class="header-stat-label">Uptime</span>
+        <span id="header-uptime" class="header-stat-value">00:00:00</span>
+      </div>
+      <button id="logout-btn" class="logout-btn" title="Sair">🔓 Sair</button>
     </div>
+  </header>
 
-    <!-- Scripts -->
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="js/tradingview-widgets.js"></script>
-    <script>
-        // Section Switching Logic
-        function switchSection(sectionName) {
-            // Hide all sections
-            document.querySelectorAll('.section').forEach(section => {
-                section.classList.remove('active');
-            });
+  <!-- ========================================
+       MAIN CONTENT
+       ======================================== -->
+  <main id="main-content">
 
-            // Remove active class from all tabs
-            document.querySelectorAll('.nav-tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
+    <!-- ROW 1: Stats Cards -->
+    <section class="stats-row">
+      <div class="stat-card glass">
+        <div class="stat-card-icon">📊</div>
+        <div class="stat-card-content">
+          <span class="stat-card-label">Mercados Escaneados</span>
+          <span id="stat-markets" class="stat-card-value">0</span>
+        </div>
+      </div>
+      <div class="stat-card glass">
+        <div class="stat-card-icon">🎯</div>
+        <div class="stat-card-content">
+          <span class="stat-card-label">Oportunidades</span>
+          <span id="stat-opportunities" class="stat-card-value">0</span>
+        </div>
+      </div>
+      <div class="stat-card glass">
+        <div class="stat-card-icon">⚡</div>
+        <div class="stat-card-content">
+          <span class="stat-card-label">Trades Executados</span>
+          <span id="stat-trades" class="stat-card-value">0</span>
+        </div>
+      </div>
+      <div class="stat-card glass">
+        <div class="stat-card-icon">🏆</div>
+        <div class="stat-card-content">
+          <span class="stat-card-label">Win Rate</span>
+          <span id="stat-winrate" class="stat-card-value">0%</span>
+        </div>
+      </div>
+      <div class="stat-card glass">
+        <div class="stat-card-icon">📐</div>
+        <div class="stat-card-content">
+          <span class="stat-card-label">Ciclo</span>
+          <span id="stat-cycle" class="stat-card-value">#0</span>
+        </div>
+      </div>
+    </section>
 
-            // Show selected section
-            const section = document.getElementById(sectionName + '-section');
-            if (section) {
-                section.classList.add('active');
-            }
+    <!-- ROW 2: Two columns -->
+    <section class="two-col">
+      <!-- LEFT: Open Positions -->
+      <div class="panel glass" id="positions-panel">
+        <div class="panel-header">
+          <h2>📈 Posições Abertas</h2>
+          <span id="positions-count" class="badge">0</span>
+        </div>
+        <div class="panel-body">
+          <div id="positions-list" class="positions-list">
+            <div class="empty-state">Nenhuma posição aberta ainda.</div>
+          </div>
+        </div>
+      </div>
 
-            // Mark tab as active
-            event.target.classList.add('active');
+      <!-- RIGHT: Risk Panel -->
+      <div class="panel glass" id="risk-panel">
+        <div class="panel-header">
+          <h2>🛡️ Gestão de Risco</h2>
+        </div>
+        <div class="panel-body">
+          <div class="risk-grid">
+            <div class="risk-item">
+              <span class="risk-label">Drawdown</span>
+              <div class="risk-bar-container">
+                <div id="risk-drawdown-bar" class="risk-bar" style="width: 0%"></div>
+              </div>
+              <span id="risk-drawdown" class="risk-value">0.0%</span>
+            </div>
+            <div class="risk-item">
+              <span class="risk-label">Exposição</span>
+              <div class="risk-bar-container">
+                <div id="risk-exposure-bar" class="risk-bar exposure-bar" style="width: 0%"></div>
+              </div>
+              <span id="risk-exposure" class="risk-value">$0 / $0</span>
+            </div>
+            <div class="risk-item">
+              <span class="risk-label">Posições</span>
+              <span id="risk-positions" class="risk-value-large">0</span>
+            </div>
+            <div class="risk-item">
+              <span class="risk-label">Perda Diária</span>
+              <span id="risk-daily-loss" class="risk-value-large">$0</span>
+            </div>
+            <div class="risk-item">
+              <span class="risk-label">Circuit Breaker</span>
+              <span id="risk-circuit" class="risk-value-large risk-ok">✅ OK</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-            // Lazy-render sections
-            if (sectionName === 'wlfi' && typeof renderWLFI === 'function') renderWLFI();
-        }
-    </script>
-    <script src="js/dashboard.js"></script>
-    <script src="js/polymarket-ui.js"></script>
-    <script src="js/wlfi.js"></script>
+    <!-- ROW 3: AI Decision Feed -->
+    <section class="panel glass full-width" id="decisions-panel">
+      <div class="panel-header">
+        <h2>🧠 Decisões da IA</h2>
+        <span class="panel-subtitle">Feed em tempo real</span>
+      </div>
+      <div class="panel-body">
+        <div id="decisions-feed" class="decisions-feed">
+          <div class="empty-state">Aguardando primeiro ciclo de análise...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROW 4: Trade Journal -->
+    <section class="panel glass full-width" id="journal-panel">
+      <div class="panel-header">
+        <h2>📒 Trade Journal</h2>
+        <div class="journal-filters">
+          <button class="filter-btn active" data-filter="all">Todos</button>
+          <button class="filter-btn" data-filter="open">Abertos</button>
+          <button class="filter-btn" data-filter="won">Ganhos</button>
+          <button class="filter-btn" data-filter="lost">Perdas</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="table-container">
+          <table id="journal-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Mercado</th>
+                <th>Lado</th>
+                <th>Preço</th>
+                <th>Stake</th>
+                <th>Edge</th>
+                <th>EV</th>
+                <th>Status</th>
+                <th>P&L</th>
+              </tr>
+            </thead>
+            <tbody id="journal-body">
+              <tr><td colspan="9" class="empty-state">Nenhum trade registrado.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROW 5: Notifications -->
+    <section class="panel glass full-width" id="notifications-panel">
+      <div class="panel-header">
+        <h2>🔔 Notificações</h2>
+      </div>
+      <div class="panel-body">
+        <div id="notifications-feed" class="notifications-feed">
+          <div class="empty-state">Nenhuma notificação ainda.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <span>Polymarket AI Trader v1.0 — Autonomous Trading Engine</span>
+    <span id="footer-mode" class="mode-badge">DRY-RUN</span>
+  </footer>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/dashboard.js"></script>
 </body>
 </html>
