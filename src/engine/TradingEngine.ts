@@ -95,7 +95,12 @@ export class TradingEngine extends EventEmitter {
     await this.notifications.notifySystemEvent(`Bot iniciado em modo ${mode}. Bankroll: $${config.bankroll}`);
 
     // Initialize CLOB client
-    await this.clobApi.initialize();
+    const clobReady = await this.clobApi.initialize();
+    if (!clobReady && !config.dryRun) {
+      logger.error('Engine', '❌ Falha ao inicializar CLOB client em modo LIVE. Abortando.');
+      this.running = false;
+      return;
+    }
 
     // Main loop
     while (this.running) {
@@ -204,7 +209,11 @@ export class TradingEngine extends EventEmitter {
         market.question,
         market.yesPrice,
         probEstimate.estimatedTrueProb,
-        probEstimate.confidence
+        probEstimate.confidence,
+        market.liquidity,
+        market.yesTokenId,
+        market.noTokenId,
+        market.negRisk
       );
 
       edgeAnalyses.push(edgeAnalysis);
@@ -239,12 +248,15 @@ export class TradingEngine extends EventEmitter {
     const toExecute = opportunities.slice(0, 3);
 
     for (const opp of toExecute) {
-      // Calculate position size with Kelly
+      // Use actual current bankroll from RiskManager (not initial config value)
+      const currentBankroll = this.riskManager.getStatus().bankroll;
+
+      // Calculate position size with Kelly (uses real bankroll and real liquidity)
       const kelly = this.kellyCalc.calculate(
         opp.estimatedTrueProb,
         opp.marketPrice,
-        config.bankroll, // TODO: use actual bankroll from position tracker
-        0 // Will be filled from market data
+        currentBankroll,
+        opp.liquidity
       );
 
       if (kelly.finalStake < 1) {
@@ -259,20 +271,13 @@ export class TradingEngine extends EventEmitter {
         continue;
       }
 
-      // Determine token ID and side
-      // For now, we need to refetch market data to get token IDs
-      const market = await this.gammaApi.getMarketById(opp.marketId);
-      if (!market) {
-        this.logDecision('reject', `Não conseguiu obter dados do mercado ${opp.marketId}`);
-        continue;
-      }
-
-      const tokenId = opp.side === 'BUY_YES' ? market.yesTokenId : market.noTokenId;
+      // Token IDs are already in EdgeAnalysis (set during market scan)
+      const tokenId = opp.side === 'BUY_YES' ? opp.yesTokenId : opp.noTokenId;
       const price = opp.side === 'BUY_YES' ? opp.marketPrice : (1 - opp.marketPrice);
       const size = kelly.finalStake / price; // Number of shares
 
       // Execute!
-      const result = await this.clobApi.placeLimitOrder(tokenId, 'BUY', price, size, market.negRisk);
+      const result = await this.clobApi.placeLimitOrder(tokenId, 'BUY', price, size, opp.negRisk);
 
       if (result.success) {
         this.tradesExecuted++;

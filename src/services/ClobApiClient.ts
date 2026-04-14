@@ -227,9 +227,33 @@ export class ClobApiClient {
   async getBalance(): Promise<number> {
     if (config.dryRun) return config.bankroll;
 
-    // In live mode, query actual USDC.e balance
-    // This would need ethers provider setup
-    return config.bankroll;
+    if (!this.initialized || !this.client) {
+      logger.warn('ClobApi', 'getBalance() chamado antes da inicialização — retornando bankroll inicial');
+      return config.bankroll;
+    }
+
+    try {
+      // USDC.e on Polygon mainnet
+      const USDC_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
+      const { ethers } = await import('ethers');
+      const provider = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com');
+
+      const erc20Abi = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)'];
+      const usdc = new ethers.Contract(USDC_ADDRESS, erc20Abi, provider);
+
+      const signer = new ethers.Wallet(config.privateKey!);
+      const [rawBalance, decimals] = await Promise.all([
+        usdc.balanceOf(signer.address) as Promise<ethers.BigNumber>,
+        usdc.decimals() as Promise<number>,
+      ]);
+
+      const balance = parseFloat(ethers.utils.formatUnits(rawBalance, decimals));
+      logger.debug('ClobApi', `Saldo USDC.e: $${balance.toFixed(2)}`);
+      return balance;
+    } catch (err) {
+      logger.error('ClobApi', 'Falha ao consultar saldo on-chain — retornando bankroll inicial', err instanceof Error ? err.message : err);
+      return config.bankroll;
+    }
   }
 
   isInitialized(): boolean {

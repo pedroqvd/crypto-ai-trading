@@ -239,6 +239,15 @@ export class DashboardServer {
   // START
   // ========================================
   start(): void {
+    this.server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        logger.error('Dashboard', `❌ Porta ${config.dashboardPort} já está em uso. Dashboard não iniciado.`);
+      } else {
+        logger.error('Dashboard', `❌ Erro ao iniciar servidor: ${err.message}`);
+      }
+      process.exit(1);
+    });
+
     this.server.listen(config.dashboardPort, () => {
       logger.info('Dashboard', `\n🌐 Dashboard: http://localhost:${config.dashboardPort}`);
       logger.info('Dashboard', `🔐 Login: http://localhost:${config.dashboardPort}/login`);
