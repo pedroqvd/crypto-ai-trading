@@ -74,6 +74,12 @@ export class TradingEngine extends EventEmitter {
     // Track which markets we have positions in
     const openTrades = this.journal.getOpenTrades();
     openTrades.forEach(t => this.activeMarketIds.add(t.marketId));
+
+    // Sync RiskManager bankroll with persisted P&L from previous sessions
+    const historicalStats = this.journal.getStats();
+    if (historicalStats.totalPnl !== 0) {
+      this.riskManager.updateBankroll(config.bankroll + historicalStats.totalPnl);
+    }
   }
 
   // ========================================
@@ -374,7 +380,7 @@ export class TradingEngine extends EventEmitter {
   // STATE & STATUS
   // ========================================
   getStatus(): EngineStatus {
-    const stats = this.journal.getStats();
+    const riskStatus = this.riskManager.getStatus();
     return {
       running: this.running,
       dryRun: config.dryRun,
@@ -383,8 +389,8 @@ export class TradingEngine extends EventEmitter {
       marketsScanned: this.marketsScanned,
       opportunitiesFound: this.opportunitiesFound,
       tradesExecuted: this.tradesExecuted,
-      bankroll: config.bankroll + stats.totalPnl,
-      totalPnl: stats.totalPnl,
+      bankroll: riskStatus.bankroll,   // Use RiskManager — tracks real P&L
+      totalPnl: riskStatus.bankroll - config.bankroll,
       lastScanAt: new Date().toISOString(),
     };
   }

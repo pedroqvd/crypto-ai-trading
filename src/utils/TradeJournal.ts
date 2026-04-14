@@ -100,6 +100,33 @@ export class TradeJournal {
     logger.info('TradeJournal', `Trade resolved: ${trade.status} "${trade.question}" P&L: $${trade.pnl?.toFixed(2)}`);
   }
 
+  getDailyReport(date: string, bankrollStart: number): DailyReport {
+    const dayTrades = this.trades.filter(t => t.timestamp.startsWith(date));
+    const closed = dayTrades.filter(t => t.status !== 'open');
+    const wins = closed.filter(t => t.status === 'won').length;
+    const losses = closed.filter(t => t.status === 'lost').length;
+    const totalPnl = closed.reduce((sum, t) => sum + (t.pnl || 0), 0);
+    const avgEdge = dayTrades.length > 0
+      ? dayTrades.reduce((sum, t) => sum + t.edge, 0) / dayTrades.length
+      : 0;
+    const avgEv = dayTrades.length > 0
+      ? dayTrades.reduce((sum, t) => sum + t.ev, 0) / dayTrades.length
+      : 0;
+
+    return {
+      date,
+      tradesCount: dayTrades.length,
+      wins,
+      losses,
+      winRate: closed.length > 0 ? (wins / closed.length) * 100 : 0,
+      totalPnl,
+      avgEdge,
+      avgEv,
+      bankrollStart,
+      bankrollEnd: bankrollStart + totalPnl,
+    };
+  }
+
   getOpenTrades(): TradeRecord[] {
     return this.trades.filter(t => t.status === 'open');
   }
