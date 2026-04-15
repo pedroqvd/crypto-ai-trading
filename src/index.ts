@@ -16,6 +16,7 @@ async function main(): Promise<void> {
 
   // Initialize engine
   const engine = new TradingEngine();
+  engineRef = engine;
 
   // Initialize dashboard server
   const dashboard = new DashboardServer(engine);
@@ -28,15 +29,16 @@ async function main(): Promise<void> {
 }
 
 // Handle graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\n🛑 Shutting down gracefully...');
-  process.exit(0);
-});
+let engineRef: import('./engine/TradingEngine').TradingEngine | null = null;
 
-process.on('SIGTERM', () => {
-  console.log('\n🛑 SIGTERM received, shutting down...');
+function shutdown(signal: string): void {
+  console.log(`\n🛑 ${signal} received, shutting down gracefully...`);
+  if (engineRef) engineRef.stop();
   process.exit(0);
-});
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 main().catch((err) => {
   console.error('💀 Fatal error:', err);

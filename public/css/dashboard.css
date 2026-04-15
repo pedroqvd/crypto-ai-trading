@@ -439,6 +439,45 @@ main {
 .risk-ok { color: var(--green); }
 .risk-danger { color: var(--red); }
 
+.risk-circuit-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.reset-circuit-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--orange);
+  background: var(--orange-dim);
+  color: var(--orange);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.reset-circuit-btn:hover {
+  background: rgba(255, 145, 0, 0.3);
+  transform: scale(1.04);
+}
+
+.reset-circuit-btn:active {
+  transform: scale(0.97);
+}
+
+.reset-circuit-btn.hidden {
+  display: none;
+}
+
+.reset-circuit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* ========================================
    DECISIONS FEED
    ======================================== */

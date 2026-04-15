@@ -153,39 +153,60 @@ export class ClobApiClient {
       return { success: false, error: 'CLOB client not initialized' };
     }
 
-    try {
-      const { Side, OrderType } = await import('@polymarket/clob-client');
-      const orderSide = side === 'BUY' ? Side.BUY : Side.SELL;
+    const MAX_ATTEMPTS = 3;
+    const RETRY_DELAYS_MS = [2_000, 4_000]; // Delays before attempt 2 and 3
 
-      const response = await (this.client as any).createAndPostOrder(
-        {
-          tokenID: tokenId,
-          price,
-          size,
-          side: orderSide,
-        },
-        {
-          tickSize: '0.01',
-          negRisk,
-        },
-        OrderType.GTC
-      );
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const { Side, OrderType } = await import('@polymarket/clob-client');
+        const orderSide = side === 'BUY' ? Side.BUY : Side.SELL;
 
-      logger.info('ClobApi', `✅ Order placed: ${side} ${size} @ $${price}. ID: ${response.orderID}`);
+        const response = await (this.client as any).createAndPostOrder(
+          {
+            tokenID: tokenId,
+            price,
+            size,
+            side: orderSide,
+          },
+          {
+            tickSize: '0.01',
+            negRisk,
+          },
+          OrderType.GTC
+        );
 
-      return {
-        success: true,
-        orderId: response.orderID,
-        status: response.status,
-        transactedSize: size,
-      };
-    } catch (err) {
-      logger.error('ClobApi', `Failed to place order`, err instanceof Error ? err.message : err);
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : 'Unknown error',
-      };
+        logger.info('ClobApi', `✅ Order placed: ${side} ${size} @ $${price}. ID: ${response.orderID}`);
+
+        return {
+          success: true,
+          orderId: response.orderID,
+          status: response.status,
+          transactedSize: size,
+        };
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Unknown error';
+
+        // Do not retry on validation/business-logic errors — only on transient failures
+        const isTransient = errMsg.includes('timeout') ||
+                            errMsg.includes('network') ||
+                            errMsg.includes('ECONNRESET') ||
+                            errMsg.includes('503') ||
+                            errMsg.includes('502') ||
+                            errMsg.includes('429');
+
+        if (!isTransient || attempt === MAX_ATTEMPTS) {
+          logger.error('ClobApi', `Failed to place order (attempt ${attempt}/${MAX_ATTEMPTS})`, errMsg);
+          return { success: false, error: errMsg };
+        }
+
+        const delay = RETRY_DELAYS_MS[attempt - 1];
+        logger.warn('ClobApi', `Order placement failed (attempt ${attempt}/${MAX_ATTEMPTS}), retrying in ${delay / 1000}s... Error: ${errMsg}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
+
+    // Unreachable — loop always returns, but TypeScript needs this
+    return { success: false, error: 'Max retries exceeded' };
   }
 
   // ========================================
@@ -227,9 +248,34 @@ export class ClobApiClient {
   async getBalance(): Promise<number> {
     if (config.dryRun) return config.bankroll;
 
-    // In live mode, query actual USDC.e balance
-    // This would need ethers provider setup
-    return config.bankroll;
+    if (!this.initialized || !this.client) {
+      logger.warn('ClobApi', 'getBalance() chamado antes da inicialização — retornando bankroll inicial');
+      return config.bankroll;
+    }
+
+    try {
+      // USDC.e on Polygon mainnet
+      const USDC_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
+      const { ethers } = await import('ethers');
+      const provider = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com');
+
+      const erc20Abi = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)'];
+      const usdc = new ethers.Contract(USDC_ADDRESS, erc20Abi, provider);
+
+      const signer = new ethers.Wallet(config.privateKey!);
+      // Use `any` for rawBalance — ethers.BigNumber type is unavailable via dynamic import
+      const [rawBalance, decimals] = await Promise.all([
+        usdc.balanceOf(signer.address) as Promise<any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+        usdc.decimals() as Promise<number>,
+      ]);
+
+      const balance = parseFloat(ethers.utils.formatUnits(rawBalance, decimals));
+      logger.debug('ClobApi', `Saldo USDC.e: $${balance.toFixed(2)}`);
+      return balance;
+    } catch (err) {
+      logger.error('ClobApi', 'Falha ao consultar saldo on-chain — retornando bankroll inicial', err instanceof Error ? err.message : err);
+      return config.bankroll;
+    }
   }
 
   isInitialized(): boolean {
