@@ -1,0 +1,40 @@
+# ================================================
+# Polymarket AI Trader — Docker Compose
+# Uso: docker compose up -d
+# ================================================
+
+services:
+  bot:
+    build: .
+    container_name: polymarket-bot
+    restart: unless-stopped          # reinicia automaticamente após crash ou reboot
+
+    # Variáveis de ambiente lidas do arquivo .env
+    env_file:
+      - .env
+
+    ports:
+      - "3000:3000"                  # Dashboard web
+
+    volumes:
+      # Persiste posições e histórico de trades entre restarts
+      - ./data:/app/data
+      # Persiste logs entre restarts
+      - ./logs:/app/logs
+
+    # Limites de recursos para caber na VM Free Tier (1GB RAM)
+    deploy:
+      resources:
+        limits:
+          memory: 700M               # deixa 300MB para o SO
+        reservations:
+          memory: 256M
+
+    # Configurações de healthcheck sobrepostas aqui se necessário
+    # (já definidas no Dockerfile)
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"              # máximo 10MB por arquivo de log
+        max-file: "3"                # mantém os últimos 3 arquivos
