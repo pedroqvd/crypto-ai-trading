@@ -20,7 +20,7 @@ export interface TradeRecord {
   kellyFraction: number;
   confidence: number;
   reasoning: string;
-  status: 'open' | 'won' | 'lost' | 'cancelled';
+  status: 'open' | 'won' | 'lost' | 'cancelled' | 'exited';
   exitPrice?: number;
   pnl?: number;
   resolvedAt?: string;
@@ -110,6 +110,27 @@ export class TradeJournal {
 
     this.saveToDisk();
     logger.info('TradeJournal', `Trade cancelled: "${trade.question}"`);
+  }
+
+  /**
+   * Record an early exit (sell before resolution).
+   * P&L is based on the spread between exit price and entry price.
+   * exitPrice: the price at which we sold (e.g., 0.85 for a YES position)
+   * pnl: (exitPrice - entryPrice) × size, pre-calculated by the caller
+   */
+  exitTrade(tradeId: string, exitPrice: number, pnl: number): void {
+    const trade = this.trades.find(t => t.id === tradeId);
+    if (!trade) return;
+
+    trade.status = 'exited';
+    trade.exitPrice = exitPrice;
+    trade.pnl = pnl;
+    trade.resolvedAt = new Date().toISOString();
+
+    this.saveToDisk();
+    logger.info('TradeJournal',
+      `Trade exited early: "${trade.question}" @ $${exitPrice.toFixed(4)}, P&L: $${pnl.toFixed(2)}`
+    );
   }
 
   getDailyReport(date: string, bankrollStart: number): DailyReport {

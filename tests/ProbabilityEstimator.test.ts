@@ -22,6 +22,7 @@ function makeMarket(overrides: Partial<ParsedMarket> = {}): ParsedMarket {
     active: true,
     closed: false,
     endDate: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(), // 60 days
+    createdAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), // 30 days ago
     description: '',
     yesTokenId: 'tok-yes',
     noTokenId: 'tok-no',
@@ -53,11 +54,13 @@ describe('ProbabilityEstimator', () => {
       expect(result).toHaveProperty('signals');
     });
 
-    it('returns 7 signals (includes Market Calibration)', () => {
+    it('returns 8 signals (includes Market Calibration and Market Age)', () => {
       const market = makeMarket();
       const result = estimator.estimate(market, [market]);
-      expect(result.signals).toHaveLength(7);
-      expect(result.signals.map(s => s.name)).toContain('Market Calibration');
+      expect(result.signals).toHaveLength(8);
+      const names = result.signals.map(s => s.name);
+      expect(names).toContain('Market Calibration');
+      expect(names).toContain('Market Age');
     });
 
     it('estimatedTrueProb is between 0.01 and 0.99', () => {

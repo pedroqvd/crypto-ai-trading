@@ -305,7 +305,7 @@
     if (emptyRow) els.journalBody.innerHTML = '';
 
     const statusClass = 'status-' + trade.status;
-    const statusLabel = { open: '⏳ Aberto', won: '✅ Ganhou', lost: '❌ Perdeu', cancelled: '🚫 Cancelado' };
+    const statusLabel = { open: '⏳ Aberto', won: '✅ Ganhou', lost: '❌ Perdeu', cancelled: '🚫 Cancelado', exited: '💰 Saída' };
     const pnlText = trade.pnl !== undefined && trade.pnl !== null
       ? (trade.pnl >= 0 ? '+' : '') + '$' + trade.pnl.toFixed(2)
       : '—';
