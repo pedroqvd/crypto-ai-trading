@@ -44,17 +44,25 @@ export class TradeJournal {
   private trades: TradeRecord[] = [];
   private dataDir: string;
   private tradesFile: string;
+  private persistenceAvailable = false;
 
   constructor() {
     this.dataDir = path.join(process.cwd(), 'data');
     this.tradesFile = path.join(this.dataDir, 'trade_history.json');
-    this.ensureDataDir();
-    this.loadFromDisk();
+    this.persistenceAvailable = this.ensureDataDir();
+    if (this.persistenceAvailable) this.loadFromDisk();
   }
 
-  private ensureDataDir(): void {
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
+  // Returns true when filesystem is writable (false on Vercel / read-only envs)
+  private ensureDataDir(): boolean {
+    try {
+      if (!fs.existsSync(this.dataDir)) {
+        fs.mkdirSync(this.dataDir, { recursive: true });
+      }
+      return true;
+    } catch {
+      logger.warn('TradeJournal', 'Filesystem read-only — running in-memory mode (data will not persist)');
+      return false;
     }
   }
 
@@ -72,6 +80,7 @@ export class TradeJournal {
   }
 
   private saveToDisk(): void {
+    if (!this.persistenceAvailable) return;
     try {
       fs.writeFileSync(this.tradesFile, JSON.stringify(this.trades, null, 2));
     } catch (err) {
