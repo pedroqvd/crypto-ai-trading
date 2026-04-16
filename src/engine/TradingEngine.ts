@@ -59,6 +59,8 @@ export class TradingEngine extends EventEmitter {
   private marketsScanned = 0;
   private opportunitiesFound = 0;
   private tradesExecuted = 0;
+  private lastScanAt = '';
+  private sessionStartBankroll = 0;
   private decisionLog: DecisionLog[] = [];
   private maxDecisionLog = 200;
   private activeMarketIds: Set<string> = new Set();
@@ -92,6 +94,7 @@ export class TradingEngine extends EventEmitter {
   async start(): Promise<void> {
     this.running = true;
     this.startTime = Date.now();
+    this.sessionStartBankroll = this.riskManager.getStatus().bankroll;
 
     const mode = config.dryRun ? '🏜️ DRY-RUN' : '⚡ LIVE';
     logger.info('Engine', `\n🚀 ========================================`);
@@ -147,6 +150,7 @@ export class TradingEngine extends EventEmitter {
   // ========================================
   private async runCycle(): Promise<void> {
     this.cycleCount++;
+    this.lastScanAt = new Date().toISOString();
     logger.info('Engine', `\n--- Ciclo #${this.cycleCount} ---`);
 
     // Step 1: Scan markets (flat list + events for correlation)
@@ -227,10 +231,12 @@ export class TradingEngine extends EventEmitter {
   // ========================================
   private async analyzeMarkets(filtered: ParsedMarket[], allMarkets: ParsedMarket[]): Promise<EdgeAnalysis[]> {
     const edgeAnalyses: EdgeAnalysis[] = [];
+    const volumes = allMarkets.map(m => m.volume).sort((a, b) => a - b);
+    const medianVolume = volumes[Math.floor(volumes.length / 2)];
 
     for (const market of filtered) {
       // Note: news is fetched per-opportunity in executeOpportunities (rate limit friendly)
-      const probEstimate = this.probEstimator.estimate(market, allMarkets);
+      const probEstimate = this.probEstimator.estimate(market, allMarkets, medianVolume);
 
       const edgeAnalysis = this.edgeCalc.calculateEdge(
         market.id,
@@ -585,6 +591,7 @@ export class TradingEngine extends EventEmitter {
       logger.warn('Engine', msg);
       this.logDecision('system', `⚠️ ${msg}`);
       await this.notifications.notifyRiskAlert(msg);
+      this.riskManager.updateBankroll(onChainBalance);
     } else {
       logger.debug('Engine',
         `Saldo sincronizado — on-chain $${onChainBalance.toFixed(2)}, ` +
@@ -607,8 +614,8 @@ export class TradingEngine extends EventEmitter {
       opportunitiesFound: this.opportunitiesFound,
       tradesExecuted: this.tradesExecuted,
       bankroll: riskStatus.bankroll,
-      totalPnl: riskStatus.bankroll - config.bankroll,
-      lastScanAt: new Date().toISOString(),
+      totalPnl: riskStatus.bankroll - this.sessionStartBankroll,
+      lastScanAt: this.lastScanAt,
     };
   }
 

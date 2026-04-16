@@ -3,103 +3,75 @@
 // ================================================
 
 import 'dotenv/config';
+import { z } from 'zod';
 
 export interface TradingConfig {
-  // Wallet
   privateKey: string;
-
-  // Mode
   dryRun: boolean;
-
-  // Capital
   bankroll: number;
-
-  // Strategy
   kellyFraction: number;
   minEdge: number;
   minLiquidity: number;
   minVolume: number;
   maxPositionPct: number;
   maxTotalExposurePct: number;
-
-  // Position management
-  exitPriceTarget: number;      // Sell early when position price reaches this (default 0.85)
-  maxOrderSpreadPct: number;    // Skip trade if bid-ask spread exceeds this (default 0.03 = 3%)
-  minOrderBookShares: number;   // Min shares available in order book to proceed (default 5)
-
-  // Timing
+  exitPriceTarget: number;
+  maxOrderSpreadPct: number;
+  minOrderBookShares: number;
   scanIntervalMs: number;
-
-  // Dashboard
   dashboardPort: number;
-
-  // Notifications
   discordWebhookUrl?: string;
-
-  // News integration
-  newsApiKey: string;           // newsapi.org key — optional, skipped if empty
-  newsRelevanceHours: number;   // Consider news within last N hours (default 6)
-
-  // Correlation analysis
-  correlationEnabled: boolean;  // Detect pricing inconsistencies between related markets
-
-  // Remote integration
-  oracleBackendUrl: string;   // Full URL of Oracle Cloud backend when frontend runs on a separate host (e.g. Vercel)
-  allowedOrigins: string[];   // CORS allowed origins (comma-separated in env)
-
-  // Logging
+  newsApiKey: string;
+  newsRelevanceHours: number;
+  correlationEnabled: boolean;
+  oracleBackendUrl: string;
+  allowedOrigins: string[];
   logLevel: 'debug' | 'info' | 'warn';
 }
 
+const configSchema = z.object({
+  kellyFraction: z.number().min(0.01, 'Kelly deve estar entre 1% e 25%').max(0.25),
+  minEdge: z.number().min(0.005, 'Edge mínimo deve ser ≥ 0.5%').max(0.5, 'Edge máximo deve ser ≤ 50%'),
+  bankroll: z.number().positive('Bankroll deve ser > 0').max(500_000, 'Bankroll suspeito: >$500k'),
+  maxPositionPct: z.number().min(0.001, 'Posição máxima deve ser ≥ 0.1%').max(0.2, 'Posição máxima deve ser ≤ 20%'),
+  maxTotalExposurePct: z.number().min(0.01, 'Exposição máxima deve ser ≥ 1%').max(1.0, 'Exposição máxima deve ser ≤ 100%'),
+  exitPriceTarget: z.number().min(0.5, 'Target de saída deve ser ≥ 50%').max(0.99, 'Target de saída deve ser ≤ 99%'),
+});
+
 export function loadConfig(): TradingConfig {
-  return {
-    // Wallet
+  const rawConfig = {
     privateKey: process.env.PRIVATE_KEY || '',
-
-    // Mode — DRY_RUN by default for safety
     dryRun: process.env.DRY_RUN !== 'false',
-
-    // Capital
     bankroll: parseFloat(process.env.BANKROLL || '1000'),
-
-    // Strategy
     kellyFraction: parseFloat(process.env.KELLY_FRACTION || '0.25'),
     minEdge: parseFloat(process.env.MIN_EDGE || '0.03'),
     minLiquidity: parseFloat(process.env.MIN_LIQUIDITY || '5000'),
     minVolume: parseFloat(process.env.MIN_VOLUME || '10000'),
     maxPositionPct: parseFloat(process.env.MAX_POSITION_PCT || '0.05'),
     maxTotalExposurePct: parseFloat(process.env.MAX_TOTAL_EXPOSURE_PCT || '0.50'),
-
-    // Position management
     exitPriceTarget: parseFloat(process.env.EXIT_PRICE_TARGET || '0.85'),
     maxOrderSpreadPct: parseFloat(process.env.MAX_ORDER_SPREAD_PCT || '0.03'),
     minOrderBookShares: parseFloat(process.env.MIN_ORDER_BOOK_SHARES || '5'),
-
-    // Timing
     scanIntervalMs: parseInt(process.env.SCAN_INTERVAL_MS || '60000'),
-
-    // Dashboard
     dashboardPort: parseInt(process.env.DASHBOARD_PORT || '3000'),
-
-    // Notifications
     discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL || undefined,
-
-    // News
     newsApiKey: process.env.NEWS_API_KEY || '',
     newsRelevanceHours: parseInt(process.env.NEWS_RELEVANCE_HOURS || '6'),
-
-    // Correlation
     correlationEnabled: process.env.CORRELATION_ENABLED !== 'false',
-
-    // Remote integration
     oracleBackendUrl: (process.env.ORACLE_BACKEND_URL || '').replace(/\/$/, ''),
     allowedOrigins: process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
       : [],
-
-    // Logging
     logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn') || 'info',
   };
+
+  // Validar parâmetros críticos de risco
+  const validated = configSchema.safeParse(rawConfig);
+  if (!validated.success) {
+    throw new Error(`❌ Configuração inválida: ${validated.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+  }
+
+  return rawConfig;
 }
 
 export const config = loadConfig();

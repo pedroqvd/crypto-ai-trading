@@ -50,6 +50,7 @@ export class ProbabilityEstimator {
   estimate(
     market: ParsedMarket,
     allMarkets?: ParsedMarket[],
+    medianVolume?: number,
     newsResult?: NewsResult
   ): ProbabilityEstimate {
     const signals: SignalResult[] = [];
@@ -60,7 +61,7 @@ export class ProbabilityEstimator {
     signals.push(this.priceExtremitySignal(market));
     signals.push(this.timeDecaySignal(market));
     signals.push(this.spreadInefficiencySignal(market));
-    signals.push(this.volumeSignificanceSignal(market, allMarkets));
+    signals.push(this.volumeSignificanceSignal(market, allMarkets, medianVolume));
     signals.push(this.liquidityMeanReversionSignal(market));
     signals.push(this.marketCalibrationSignal(market));
     signals.push(this.marketAgeSignal(market));   // Signal 8 — new
@@ -241,15 +242,20 @@ export class ProbabilityEstimator {
 
   // ========================================
   // SIGNAL 5: Volume Significance
+  // Pre-calculated medianVolume avoids N×M recalculation
   // ========================================
-  private volumeSignificanceSignal(market: ParsedMarket, allMarkets?: ParsedMarket[]): SignalResult {
-    if (!allMarkets || allMarkets.length === 0) {
-      return { name: 'Volume Significance', weight: 0.5, adjustment: 0, reasoning: 'Sem dados comparativos.' };
+  private volumeSignificanceSignal(market: ParsedMarket, allMarkets?: ParsedMarket[], medianVolume?: number): SignalResult {
+    let calcMedianVolume = medianVolume;
+    
+    if (calcMedianVolume === undefined) {
+      if (!allMarkets || allMarkets.length === 0) {
+        return { name: 'Volume Significance', weight: 0.5, adjustment: 0, reasoning: 'Sem dados comparativos.' };
+      }
+      const volumes = allMarkets.map(m => m.volume).sort((a, b) => a - b);
+      calcMedianVolume = volumes[Math.floor(volumes.length / 2)];
     }
 
-    const volumes = allMarkets.map(m => m.volume).sort((a, b) => a - b);
-    const medianVolume = volumes[Math.floor(volumes.length / 2)];
-    const ratio = medianVolume > 0 ? market.volume / medianVolume : 1;
+    const ratio = calcMedianVolume > 0 ? market.volume / calcMedianVolume : 1;
 
     let adjustment = 0;
     let reasoning = '';
