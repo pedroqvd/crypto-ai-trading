@@ -130,7 +130,8 @@
 
   function setCookie(name, value, days) {
     const expires = new Date(Date.now() + days * 86400000).toUTCString();
-    document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Strict; Secure`;
+    const secureFlag = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Strict${secureFlag}`;
   }
 
   function getCookie(name) {
