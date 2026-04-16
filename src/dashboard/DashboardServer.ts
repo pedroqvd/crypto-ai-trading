@@ -23,8 +23,14 @@ export class DashboardServer {
   constructor(private engine: TradingEngine) {
     this.app = express();
     this.server = createServer(this.app);
+
+    // Allow any explicitly configured origins; fall back to wildcard
+    const allowedOrigins = config.allowedOrigins.length > 0
+      ? config.allowedOrigins
+      : '*';
+
     this.io = new SocketIOServer(this.server, {
-      cors: { origin: '*', methods: ['GET', 'POST'] },
+      cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
     });
     this.authService = new AuthService();
 
@@ -39,16 +45,26 @@ export class DashboardServer {
   // MIDDLEWARE
   // ========================================
   private setupMiddleware(): void {
-    this.app.use(cors());
+    const allowedOriginsValue = config.allowedOrigins.length > 0
+      ? config.allowedOrigins
+      : '*';
+
+    this.app.use(cors({ origin: allowedOriginsValue }));
     this.app.use(express.json());
 
     // Security headers
     this.app.use((req, res, next) => {
+      // Build connect-src: always allow self + ws/wss; add Oracle backend URL when configured
+      const extraConnect = config.oracleBackendUrl
+        ? ` ${config.oracleBackendUrl} ${config.oracleBackendUrl.replace(/^http/, 'ws')}`
+        : '';
+
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('X-Frame-Options', 'DENY');
       res.setHeader('X-XSS-Protection', '1; mode=block');
       res.setHeader('Referrer-Policy', 'no-referrer');
-      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; img-src 'self' data:");
+      res.setHeader('Content-Security-Policy',
+        `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:${extraConnect}; img-src 'self' data:`);
       next();
     });
 
@@ -63,6 +79,13 @@ export class DashboardServer {
   // AUTH ROUTES (PUBLIC — before middleware)
   // ========================================
   private setupAuthRoutes(): void {
+    // Public config endpoint — exposes ORACLE_BACKEND_URL so the frontend
+    // knows where to connect Socket.IO and make API calls when running on
+    // a separate host (e.g. Vercel frontend → Oracle Cloud backend).
+    this.app.get('/api/config', (req, res) => {
+      res.json({ backendUrl: config.oracleBackendUrl });
+    });
+
     // Login page
     this.app.get('/login', (req, res) => {
       res.sendFile(path.join(__dirname, '../../public/login.html'));
