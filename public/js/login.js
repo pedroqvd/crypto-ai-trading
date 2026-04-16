@@ -51,7 +51,7 @@
     }
 
     // Check if already logged in
-    const existingToken = getCookie('auth_token');
+    const existingToken = localStorage.getItem('auth_token');
     if (existingToken) {
       apiCall('/api/auth/status', {
         headers: { 'Authorization': 'Bearer ' + existingToken },
@@ -88,7 +88,7 @@
         const data = await response.json();
 
         if (response.ok && data.token) {
-          setCookie('auth_token', data.token, 1); // 1 day expiry
+          localStorage.setItem('auth_token', data.token);
           window.location.href = '/';
         } else {
           const errorMessages = {
@@ -126,18 +126,6 @@
     loginBtn.disabled = loading;
     btnText.textContent = loading ? 'Verificando...' : 'Entrar';
     btnLoading.hidden = !loading;
-  }
-
-  function setCookie(name, value, days) {
-    const expires = new Date(Date.now() + days * 86400000).toUTCString();
-    const secureFlag = location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Strict${secureFlag}`;
-  }
-
-  function getCookie(name) {
-    const cookies = document.cookie.split(';').map(c => c.trim());
-    const found = cookies.find(c => c.startsWith(name + '='));
-    return found ? found.split('=')[1] : null;
   }
 
   init().catch(console.error);

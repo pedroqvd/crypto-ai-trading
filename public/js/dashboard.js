@@ -6,15 +6,9 @@
   'use strict';
 
   // ========================================
-  // AUTH — Get token from cookie
+  // AUTH — Get token from localStorage
   // ========================================
-  function getCookie(name) {
-    const cookies = document.cookie.split(';').map(c => c.trim());
-    const found = cookies.find(c => c.startsWith(name + '='));
-    return found ? found.split('=')[1] : null;
-  }
-
-  const authToken = getCookie('auth_token');
+  const authToken = localStorage.getItem('auth_token');
   if (!authToken) {
     window.location.href = '/login';
     return;
@@ -105,7 +99,7 @@
     socket.on('connect_error', (err) => {
       if (err.message === 'Autenticação necessária') {
         console.log('🔴 Auth failed — redirecting to login');
-        document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        localStorage.removeItem('auth_token');
         window.location.href = '/login';
         return;
       }
@@ -167,7 +161,7 @@
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
-        document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        localStorage.removeItem('auth_token');
         socket.disconnect();
         window.location.href = '/login';
       });
