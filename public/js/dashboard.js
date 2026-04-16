@@ -21,15 +21,6 @@
   }
 
   // ========================================
-  // SOCKET CONNECTION (with JWT auth)
-  // ========================================
-  const socket = io({
-    auth: { token: authToken },
-    query: { token: authToken },
-  });
-  let currentFilter = 'all';
-
-  // ========================================
   // DOM ELEMENTS
   // ========================================
   const $ = (id) => document.getElementById(id);
@@ -62,58 +53,164 @@
     footerMode: $('footer-mode'),
   };
 
+  let currentFilter = 'all';
+
   // ========================================
-  // SOCKET EVENTS
+  // BOOTSTRAP — Load backend URL then connect
   // ========================================
-  socket.on('connect', () => {
-    console.log('🟢 Connected (authenticated)');
-    setStatus('connecting', 'Conectado');
-  });
-
-  socket.on('connect_error', (err) => {
-    if (err.message === 'Autenticação necessária') {
-      console.log('🔴 Auth failed — redirecting to login');
-      document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-      window.location.href = '/login';
-      return;
+  async function init() {
+    // Fetch config from the host serving this page.
+    // When frontend is on Vercel and bot is on Oracle Cloud,
+    // Vercel sets ORACLE_BACKEND_URL → backendUrl points to Oracle.
+    // When running directly on Oracle Cloud, backendUrl is '' and
+    // all connections stay relative (same origin).
+    let backendUrl = '';
+    try {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      backendUrl = (cfg.backendUrl || '').replace(/\/$/, '');
+    } catch (_) {
+      // Config fetch failed — assume same-origin (Oracle direct access)
     }
-    console.log('🔴 Connection error:', err.message);
-    setStatus('stopped', 'Erro');
-  });
 
-  socket.on('disconnect', () => {
-    console.log('🔴 Disconnected');
-    setStatus('stopped', 'Desconectado');
-  });
-
-  // Initial state from server
-  socket.on('init', (data) => {
-    console.log('📦 Received initial state:', data);
-    if (data.status) updateStatus(data.status);
-    if (data.decisions) renderDecisions(data.decisions);
-    if (data.trades) {
-      updateTradeStats(data.trades.stats);
-      renderPositions(data.trades.open);
-      renderJournal(data.trades.recent);
+    // ========================================
+    // AUTH FETCH — Adds JWT token to all API calls
+    // Prepends backendUrl when connecting cross-origin (Vercel → Oracle)
+    // ========================================
+    function authFetch(path, options = {}) {
+      const headers = Object.assign({}, options.headers, {
+        'Authorization': 'Bearer ' + authToken,
+      });
+      const url = backendUrl ? backendUrl + path : path;
+      return fetch(url, Object.assign({}, options, { headers }));
     }
-    if (data.risk) updateRisk(data.risk);
-    if (data.notifications) renderNotifications(data.notifications);
-  });
 
-  // Real-time updates
-  socket.on('statusUpdate', (status) => updateStatus(status));
-  socket.on('decision', (decision) => addDecision(decision));
-  socket.on('tradeExecuted', (trade) => {
-    addPosition(trade);
-    addJournalRow(trade);
-    flashElement(els.statTrades);
-  });
-  socket.on('tradeResolved', (data) => {
-    removePosition(data.trade.marketId);
-    updateJournalRow(data.trade.id, data.won, data.pnl);
-  });
-  socket.on('notification', (notification) => addNotification(notification));
-  socket.on('scanComplete', () => flashElement(els.statMarkets));
+    // ========================================
+    // SOCKET CONNECTION (with JWT auth)
+    // ========================================
+    const socketOpts = {
+      auth: { token: authToken },
+      query: { token: authToken },
+    };
+    const socket = backendUrl ? io(backendUrl, socketOpts) : io(socketOpts);
+
+    // ========================================
+    // SOCKET EVENTS
+    // ========================================
+    socket.on('connect', () => {
+      console.log('🟢 Connected (authenticated)');
+      setStatus('connecting', 'Conectado');
+    });
+
+    socket.on('connect_error', (err) => {
+      if (err.message === 'Autenticação necessária') {
+        console.log('🔴 Auth failed — redirecting to login');
+        document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        window.location.href = '/login';
+        return;
+      }
+      console.log('🔴 Connection error:', err.message);
+      setStatus('stopped', 'Erro');
+    });
+
+    socket.on('disconnect', () => {
+      console.log('🔴 Disconnected');
+      setStatus('stopped', 'Desconectado');
+    });
+
+    // Initial state from server
+    socket.on('init', (data) => {
+      console.log('📦 Received initial state:', data);
+      if (data.status) updateStatus(data.status);
+      if (data.decisions) renderDecisions(data.decisions);
+      if (data.trades) {
+        updateTradeStats(data.trades.stats);
+        renderPositions(data.trades.open);
+        renderJournal(data.trades.recent);
+      }
+      if (data.risk) updateRisk(data.risk);
+      if (data.notifications) renderNotifications(data.notifications);
+    });
+
+    // Real-time updates
+    socket.on('statusUpdate', (status) => updateStatus(status));
+    socket.on('decision', (decision) => addDecision(decision));
+    socket.on('tradeExecuted', (trade) => {
+      addPosition(trade);
+      addJournalRow(trade);
+      flashElement(els.statTrades);
+    });
+    socket.on('tradeResolved', (data) => {
+      removePosition(data.trade.marketId);
+      updateJournalRow(data.trade.id, data.won, data.pnl);
+    });
+    socket.on('notification', (notification) => addNotification(notification));
+    socket.on('scanComplete', () => flashElement(els.statMarkets));
+
+    // ========================================
+    // JOURNAL FILTERS
+    // ========================================
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        authFetch('/api/trades')
+          .then(r => r.json())
+          .then(data => renderJournal(data.recent));
+      });
+    });
+
+    // ========================================
+    // LOGOUT
+    // ========================================
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', () => {
+        document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        socket.disconnect();
+        window.location.href = '/login';
+      });
+    }
+
+    // ========================================
+    // RESET CIRCUIT BREAKER
+    // ========================================
+    if (els.resetCircuitBtn) {
+      els.resetCircuitBtn.addEventListener('click', async () => {
+        if (!confirm('Resetar o circuit breaker e retomar operações? Certifique-se de que as condições de mercado são favoráveis.')) {
+          return;
+        }
+
+        els.resetCircuitBtn.disabled = true;
+        els.resetCircuitBtn.textContent = '⏳ Resetando...';
+
+        try {
+          const res = await authFetch('/api/risk/reset', { method: 'POST' });
+          if (res.ok) {
+            els.riskCircuit.textContent = '✅ OK';
+            els.riskCircuit.className = 'risk-value-large risk-ok';
+            els.resetCircuitBtn.classList.add('hidden');
+            addNotification({
+              type: 'system',
+              title: '🔄 Circuit Breaker Resetado',
+              message: 'O circuit breaker foi desativado manualmente. Bot retomará operações no próximo ciclo.',
+              timestamp: new Date().toISOString(),
+            });
+          } else {
+            const data = await res.json().catch(() => ({}));
+            alert('Erro ao resetar circuit breaker: ' + (data.error || res.statusText));
+          }
+        } catch (err) {
+          alert('Erro de rede ao resetar circuit breaker.');
+          console.error(err);
+        } finally {
+          els.resetCircuitBtn.disabled = false;
+          els.resetCircuitBtn.textContent = '🔄 Resetar';
+        }
+      });
+    }
+  }
 
   // ========================================
   // STATUS UPDATES
@@ -134,7 +231,7 @@
 
     // Stats
     els.bankroll.textContent = formatMoney(status.bankroll);
-    
+
     const pnlVal = status.totalPnl || 0;
     els.pnl.textContent = (pnlVal >= 0 ? '+' : '') + formatMoney(pnlVal);
     els.pnl.className = 'header-stat-value ' + (pnlVal > 0 ? 'pnl-positive' : pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
@@ -148,7 +245,6 @@
 
   function setStatus(type, text) {
     els.botStatus.className = 'status-badge status-' + type;
-    const dot = els.botStatus.querySelector('.status-dot');
     const txt = els.botStatus.querySelector('.status-text');
     if (txt) txt.textContent = text;
   }
@@ -338,7 +434,7 @@
   function updateJournalRow(tradeId, won, pnl) {
     const row = els.journalBody.querySelector(`[data-trade-id="${tradeId}"]`);
     if (!row) return;
-    
+
     const cells = row.querySelectorAll('td');
     const statusCell = cells[7];
     const pnlCell = cells[8];
@@ -392,80 +488,6 @@
         icon: '🤖',
       });
     }
-  }
-
-  // ========================================
-  // JOURNAL FILTERS
-  // ========================================
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter = btn.dataset.filter;
-      // Re-fetch and render (with auth)
-      authFetch('/api/trades')
-        .then(r => r.json())
-        .then(data => renderJournal(data.recent));
-    });
-  });
-
-  // ========================================
-  // LOGOUT
-  // ========================================
-  const logoutBtn = document.getElementById('logout-btn');
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
-      document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-      socket.disconnect();
-      window.location.href = '/login';
-    });
-  }
-
-  // ========================================
-  // RESET CIRCUIT BREAKER
-  // ========================================
-  if (els.resetCircuitBtn) {
-    els.resetCircuitBtn.addEventListener('click', async () => {
-      if (!confirm('Resetar o circuit breaker e retomar operações? Certifique-se de que as condições de mercado são favoráveis.')) {
-        return;
-      }
-
-      els.resetCircuitBtn.disabled = true;
-      els.resetCircuitBtn.textContent = '⏳ Resetando...';
-
-      try {
-        const res = await authFetch('/api/risk/reset', { method: 'POST' });
-        if (res.ok) {
-          els.riskCircuit.textContent = '✅ OK';
-          els.riskCircuit.className = 'risk-value-large risk-ok';
-          els.resetCircuitBtn.classList.add('hidden');
-          addNotification({
-            type: 'system',
-            title: '🔄 Circuit Breaker Resetado',
-            message: 'O circuit breaker foi desativado manualmente. Bot retomará operações no próximo ciclo.',
-            timestamp: new Date().toISOString(),
-          });
-        } else {
-          const data = await res.json().catch(() => ({}));
-          alert('Erro ao resetar circuit breaker: ' + (data.error || res.statusText));
-        }
-      } catch (err) {
-        alert('Erro de rede ao resetar circuit breaker.');
-        console.error(err);
-      } finally {
-        els.resetCircuitBtn.disabled = false;
-        els.resetCircuitBtn.textContent = '🔄 Resetar';
-      }
-    });
-  }
-
-  // ========================================
-  // AUTH FETCH — Adds JWT token to all API calls
-  // ========================================
-  function authFetch(url, options = {}) {
-    const headers = options.headers || {};
-    headers['Authorization'] = 'Bearer ' + authToken;
-    return fetch(url, { ...options, headers });
   }
 
   // ========================================
@@ -524,5 +546,11 @@
     el.classList.add('flash-green');
     setTimeout(() => el.classList.remove('flash-green'), 500);
   }
+
+  // Kick off
+  init().catch(err => {
+    console.error('Dashboard init error:', err);
+    setStatus('stopped', 'Erro');
+  });
 
 })();

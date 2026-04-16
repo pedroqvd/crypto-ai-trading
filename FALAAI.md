@@ -5,7 +5,83 @@
 
 ---
 
-## Sessão Atual — 2026-04-15
+## Sessão Atual — 2026-04-16
+
+**Branch:** `claude/oracle-site-integration-ZXHoe`
+**Status:** Implementação concluída, aguardando push e testes
+
+### O que foi feito
+
+#### Oracle ↔ Site Integration (link entre Oracle Cloud e o site/Vercel)
+
+**Problema:** O frontend usava `io()` com URL relativa, então ao rodar no Vercel
+o Socket.IO tentava conectar ao próprio Vercel (serverless, sem WebSocket) em vez
+do Oracle Cloud VM onde o bot roda. As chamadas de API (`/api/trades` etc.) também
+iam para o Vercel sem engine.
+
+**Solução:** Endpoint público `/api/config` expõe `ORACLE_BACKEND_URL`. O frontend
+busca esse endpoint no boot e usa a URL retornada para Socket.IO e todas as chamadas
+de API. Quando rodando diretamente no Oracle Cloud, `backendUrl` é `''` e tudo
+funciona com URL relativa (sem mudança de comportamento).
+
+#### 1. `src/auth/authMiddleware.ts`
+- Adicionado `/api/config` na lista de `publicPaths` (não requer JWT)
+
+#### 2. `src/engine/Config.ts`
+- Adicionados campos `oracleBackendUrl` (string) e `allowedOrigins` (string[])
+- Lidos de `ORACLE_BACKEND_URL` e `ALLOWED_ORIGINS` (separados por vírgula)
+
+#### 3. `src/dashboard/DashboardServer.ts`
+- Endpoint público `GET /api/config` → `{ backendUrl: oracleBackendUrl }`
+- CORS do Express e do Socket.IO agora usa `config.allowedOrigins` (ou `'*'` se vazio)
+- CSP `connect-src` dinamicamente inclui `ORACLE_BACKEND_URL` (HTTP e WS) quando configurado
+
+#### 4. `public/js/dashboard.js`
+- Refatorado para async: `init()` busca `/api/config` antes de qualquer operação
+- Socket.IO: `io(backendUrl, opts)` quando `backendUrl` está definido, senão `io(opts)`
+- `authFetch(path)` prefixa `backendUrl` em todas as chamadas de API
+
+#### 5. `public/js/login.js`
+- Refatorado para async: `init()` busca `/api/config` antes de montar os listeners
+- Função `apiCall(path, opts)` usa `backendUrl` como prefixo para `/api/auth/login` e `/api/auth/status`
+
+#### 6. `.env.example`
+- Adicionadas variáveis `ORACLE_BACKEND_URL` e `ALLOWED_ORIGINS` com documentação
+
+### Variáveis de Ambiente Novas
+```env
+ORACLE_BACKEND_URL=   # URL do Oracle Cloud VM (ex: http://1.2.3.4:3000)
+                      # Vazio = mesmo host (Oracle direct access)
+ALLOWED_ORIGINS=      # CORS origins permitidas (ex: https://meuapp.vercel.app)
+                      # Vazio = wildcard (*)
+```
+
+### Como configurar
+
+**Cenário 1 — Oracle Cloud only (bot + dashboard no mesmo host):**
+```env
+# Não precisa configurar ORACLE_BACKEND_URL nem ALLOWED_ORIGINS
+# Acesse http://<IP>:3000
+```
+
+**Cenário 2 — Vercel (frontend) + Oracle Cloud (backend):**
+```env
+# No Vercel (variáveis de ambiente do projeto):
+ORACLE_BACKEND_URL=http://<IP_ORACLE>:3000
+JWT_SECRET=<mesmo valor do Oracle>   # token precisa ser válido nos dois lados
+
+# No Oracle Cloud (.env):
+ALLOWED_ORIGINS=https://meuapp.vercel.app
+JWT_SECRET=<mesmo valor do Vercel>
+```
+
+### Pendências
+- [ ] Testar cenário Vercel → Oracle com IP real
+- [ ] Verificar se o `JWT_SECRET` está sincronizado entre Vercel e Oracle (requisito de segurança)
+
+---
+
+## Sessão Anterior — 2026-04-15
 
 **Branch:** `claude/review-incomplete-code-8qT6W`
 **PR:** [#8](https://github.com/pedroqvd/crypto-ai-trading/pull/8)

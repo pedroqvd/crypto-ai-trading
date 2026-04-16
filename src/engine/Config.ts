@@ -43,6 +43,10 @@ export interface TradingConfig {
   // Correlation analysis
   correlationEnabled: boolean;  // Detect pricing inconsistencies between related markets
 
+  // Remote integration
+  oracleBackendUrl: string;   // Full URL of Oracle Cloud backend when frontend runs on a separate host (e.g. Vercel)
+  allowedOrigins: string[];   // CORS allowed origins (comma-separated in env)
+
   // Logging
   logLevel: 'debug' | 'info' | 'warn';
 }
@@ -86,6 +90,12 @@ export function loadConfig(): TradingConfig {
 
     // Correlation
     correlationEnabled: process.env.CORRELATION_ENABLED !== 'false',
+
+    // Remote integration
+    oracleBackendUrl: (process.env.ORACLE_BACKEND_URL || '').replace(/\/$/, ''),
+    allowedOrigins: process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+      : [],
 
     // Logging
     logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn') || 'info',
