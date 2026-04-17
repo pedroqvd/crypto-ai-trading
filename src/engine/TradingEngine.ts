@@ -114,13 +114,12 @@ export class TradingEngine extends EventEmitter {
     logger.info('Engine', `⏱️ Scan Interval: ${config.scanIntervalMs / 1000}s`);
     logger.info('Engine', `🚀 ========================================\n`);
 
-    // PRIVATE_KEY validation before first cycle
+    // PRIVATE_KEY validation — force DRY-RUN if key missing
     if (!config.dryRun && !config.privateKey) {
-      logger.error('Engine', '❌ PRIVATE_KEY não configurada! O modo LIVE requer uma chave privada válida.');
-      logger.error('Engine', '   Configure PRIVATE_KEY no arquivo .env e reinicie o bot.');
-      this.logDecision('system', 'Startup abortado: PRIVATE_KEY não configurada para modo LIVE');
-      this.running = false;
-      return;
+      logger.warn('Engine', '⚠️ PRIVATE_KEY não configurada — forçando DRY-RUN por segurança.');
+      config.dryRun = true;
+      this.logDecision('system', '⚠️ Modo forçado para DRY-RUN: PRIVATE_KEY não configurada');
+      this.emit('statusUpdate', this.getStatus());
     }
 
     this.logDecision('system', `Engine iniciado em modo ${mode}. Bankroll: $${config.bankroll}`);

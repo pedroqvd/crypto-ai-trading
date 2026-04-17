@@ -20,16 +20,21 @@ primary_region = "gru"
   min_machines_running = 1
   processes           = ['app']
 
+  [[http_service.checks]]
+    grace_period  = "10s"
+    interval      = "30s"
+    method        = "GET"
+    timeout       = "5s"
+    path          = "/api/health"
+
 [[vm]]
   memory   = "256mb"
   cpu_kind = "shared"
   cpus     = 1
 
-# Volume persistente desativado temporariamente.
-# Para ativar: instalar flyctl e rodar:
-#   fly volumes create bot_data -r gru -n 1
-# Depois descomentar as linhas abaixo:
+# Volume persistente — requer CLI para criar:
+#   flyctl volumes create bot_data --region gru --size 1
+# Depois descomentar:
 # [[mounts]]
 #   source      = "bot_data"
 #   destination = "/app/data"
-#   initial_size = "1gb"
