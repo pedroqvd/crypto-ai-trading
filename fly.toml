@@ -5,7 +5,7 @@
 # SSH:    fly ssh console
 # ================================================
 
-app = "app-crimson-tree-5708"
+app = "crypto-ai-trading"
 primary_region = "gru"   # São Paulo — menor latência para o Brasil
 
 [build]
