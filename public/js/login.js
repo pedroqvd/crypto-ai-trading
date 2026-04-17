@@ -33,16 +33,16 @@
   // BOOTSTRAP — Load backend URL then wire up
   // ========================================
   async function init() {
-    // When frontend is on Vercel and bot is on Oracle Cloud,
-    // backendUrl will be set and all API calls go directly to Oracle.
-    // When running directly on Oracle Cloud, backendUrl is '' (same origin).
+    // When frontend is on Vercel and bot is on Fly.io,
+    // backendUrl will be set and all API calls go directly to Fly.io.
+    // When Fly.io serves the frontend directly, backendUrl is '' (same origin).
     let backendUrl = '';
     try {
       const res = await fetch('/api/config');
       const cfg = await res.json();
       backendUrl = (cfg.backendUrl || '').replace(/\/$/, '');
     } catch (_) {
-      // Config fetch failed — assume same-origin (Oracle direct access)
+      // Config fetch failed — assume same-origin
     }
 
     function apiCall(path, options) {

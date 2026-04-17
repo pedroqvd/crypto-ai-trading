@@ -54,22 +54,22 @@
   // ========================================
   async function init() {
     // Fetch config from the host serving this page.
-    // When frontend is on Vercel and bot is on Oracle Cloud,
-    // Vercel sets ORACLE_BACKEND_URL → backendUrl points to Oracle.
-    // When running directly on Oracle Cloud, backendUrl is '' and
-    // all connections stay relative (same origin).
+    // When frontend is on Vercel and bot is on Fly.io,
+    // Vercel sets BACKEND_URL → backendUrl points to Fly.io.
+    // When Fly.io serves the frontend directly, backendUrl is ''
+    // and all connections stay relative (same origin).
     let backendUrl = '';
     try {
       const res = await fetch('/api/config');
       const cfg = await res.json();
       backendUrl = (cfg.backendUrl || '').replace(/\/$/, '');
     } catch (_) {
-      // Config fetch failed — assume same-origin (Oracle direct access)
+      // Config fetch failed — assume same-origin
     }
 
     // ========================================
     // AUTH FETCH — Adds JWT token to all API calls
-    // Prepends backendUrl when connecting cross-origin (Vercel → Oracle)
+    // Prepends backendUrl when connecting cross-origin (Vercel → Fly.io)
     // ========================================
     function authFetch(path, options = {}) {
       const headers = Object.assign({}, options.headers, {

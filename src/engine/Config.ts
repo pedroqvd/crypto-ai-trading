@@ -52,8 +52,8 @@ export interface TradingConfig {
   calibrationEnabled: boolean;
 
   // Remote integration
-  oracleBackendUrl: string;   // Full URL of Oracle Cloud backend when frontend runs on a separate host (e.g. Vercel)
-  allowedOrigins: string[];   // CORS allowed origins (comma-separated in env)
+  backendUrl: string;        // Full URL of Fly.io backend when frontend runs on Vercel
+  allowedOrigins: string[];  // CORS allowed origins (comma-separated in env)
 
   // Logging
   logLevel: 'debug' | 'info' | 'warn';
@@ -108,7 +108,7 @@ export function loadConfig(): TradingConfig {
     calibrationEnabled: process.env.CALIBRATION_ENABLED !== 'false',
 
     // Remote integration
-    oracleBackendUrl: (process.env.ORACLE_BACKEND_URL || '').replace(/\/$/, ''),
+    backendUrl: (process.env.BACKEND_URL || '').replace(/\/$/, ''),
     allowedOrigins: process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
       : [],

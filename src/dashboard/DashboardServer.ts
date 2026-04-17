@@ -54,9 +54,9 @@ export class DashboardServer {
 
     // Security headers
     this.app.use((req, res, next) => {
-      // Build connect-src: always allow self + ws/wss; add Oracle backend URL when configured
-      const extraConnect = config.oracleBackendUrl
-        ? ` ${config.oracleBackendUrl} ${config.oracleBackendUrl.replace(/^http/, 'ws')}`
+      // Build connect-src: allow self + ws/wss + backend URL when running split (Vercel + Fly.io)
+      const extraConnect = config.backendUrl
+        ? ` ${config.backendUrl} ${config.backendUrl.replace(/^http/, 'ws')}`
         : '';
 
       res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -79,11 +79,11 @@ export class DashboardServer {
   // AUTH ROUTES (PUBLIC — before middleware)
   // ========================================
   private setupAuthRoutes(): void {
-    // Public config endpoint — exposes ORACLE_BACKEND_URL so the frontend
-    // knows where to connect Socket.IO and make API calls when running on
-    // a separate host (e.g. Vercel frontend → Oracle Cloud backend).
+    // Public config endpoint — tells the frontend where the backend lives
+    // when running split (Vercel frontend → Fly.io backend).
+    // Empty string means same-origin (frontend served by the bot itself).
     this.app.get('/api/config', (req, res) => {
-      res.json({ backendUrl: config.oracleBackendUrl });
+      res.json({ backendUrl: config.backendUrl });
     });
 
     // Login page
