@@ -6,34 +6,27 @@ import { config } from '../engine/Config';
 import { logger } from '../utils/Logger';
 
 export interface KellyResult {
-  fullKellyFraction: number;    // f* = (p - q) / (1 - q)
-  fractionalKelly: number;      // f* × KELLY_FRACTION
-  recommendedStake: number;     // fractionalKelly × BANKROLL
-  maxStake: number;             // Capped by risk limits
-  finalStake: number;           // min(recommended, max) — the actual bet
-  justification: string;        // Human-readable explanation
+  fullKellyFraction: number;
+  fractionalKelly: number;
+  recommendedStake: number;
+  maxStake: number;
+  finalStake: number;
+  justification: string;
 }
 
 const MIN_BET_SIZE = 1; // Minimum $1 bet
+const TAKER_FEE = 0.02; // Polymarket taker fee ~2%
 
 export class KellyCalculator {
 
   /**
-   * Kelly Criterion for binary prediction markets:
-   * 
-   *   f* = (p - q) / (1 - q)
-   * 
-   * Where:
-   *   p = P_true (estimated true probability)
-   *   q = P_implied (market price)
-   *   f* = optimal fraction of bankroll to bet
-   * 
-   * We use Fractional Kelly for safety:
-   *   stake = bankroll × (KELLY_FRACTION × f*)
-   * 
-   * With hard caps:
-   *   stake ≤ bankroll × MAX_POSITION_PCT
-   *   stake ≤ market_liquidity × 0.10 (don't move the market)
+   * Kelly Criterion for binary prediction markets with taker fee:
+   *
+   *   b_net = ((1 - q) / q) * (1 - fee)   net payoff odds after fee
+   *   f* = (b_net * p - (1 - p)) / b_net
+   *      = p - (1 - p) * q / ((1 - q) * (1 - fee))
+   *
+   * Where p = P_true, q = P_implied (market price)
    */
   calculate(
     pTrue: number,
@@ -41,14 +34,15 @@ export class KellyCalculator {
     currentBankroll: number,
     marketLiquidity: number
   ): KellyResult {
-    // Validate inputs
     const p = Math.max(0.01, Math.min(0.99, pTrue));
     const q = Math.max(0.01, Math.min(0.99, pImplied));
 
-    // Kelly formula
-    const fullKelly = (p - q) / (1 - q);
+    // Net payoff odds after taker fee
+    const bNet = ((1 - q) / q) * (1 - TAKER_FEE);
 
-    // If Kelly is negative or zero, don't bet
+    // Kelly formula with fee included
+    const fullKelly = (bNet * p - (1 - p)) / bNet;
+
     if (fullKelly <= 0) {
       return {
         fullKellyFraction: fullKelly,
@@ -56,28 +50,33 @@ export class KellyCalculator {
         recommendedStake: 0,
         maxStake: 0,
         finalStake: 0,
-        justification: `Kelly negativo (f*=${fullKelly.toFixed(4)}). Sem edge, não apostar.`,
+        justification: `Kelly negativo (f*=${fullKelly.toFixed(4)}). Sem edge após taxas, não apostar.`,
       };
     }
 
-    // Fractional Kelly
     const fractional = fullKelly * config.kellyFraction;
-
-    // Recommended stake
     const recommended = currentBankroll * fractional;
 
-    // Hard caps
+    // Skip trade if Kelly recommendation is below minimum bet — don't force small bets
+    if (recommended < MIN_BET_SIZE) {
+      return {
+        fullKellyFraction: fullKelly,
+        fractionalKelly: fractional,
+        recommendedStake: recommended,
+        maxStake: 0,
+        finalStake: 0,
+        justification: `Kelly recomenda $${recommended.toFixed(2)} < mínimo ($${MIN_BET_SIZE}). Edge insuficiente para o bankroll atual.`,
+      };
+    }
+
     const maxByPosition = currentBankroll * config.maxPositionPct;
-    const maxByLiquidity = marketLiquidity * 0.10; // Don't take more than 10% of liquidity
+    const maxByLiquidity = marketLiquidity * 0.10;
     const maxStake = Math.min(maxByPosition, maxByLiquidity);
 
-    // Final stake
     let finalStake = Math.min(recommended, maxStake);
-    finalStake = Math.max(finalStake, MIN_BET_SIZE); // At least $1
 
-    // If final stake is more than bankroll allows, cap it
     if (finalStake > currentBankroll * 0.5) {
-      finalStake = currentBankroll * 0.5; // Never bet more than 50% of bankroll
+      finalStake = currentBankroll * 0.5;
     }
 
     const justification = this.buildJustification(
@@ -85,7 +84,7 @@ export class KellyCalculator {
       p, q, currentBankroll, marketLiquidity
     );
 
-    logger.debug('Kelly', `p=${p.toFixed(3)} q=${q.toFixed(3)} f*=${fullKelly.toFixed(4)} → $${finalStake.toFixed(2)}`);
+    logger.debug('Kelly', `p=${p.toFixed(3)} q=${q.toFixed(3)} bNet=${bNet.toFixed(3)} f*=${fullKelly.toFixed(4)} → $${finalStake.toFixed(2)}`);
 
     return {
       fullKellyFraction: fullKelly,
@@ -108,7 +107,7 @@ export class KellyCalculator {
     bankroll: number,
     liquidity: number
   ): string {
-    let reason = `Kelly: f*=${(fullKelly * 100).toFixed(2)}%, `;
+    let reason = `Kelly (c/taxa): f*=${(fullKelly * 100).toFixed(2)}%, `;
     reason += `fração=${(fractional * 100).toFixed(2)}%, `;
     reason += `recomendado=$${recommended.toFixed(2)}. `;
 
