@@ -32,9 +32,6 @@ primary_region = "gru"
   cpu_kind = "shared"
   cpus     = 1
 
-# Volume persistente — requer CLI para criar:
-#   flyctl volumes create bot_data --region gru --size 1
-# Depois descomentar:
-# [[mounts]]
-#   source      = "bot_data"
-#   destination = "/app/data"
+[[mounts]]
+  source      = "bot_data"
+  destination = "/app/data"
