@@ -24,6 +24,7 @@ export function createAuthMiddleware(authService: AuthService) {
       '/api/auth/login',
       '/api/auth/status',
       '/api/config',
+      '/api/health',
       '/css/login.css',
       '/css/dashboard.css',
       '/js/login.js',
