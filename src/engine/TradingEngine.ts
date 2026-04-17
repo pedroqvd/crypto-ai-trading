@@ -15,7 +15,7 @@ import { ProbabilityEstimator } from '../analysis/ProbabilityEstimator';
 import { EdgeCalculator, EdgeAnalysis } from '../analysis/EdgeCalculator';
 import { KellyCalculator } from '../analysis/KellyCalculator';
 import { RiskManager } from '../risk/RiskManager';
-import { CorrelationAnalyzer, CorrelationOpportunity } from '../analysis/CorrelationAnalyzer';
+import { CorrelationAnalyzer } from '../analysis/CorrelationAnalyzer';
 
 export interface EngineStatus {
   running: boolean;
@@ -164,11 +164,9 @@ export class TradingEngine extends EventEmitter {
     edgeReversalEnabled: boolean;
     momentumExitCycles: number;
     correlationEnabled: boolean;
-    claudeEnabled: boolean;
     discordWebhookUrl: string;
     privateKey: string;
     newsApiKey: string;
-    claudeApiKey: string;
   }>): void {
     Object.assign(config, updates);
     if (updates.bankroll !== undefined) {
@@ -198,11 +196,9 @@ export class TradingEngine extends EventEmitter {
       edgeReversalEnabled: config.edgeReversalEnabled,
       momentumExitCycles: config.momentumExitCycles,
       correlationEnabled: config.correlationEnabled,
-      claudeEnabled: config.claudeEnabled,
       discordWebhookUrl: config.discordWebhookUrl || '',
       hasPrivateKey: !!config.privateKey,
       hasNewsApiKey: !!config.newsApiKey,
-      hasClaudeApiKey: !!config.claudeApiKey,
     };
   }
 

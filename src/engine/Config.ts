@@ -15,13 +15,13 @@ export interface TradingConfig {
   maxPositionPct: number;
   maxTotalExposurePct: number;
   // Exit strategy
-  exitPriceTarget: number;       // Take profit at this price (default 0.85)
-  stopLossPct: number;           // Exit if position loses this % of entry (default 0.40)
-  trailingStopActivation: number;// Activate trailing stop after this % gain (default 0.20)
-  trailingStopDistance: number;  // Trail this % below peak price (default 0.12)
-  timeDecayHours: number;        // Exit losing positions this many hours before expiry (default 6)
-  edgeReversalEnabled: boolean;  // Exit if original thesis is invalidated (default true)
-  momentumExitCycles: number;    // Exit after this many consecutive decline cycles (default 3)
+  exitPriceTarget: number;
+  stopLossPct: number;
+  trailingStopActivation: number;
+  trailingStopDistance: number;
+  timeDecayHours: number;
+  edgeReversalEnabled: boolean;
+  momentumExitCycles: number;
   maxOrderSpreadPct: number;
   minOrderBookShares: number;
   scanIntervalMs: number;
@@ -30,10 +30,6 @@ export interface TradingConfig {
   newsApiKey: string;
   newsRelevanceHours: number;
   correlationEnabled: boolean;
-  claudeApiKey: string;
-  claudeEnabled: boolean;
-  claudeMaxCallsPerCycle: number;
-  calibrationEnabled: boolean;
   backendUrl: string;
   allowedOrigins: string[];
   logLevel: 'debug' | 'info' | 'warn';
@@ -65,10 +61,6 @@ export function loadConfig(): TradingConfig {
     newsApiKey: process.env.NEWS_API_KEY || '',
     newsRelevanceHours: parseInt(process.env.NEWS_RELEVANCE_HOURS || '6'),
     correlationEnabled: process.env.CORRELATION_ENABLED !== 'false',
-    claudeApiKey: process.env.CLAUDE_API_KEY || '',
-    claudeEnabled: process.env.CLAUDE_ENABLED !== 'false',
-    claudeMaxCallsPerCycle: parseInt(process.env.CLAUDE_MAX_CALLS_PER_CYCLE || '5'),
-    calibrationEnabled: process.env.CALIBRATION_ENABLED !== 'false',
     backendUrl: (process.env.BACKEND_URL || '').replace(/\/$/, ''),
     allowedOrigins: process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
