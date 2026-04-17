@@ -158,6 +158,12 @@ export class TradingEngine extends EventEmitter {
     maxTotalExposurePct: number;
     scanIntervalMs: number;
     exitPriceTarget: number;
+    stopLossPct: number;
+    trailingStopActivation: number;
+    trailingStopDistance: number;
+    timeDecayHours: number;
+    edgeReversalEnabled: boolean;
+    momentumExitCycles: number;
     correlationEnabled: boolean;
     claudeEnabled: boolean;
     discordWebhookUrl: string;
@@ -293,8 +299,6 @@ export class TradingEngine extends EventEmitter {
   // ========================================
   private async analyzeMarkets(filtered: ParsedMarket[], allMarkets: ParsedMarket[]): Promise<EdgeAnalysis[]> {
     const edgeAnalyses: EdgeAnalysis[] = [];
-    const volumes = allMarkets.map(m => m.volume).sort((a, b) => a - b);
-    const medianVolume = volumes[Math.floor(volumes.length / 2)];
 
     for (const market of filtered) {
       // Note: news is fetched per-opportunity in executeOpportunities (rate limit friendly)

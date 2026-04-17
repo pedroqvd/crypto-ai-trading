@@ -201,6 +201,58 @@ export class DashboardServer {
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, '../../public/index.html'));
     });
+
+    // ── BOT CONTROL ──────────────────────────────────────────────────────────
+    this.app.post('/api/bot/stop', (req, res) => {
+      this.engine.stop();
+      const status = this.engine.getStatus();
+      this.io.emit('statusUpdate', status);
+      res.json({ success: true, running: false });
+    });
+
+    this.app.post('/api/bot/start', (req, res) => {
+      if (this.engine.isRunning()) {
+        res.status(400).json({ error: 'Bot já está rodando.' });
+        return;
+      }
+      this.engine.start().catch((err) =>
+        logger.error('Dashboard', 'Erro ao iniciar engine', err instanceof Error ? err.message : err)
+      );
+      res.json({ success: true, running: true });
+    });
+
+    // ── SETTINGS ─────────────────────────────────────────────────────────────
+    this.app.get('/api/settings', (req, res) => {
+      res.json(this.engine.getPublicConfig());
+    });
+
+    const ALLOWED_SETTING_KEYS = new Set([
+      'dryRun', 'bankroll', 'scanIntervalMs', 'minEdge', 'kellyFraction',
+      'maxPositionPct', 'exitPriceTarget', 'stopLossPct', 'trailingStopActivation',
+      'trailingStopDistance', 'timeDecayHours', 'edgeReversalEnabled', 'momentumExitCycles',
+      'maxTotalExposurePct', 'correlationEnabled', 'claudeEnabled', 'discordWebhookUrl',
+      'privateKey', 'claudeApiKey', 'newsApiKey',
+    ]);
+
+    this.app.post('/api/settings', (req, res) => {
+      const body = req.body as Record<string, unknown>;
+      const updates: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(body)) {
+        if (ALLOWED_SETTING_KEYS.has(key)) {
+          updates[key] = value;
+        }
+      }
+      if (Object.keys(updates).length === 0) {
+        res.status(400).json({ error: 'Nenhum campo válido enviado.' });
+        return;
+      }
+      this.engine.updateConfig(updates as Parameters<typeof this.engine.updateConfig>[0]);
+      const status = this.engine.getStatus();
+      this.io.emit('statusUpdate', status);
+      this.io.emit('settingsUpdated', this.engine.getPublicConfig());
+      logger.info('Dashboard', `⚙️ Settings atualizadas via dashboard`);
+      res.json({ success: true });
+    });
   }
 
   // ========================================
