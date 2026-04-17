@@ -3,7 +3,6 @@
 // ================================================
 
 import 'dotenv/config';
-import { z } from 'zod';
 
 export interface TradingConfig {
   privateKey: string;
@@ -24,22 +23,17 @@ export interface TradingConfig {
   newsApiKey: string;
   newsRelevanceHours: number;
   correlationEnabled: boolean;
-  oracleBackendUrl: string;
+  claudeApiKey: string;
+  claudeEnabled: boolean;
+  claudeMaxCallsPerCycle: number;
+  calibrationEnabled: boolean;
+  backendUrl: string;
   allowedOrigins: string[];
   logLevel: 'debug' | 'info' | 'warn';
 }
 
-const configSchema = z.object({
-  kellyFraction: z.number().min(0.01, 'Kelly deve estar entre 1% e 25%').max(0.25),
-  minEdge: z.number().min(0.005, 'Edge mínimo deve ser ≥ 0.5%').max(0.5, 'Edge máximo deve ser ≤ 50%'),
-  bankroll: z.number().positive('Bankroll deve ser > 0').max(500_000, 'Bankroll suspeito: >$500k'),
-  maxPositionPct: z.number().min(0.001, 'Posição máxima deve ser ≥ 0.1%').max(0.2, 'Posição máxima deve ser ≤ 20%'),
-  maxTotalExposurePct: z.number().min(0.01, 'Exposição máxima deve ser ≥ 1%').max(1.0, 'Exposição máxima deve ser ≤ 100%'),
-  exitPriceTarget: z.number().min(0.5, 'Target de saída deve ser ≥ 50%').max(0.99, 'Target de saída deve ser ≤ 99%'),
-});
-
 export function loadConfig(): TradingConfig {
-  const rawConfig = {
+  return {
     privateKey: process.env.PRIVATE_KEY || '',
     dryRun: process.env.DRY_RUN !== 'false',
     bankroll: parseFloat(process.env.BANKROLL || '1000'),
@@ -58,20 +52,16 @@ export function loadConfig(): TradingConfig {
     newsApiKey: process.env.NEWS_API_KEY || '',
     newsRelevanceHours: parseInt(process.env.NEWS_RELEVANCE_HOURS || '6'),
     correlationEnabled: process.env.CORRELATION_ENABLED !== 'false',
-    oracleBackendUrl: (process.env.ORACLE_BACKEND_URL || '').replace(/\/$/, ''),
+    claudeApiKey: process.env.CLAUDE_API_KEY || '',
+    claudeEnabled: process.env.CLAUDE_ENABLED !== 'false',
+    claudeMaxCallsPerCycle: parseInt(process.env.CLAUDE_MAX_CALLS_PER_CYCLE || '5'),
+    calibrationEnabled: process.env.CALIBRATION_ENABLED !== 'false',
+    backendUrl: (process.env.BACKEND_URL || '').replace(/\/$/, ''),
     allowedOrigins: process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
       : [],
     logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn') || 'info',
   };
-
-  // Validar parâmetros críticos de risco
-  const validated = configSchema.safeParse(rawConfig);
-  if (!validated.success) {
-    throw new Error(`❌ Configuração inválida: ${validated.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
-  }
-
-  return rawConfig;
 }
 
 export const config = loadConfig();
