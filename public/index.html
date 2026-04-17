@@ -39,9 +39,178 @@
         <span class="header-stat-label">Uptime</span>
         <span id="header-uptime" class="header-stat-value">00:00:00</span>
       </div>
+      <button id="bot-toggle-btn" class="bot-toggle-btn bot-stop" title="Parar bot">■ Parar Bot</button>
+      <button id="settings-btn" class="settings-btn" title="Configurações">⚙️</button>
       <button id="logout-btn" class="logout-btn" title="Sair">🔓 Sair</button>
     </div>
   </header>
+
+  <!-- ========================================
+       SETTINGS DRAWER
+       ======================================== -->
+  <div id="settings-overlay" class="settings-overlay hidden"></div>
+  <aside id="settings-drawer" class="settings-drawer hidden">
+    <div class="settings-header">
+      <h2>⚙️ Configurações</h2>
+      <button id="settings-close" class="settings-close">✕</button>
+    </div>
+    <div class="settings-body">
+
+      <!-- Operação -->
+      <div class="settings-section">
+        <h3>🤖 Operação</h3>
+        <div class="settings-field">
+          <label>Modo</label>
+          <div class="toggle-row">
+            <span id="dry-run-label" class="toggle-label">DRY-RUN</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="s-dry-run">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <span class="settings-hint">🟢 Ligado = Simulação &nbsp;|&nbsp; 🔴 Desligado = Dinheiro real</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-bankroll">Bankroll (USDC)</label>
+          <input type="number" id="s-bankroll" min="1" step="1" placeholder="1000">
+        </div>
+        <div class="settings-field">
+          <label for="s-scan-interval">Intervalo de Scan (segundos)</label>
+          <input type="number" id="s-scan-interval" min="10" step="10" placeholder="60">
+        </div>
+      </div>
+
+      <!-- Wallet -->
+      <div class="settings-section">
+        <h3>👛 Wallet</h3>
+        <div class="settings-field">
+          <label for="s-private-key">Chave Privada (Polygon)</label>
+          <input type="password" id="s-private-key" placeholder="0x... (obrigatório para modo LIVE)">
+          <span id="pk-status" class="settings-hint"></span>
+        </div>
+      </div>
+
+      <!-- Estratégia -->
+      <div class="settings-section">
+        <h3>📊 Estratégia</h3>
+        <div class="settings-field">
+          <label for="s-min-edge">Edge Mínimo (%)</label>
+          <input type="number" id="s-min-edge" min="0.5" max="50" step="0.5" placeholder="3">
+        </div>
+        <div class="settings-field">
+          <label for="s-kelly">Fração Kelly (%)</label>
+          <input type="number" id="s-kelly" min="1" max="25" step="1" placeholder="25">
+        </div>
+        <div class="settings-field">
+          <label for="s-max-pos">Posição Máxima (% do bankroll)</label>
+          <input type="number" id="s-max-pos" min="0.1" max="20" step="0.5" placeholder="5">
+        </div>
+      </div>
+
+      <!-- Saída -->
+      <div class="settings-section">
+        <h3>🚪 Estratégia de Saída</h3>
+        <div class="settings-field">
+          <label for="s-exit-target">Alvo de Lucro (%)</label>
+          <input type="number" id="s-exit-target" min="50" max="99" step="1" placeholder="85">
+          <span class="settings-hint">Fechar posição quando preço atingir este % (ex: 85 = fechar a 0.85)</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-stop-loss">Stop-Loss (%)</label>
+          <input type="number" id="s-stop-loss" min="5" max="80" step="5" placeholder="40">
+          <span class="settings-hint">Fechar se posição cair este % do preço de entrada</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-trailing-activation">Trailing Stop — Ativação (%)</label>
+          <input type="number" id="s-trailing-activation" min="5" max="50" step="5" placeholder="20">
+          <span class="settings-hint">Ativar trailing stop após este % de ganho</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-trailing-distance">Trailing Stop — Distância (%)</label>
+          <input type="number" id="s-trailing-distance" min="3" max="30" step="1" placeholder="12">
+          <span class="settings-hint">Fechar se cair este % abaixo do pico</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-time-decay">Decay de Tempo (horas)</label>
+          <input type="number" id="s-time-decay" min="1" max="24" step="1" placeholder="6">
+          <span class="settings-hint">Fechar posições perdendo com menos de X horas para expirar</span>
+        </div>
+        <div class="settings-field">
+          <label>Reversão de Edge</label>
+          <div class="toggle-row">
+            <span id="edge-reversal-label" class="toggle-label">Ativada</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="s-edge-reversal">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <span class="settings-hint">Fechar se a tese original for invalidada pelo mercado</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-momentum-cycles">Saída por Momentum (ciclos)</label>
+          <input type="number" id="s-momentum-cycles" min="1" max="10" step="1" placeholder="3">
+          <span class="settings-hint">Fechar após X ciclos consecutivos de queda em posição perdedora</span>
+        </div>
+      </div>
+
+      <!-- Risco -->
+      <div class="settings-section">
+        <h3>🛡️ Risco</h3>
+        <div class="settings-field">
+          <label for="s-max-exposure">Exposição Máxima Total (%)</label>
+          <input type="number" id="s-max-exposure" min="1" max="100" step="5" placeholder="50">
+        </div>
+        <div class="settings-field">
+          <label>Correlação entre Mercados</label>
+          <div class="toggle-row">
+            <span class="toggle-label">Ativada</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="s-correlation">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Integrações -->
+      <div class="settings-section">
+        <h3>🔗 Integrações</h3>
+        <div class="settings-field">
+          <label>Claude AI (Análise LLM)</label>
+          <div class="toggle-row">
+            <span class="toggle-label">Ativado</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="s-claude-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="settings-field">
+          <label for="s-claude-key">Claude API Key</label>
+          <input type="password" id="s-claude-key" placeholder="sk-ant-...">
+          <span id="claude-key-status" class="settings-hint"></span>
+        </div>
+        <div class="settings-field">
+          <label for="s-discord">Discord Webhook URL</label>
+          <input type="text" id="s-discord" placeholder="https://discord.com/api/webhooks/...">
+        </div>
+        <div class="settings-field">
+          <label for="s-news-key">News API Key</label>
+          <input type="password" id="s-news-key" placeholder="newsapi.org key">
+          <span id="news-key-status" class="settings-hint"></span>
+        </div>
+      </div>
+
+      <div class="settings-warning">
+        ⚠️ Configurações são aplicadas imediatamente mas não persistem após restart do bot.
+      </div>
+
+      <div class="settings-actions">
+        <button id="settings-save" class="btn-save">💾 Salvar</button>
+        <button id="settings-cancel" class="btn-cancel">Cancelar</button>
+      </div>
+    </div>
+  </aside>
 
   <!-- ========================================
        MAIN CONTENT
