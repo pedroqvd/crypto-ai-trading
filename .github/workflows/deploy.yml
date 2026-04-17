@@ -13,27 +13,11 @@ jobs:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Create volume if not exists
-        run: |
-          if ! flyctl volumes list --app crypto-ai-trading | grep -q "bot_data"; then
-            echo "Creating bot_data volume..."
-            flyctl volumes create bot_data \
-              --app crypto-ai-trading \
-              --region gru \
-              --size 1 \
-              --yes
-          else
-            echo "Volume bot_data already exists, skipping."
-          fi
+        run: flyctl volumes create bot_data --app crypto-ai-trading --region gru --size 1 --yes || true
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Enable volume mount in fly.toml
-        run: |
-          sed -i 's/^# \[\[mounts\]\]/[[mounts]]/' fly.toml
-          sed -i 's/^#   source      = "bot_data"/  source      = "bot_data"/' fly.toml
-          sed -i 's/^#   destination = "\/app\/data"/  destination = "\/app\/data"/' fly.toml
-
       - name: Deploy
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --remote-only --app crypto-ai-trading
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

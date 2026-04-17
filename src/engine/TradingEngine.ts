@@ -233,13 +233,24 @@ export class TradingEngine extends EventEmitter {
     // Step 3: Analyze — probability, edge, EV
     const opportunities = await this.analyzeMarkets(filtered, markets);
 
-    // Step 4: Correlation analysis (runs in parallel with main pipeline)
+    // Step 4: Correlation analysis — merges with main opportunities
+    let correlationOpps: EdgeAnalysis[] = [];
     if (config.correlationEnabled && events.length > 0) {
-      await this.runCorrelationAnalysis(events, markets);
+      correlationOpps = await this.runCorrelationAnalysis(events, markets);
     }
 
+    // Merge: add correlation opps not already in the main list
+    const allOpportunities = [...opportunities];
+    for (const corrOpp of correlationOpps) {
+      if (!allOpportunities.some(o => o.marketId === corrOpp.marketId)) {
+        allOpportunities.push(corrOpp);
+      }
+    }
+    // Sort by edge descending so best opportunities execute first
+    allOpportunities.sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge));
+
     // Step 5: Execute best opportunities
-    await this.executeOpportunities(opportunities);
+    await this.executeOpportunities(allOpportunities);
 
     // Step 6: Monitor existing positions (exit strategy + resolution)
     await this.monitorPositions(markets);
@@ -343,18 +354,47 @@ export class TradingEngine extends EventEmitter {
   // ========================================
   // STEP 4: CORRELATION ANALYSIS
   // ========================================
-  private async runCorrelationAnalysis(events: ParsedEvent[], allMarkets: ParsedMarket[]): Promise<void> {
+  private async runCorrelationAnalysis(events: ParsedEvent[], allMarkets: ParsedMarket[]): Promise<EdgeAnalysis[]> {
     const inconsistencies = this.correlationAnalyzer.findInconsistencies(events);
-    if (inconsistencies.length === 0) return;
+    if (inconsistencies.length === 0) return [];
 
-    for (const opp of inconsistencies.slice(0, 3)) {
+    const marketMap = new Map(allMarkets.map(m => [m.id, m]));
+    const result: EdgeAnalysis[] = [];
+
+    for (const opp of inconsistencies.slice(0, 5)) {
       const summary = this.correlationAnalyzer.summarize(opp);
       this.logDecision('opportunity', `🔗 CORRELAÇÃO: ${summary}`);
 
-      // Boost the mispriced market if it's in our opportunity list
-      // (the correlation signal acts as additional confirmation)
-      logger.debug('Correlation', summary);
+      // Skip markets already in active positions
+      if (this.activeMarketIds.has(opp.marketId)) continue;
+
+      const market = marketMap.get(opp.marketId);
+      if (!market) continue;
+
+      // fairPrice is the correlation-derived true probability
+      const estimatedTrueProb = opp.recommendation === 'BUY_YES'
+        ? opp.fairPrice
+        : 1 - opp.fairPrice;
+
+      const edgeAnalysis = this.edgeCalc.calculateEdge(
+        opp.marketId,
+        opp.question,
+        market.yesPrice,
+        estimatedTrueProb,
+        0.70, // correlation signal has good confidence
+        market.liquidity,
+        market.yesTokenId,
+        market.noTokenId,
+        market.negRisk
+      );
+
+      if (edgeAnalysis.side !== 'NO_TRADE') {
+        edgeAnalysis.reasoning = `[CORRELAÇÃO] ${edgeAnalysis.reasoning}`;
+        result.push(edgeAnalysis);
+      }
     }
+
+    return result;
   }
 
   // ========================================
