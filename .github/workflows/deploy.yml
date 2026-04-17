@@ -9,15 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Create volume if not exists
-        run: flyctl volumes create bot_data --app crypto-ai-trading --region gru --size 1 --yes || true
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      - name: Deploy
-        run: flyctl deploy --remote-only --app crypto-ai-trading
+      - run: flyctl deploy --remote-only --app crypto-ai-trading
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

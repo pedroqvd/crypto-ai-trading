@@ -21,10 +21,10 @@ primary_region = "gru"
   processes           = ['app']
 
   [[http_service.checks]]
-    grace_period  = "10s"
-    interval      = "30s"
+    grace_period  = "30s"
+    interval      = "60s"
     method        = "GET"
-    timeout       = "5s"
+    timeout       = "10s"
     path          = "/api/health"
 
 [[vm]]
@@ -32,6 +32,8 @@ primary_region = "gru"
   cpu_kind = "shared"
   cpus     = 1
 
-[[mounts]]
-  source      = "bot_data"
-  destination = "/app/data"
+# [[mounts]] — descomentar após criar volume via CLI:
+#   flyctl volumes create bot_data --app crypto-ai-trading --region gru --size 1
+# [[mounts]]
+#   source      = "bot_data"
+#   destination = "/app/data"
