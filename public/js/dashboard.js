@@ -156,6 +156,145 @@
     });
 
     // ========================================
+    // BOT START / STOP
+    // ========================================
+    const botToggleBtn = $('bot-toggle-btn');
+    if (botToggleBtn) {
+      botToggleBtn.addEventListener('click', async () => {
+        const isRunning = botToggleBtn.classList.contains('bot-stop');
+        const endpoint = isRunning ? '/api/bot/stop' : '/api/bot/start';
+        botToggleBtn.disabled = true;
+        try {
+          const res = await authFetch(endpoint, { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok) alert(data.error || 'Erro ao alterar estado do bot.');
+        } catch (e) {
+          alert('Erro de conexão.');
+        } finally {
+          botToggleBtn.disabled = false;
+        }
+      });
+    }
+
+    // ========================================
+    // SETTINGS DRAWER
+    // ========================================
+    const settingsBtn     = $('settings-btn');
+    const settingsDrawer  = $('settings-drawer');
+    const settingsOverlay = $('settings-overlay');
+    const settingsClose   = $('settings-close');
+    const settingsCancel  = $('settings-cancel');
+    const settingsSave    = $('settings-save');
+
+    function openSettings() {
+      settingsDrawer.classList.remove('hidden');
+      settingsOverlay.classList.remove('hidden');
+      loadSettingsValues();
+    }
+
+    function closeSettings() {
+      settingsDrawer.classList.add('hidden');
+      settingsOverlay.classList.add('hidden');
+    }
+
+    async function loadSettingsValues() {
+      try {
+        const res = await authFetch('/api/settings');
+        const cfg = await res.json();
+        $('s-dry-run').checked       = !cfg.dryRun;
+        $('dry-run-label').textContent = cfg.dryRun ? 'DRY-RUN' : 'LIVE';
+        $('s-bankroll').value         = cfg.bankroll;
+        $('s-scan-interval').value    = cfg.scanIntervalMs / 1000;
+        $('s-min-edge').value         = +(cfg.minEdge * 100).toFixed(1);
+        $('s-kelly').value            = +(cfg.kellyFraction * 100).toFixed(0);
+        $('s-max-pos').value          = +(cfg.maxPositionPct * 100).toFixed(1);
+        $('s-exit-target').value      = +(cfg.exitPriceTarget * 100).toFixed(0);
+        $('s-max-exposure').value     = +(cfg.maxTotalExposurePct * 100).toFixed(0);
+        $('s-correlation').checked    = cfg.correlationEnabled;
+        $('s-claude-enabled').checked = cfg.claudeEnabled;
+        $('s-discord').value          = cfg.discordWebhookUrl || '';
+        $('pk-status').textContent       = cfg.hasPrivateKey ? '✅ Configurada' : '❌ Não configurada';
+        $('claude-key-status').textContent = cfg.hasClaudeApiKey ? '✅ Configurada' : '❌ Não configurada';
+        $('news-key-status').textContent   = cfg.hasNewsApiKey ? '✅ Configurada' : '❌ Não configurada';
+      } catch (e) {
+        console.error('Erro ao carregar settings:', e);
+      }
+    }
+
+    if (settingsBtn)    settingsBtn.addEventListener('click', openSettings);
+    if (settingsOverlay) settingsOverlay.addEventListener('click', closeSettings);
+    if (settingsClose)  settingsClose.addEventListener('click', closeSettings);
+    if (settingsCancel) settingsCancel.addEventListener('click', closeSettings);
+
+    // Dry-run toggle label
+    const dryRunToggle = $('s-dry-run');
+    if (dryRunToggle) {
+      dryRunToggle.addEventListener('change', () => {
+        $('dry-run-label').textContent = dryRunToggle.checked ? 'LIVE' : 'DRY-RUN';
+      });
+    }
+
+    if (settingsSave) {
+      settingsSave.addEventListener('click', async () => {
+        settingsSave.disabled = true;
+        settingsSave.textContent = '⏳ Salvando...';
+        try {
+          const body = {
+            dryRun:              !$('s-dry-run').checked,
+            bankroll:             parseFloat($('s-bankroll').value),
+            scanIntervalMs:       parseFloat($('s-scan-interval').value) * 1000,
+            minEdge:              parseFloat($('s-min-edge').value) / 100,
+            kellyFraction:        parseFloat($('s-kelly').value) / 100,
+            maxPositionPct:       parseFloat($('s-max-pos').value) / 100,
+            exitPriceTarget:      parseFloat($('s-exit-target').value) / 100,
+            maxTotalExposurePct:  parseFloat($('s-max-exposure').value) / 100,
+            correlationEnabled:   $('s-correlation').checked,
+            claudeEnabled:        $('s-claude-enabled').checked,
+            discordWebhookUrl:    $('s-discord').value.trim(),
+          };
+          // Only send keys if user typed something
+          const pk = $('s-private-key').value.trim();
+          if (pk) body.privateKey = pk;
+          const ck = $('s-claude-key').value.trim();
+          if (ck) body.claudeApiKey = ck;
+          const nk = $('s-news-key').value.trim();
+          if (nk) body.newsApiKey = nk;
+
+          const res = await authFetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (res.ok) {
+            closeSettings();
+            addNotification({ type: 'system', title: '⚙️ Configurações salvas', message: 'As configurações foram aplicadas imediatamente.', timestamp: new Date().toISOString() });
+          } else {
+            const d = await res.json().catch(() => ({}));
+            alert('Erro ao salvar: ' + (d.error || res.statusText));
+          }
+        } catch (e) {
+          alert('Erro de conexão ao salvar configurações.');
+        } finally {
+          settingsSave.disabled = false;
+          settingsSave.textContent = '💾 Salvar';
+        }
+      });
+    }
+
+    // Update bot toggle button based on status updates
+    socket.on('statusUpdate', (status) => {
+      if (botToggleBtn) {
+        if (status.running) {
+          botToggleBtn.textContent = '■ Parar Bot';
+          botToggleBtn.className = 'bot-toggle-btn bot-stop';
+        } else {
+          botToggleBtn.textContent = '▶ Iniciar Bot';
+          botToggleBtn.className = 'bot-toggle-btn bot-start';
+        }
+      }
+    });
+
+    // ========================================
     // LOGOUT
     // ========================================
     const logoutBtn = document.getElementById('logout-btn');

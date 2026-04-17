@@ -139,6 +139,56 @@ export class TradingEngine extends EventEmitter {
     }
   }
 
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  updateConfig(updates: Partial<{
+    dryRun: boolean;
+    bankroll: number;
+    kellyFraction: number;
+    minEdge: number;
+    maxPositionPct: number;
+    maxTotalExposurePct: number;
+    scanIntervalMs: number;
+    exitPriceTarget: number;
+    correlationEnabled: boolean;
+    claudeEnabled: boolean;
+    discordWebhookUrl: string;
+    privateKey: string;
+    newsApiKey: string;
+    claudeApiKey: string;
+  }>): void {
+    Object.assign(config, updates);
+    if (updates.bankroll !== undefined) {
+      this.riskManager.updateBankroll(updates.bankroll);
+    }
+    logger.info('Engine', `⚙️ Config atualizada: ${JSON.stringify(
+      Object.fromEntries(Object.entries(updates).map(([k, v]) =>
+        [k, k.includes('Key') || k === 'privateKey' ? '***' : v]
+      ))
+    )}`);
+  }
+
+  getPublicConfig(): Record<string, unknown> {
+    return {
+      dryRun: config.dryRun,
+      bankroll: config.bankroll,
+      kellyFraction: config.kellyFraction,
+      minEdge: config.minEdge,
+      maxPositionPct: config.maxPositionPct,
+      maxTotalExposurePct: config.maxTotalExposurePct,
+      scanIntervalMs: config.scanIntervalMs,
+      exitPriceTarget: config.exitPriceTarget,
+      correlationEnabled: config.correlationEnabled,
+      claudeEnabled: config.claudeEnabled,
+      discordWebhookUrl: config.discordWebhookUrl || '',
+      hasPrivateKey: !!config.privateKey,
+      hasNewsApiKey: !!config.newsApiKey,
+      hasClaudeApiKey: !!config.claudeApiKey,
+    };
+  }
+
   stop(): void {
     this.running = false;
     logger.info('Engine', '🛑 Engine stopped');

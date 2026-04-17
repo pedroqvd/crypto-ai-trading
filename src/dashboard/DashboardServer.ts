@@ -197,6 +197,53 @@ export class DashboardServer {
       res.json({ status: 'ok', timestamp: Date.now() });
     });
 
+    // Bot control — stop
+    this.app.post('/api/bot/stop', (req, res) => {
+      if (!this.engine.isRunning()) {
+        res.status(400).json({ error: 'Bot já está parado.' });
+        return;
+      }
+      this.engine.stop();
+      this.io.emit('statusUpdate', this.engine.getStatus());
+      logger.warn('Dashboard', '🛑 Bot parado via dashboard');
+      res.json({ success: true, message: 'Bot parado.' });
+    });
+
+    // Bot control — start
+    this.app.post('/api/bot/start', (req, res) => {
+      if (this.engine.isRunning()) {
+        res.status(400).json({ error: 'Bot já está rodando.' });
+        return;
+      }
+      this.engine.start().catch(err =>
+        logger.error('Dashboard', `Erro ao iniciar engine: ${err.message}`)
+      );
+      logger.info('Dashboard', '▶️ Bot iniciado via dashboard');
+      res.json({ success: true, message: 'Bot iniciando...' });
+    });
+
+    // Settings — read (never exposes private key)
+    this.app.get('/api/settings', (req, res) => {
+      res.json(this.engine.getPublicConfig());
+    });
+
+    // Settings — update
+    this.app.post('/api/settings', (req, res) => {
+      const allowed = [
+        'dryRun', 'bankroll', 'kellyFraction', 'minEdge',
+        'maxPositionPct', 'maxTotalExposurePct', 'scanIntervalMs',
+        'exitPriceTarget', 'correlationEnabled', 'claudeEnabled',
+        'discordWebhookUrl', 'privateKey', 'newsApiKey', 'claudeApiKey',
+      ];
+      const updates: Record<string, unknown> = {};
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) updates[key] = req.body[key];
+      }
+      this.engine.updateConfig(updates as Parameters<typeof this.engine.updateConfig>[0]);
+      this.io.emit('settingsUpdated', this.engine.getPublicConfig());
+      res.json({ success: true });
+    });
+
     // Serve dashboard (protected by auth middleware)
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, '../../public/index.html'));
