@@ -208,8 +208,14 @@
         $('s-min-edge').value         = +(cfg.minEdge * 100).toFixed(1);
         $('s-kelly').value            = +(cfg.kellyFraction * 100).toFixed(0);
         $('s-max-pos').value          = +(cfg.maxPositionPct * 100).toFixed(1);
-        $('s-exit-target').value      = +(cfg.exitPriceTarget * 100).toFixed(0);
-        $('s-max-exposure').value     = +(cfg.maxTotalExposurePct * 100).toFixed(0);
+        $('s-exit-target').value          = +(cfg.exitPriceTarget * 100).toFixed(0);
+        $('s-stop-loss').value            = +(cfg.stopLossPct * 100).toFixed(0);
+        $('s-trailing-activation').value  = +(cfg.trailingStopActivation * 100).toFixed(0);
+        $('s-trailing-distance').value    = +(cfg.trailingStopDistance * 100).toFixed(0);
+        $('s-time-decay').value           = cfg.timeDecayHours;
+        $('s-edge-reversal').checked      = cfg.edgeReversalEnabled;
+        $('s-momentum-cycles').value      = cfg.momentumExitCycles;
+        $('s-max-exposure').value         = +(cfg.maxTotalExposurePct * 100).toFixed(0);
         $('s-correlation').checked    = cfg.correlationEnabled;
         $('s-claude-enabled').checked = cfg.claudeEnabled;
         $('s-discord').value          = cfg.discordWebhookUrl || '';
@@ -246,8 +252,14 @@
             minEdge:              parseFloat($('s-min-edge').value) / 100,
             kellyFraction:        parseFloat($('s-kelly').value) / 100,
             maxPositionPct:       parseFloat($('s-max-pos').value) / 100,
-            exitPriceTarget:      parseFloat($('s-exit-target').value) / 100,
-            maxTotalExposurePct:  parseFloat($('s-max-exposure').value) / 100,
+            exitPriceTarget:         parseFloat($('s-exit-target').value) / 100,
+            stopLossPct:             parseFloat($('s-stop-loss').value) / 100,
+            trailingStopActivation:  parseFloat($('s-trailing-activation').value) / 100,
+            trailingStopDistance:    parseFloat($('s-trailing-distance').value) / 100,
+            timeDecayHours:          parseFloat($('s-time-decay').value),
+            edgeReversalEnabled:     $('s-edge-reversal').checked,
+            momentumExitCycles:      parseInt($('s-momentum-cycles').value),
+            maxTotalExposurePct:     parseFloat($('s-max-exposure').value) / 100,
             correlationEnabled:   $('s-correlation').checked,
             claudeEnabled:        $('s-claude-enabled').checked,
             discordWebhookUrl:    $('s-discord').value.trim(),

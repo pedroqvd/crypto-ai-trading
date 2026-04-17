@@ -105,9 +105,51 @@
           <label for="s-max-pos">Posição Máxima (% do bankroll)</label>
           <input type="number" id="s-max-pos" min="0.1" max="20" step="0.5" placeholder="5">
         </div>
+      </div>
+
+      <!-- Saída -->
+      <div class="settings-section">
+        <h3>🚪 Estratégia de Saída</h3>
         <div class="settings-field">
-          <label for="s-exit-target">Saída Antecipada (%)</label>
+          <label for="s-exit-target">Alvo de Lucro (%)</label>
           <input type="number" id="s-exit-target" min="50" max="99" step="1" placeholder="85">
+          <span class="settings-hint">Fechar posição quando preço atingir este % (ex: 85 = fechar a 0.85)</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-stop-loss">Stop-Loss (%)</label>
+          <input type="number" id="s-stop-loss" min="5" max="80" step="5" placeholder="40">
+          <span class="settings-hint">Fechar se posição cair este % do preço de entrada</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-trailing-activation">Trailing Stop — Ativação (%)</label>
+          <input type="number" id="s-trailing-activation" min="5" max="50" step="5" placeholder="20">
+          <span class="settings-hint">Ativar trailing stop após este % de ganho</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-trailing-distance">Trailing Stop — Distância (%)</label>
+          <input type="number" id="s-trailing-distance" min="3" max="30" step="1" placeholder="12">
+          <span class="settings-hint">Fechar se cair este % abaixo do pico</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-time-decay">Decay de Tempo (horas)</label>
+          <input type="number" id="s-time-decay" min="1" max="24" step="1" placeholder="6">
+          <span class="settings-hint">Fechar posições perdendo com menos de X horas para expirar</span>
+        </div>
+        <div class="settings-field">
+          <label>Reversão de Edge</label>
+          <div class="toggle-row">
+            <span id="edge-reversal-label" class="toggle-label">Ativada</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="s-edge-reversal">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <span class="settings-hint">Fechar se a tese original for invalidada pelo mercado</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-momentum-cycles">Saída por Momentum (ciclos)</label>
+          <input type="number" id="s-momentum-cycles" min="1" max="10" step="1" placeholder="3">
+          <span class="settings-hint">Fechar após X ciclos consecutivos de queda em posição perdedora</span>
         </div>
       </div>
 

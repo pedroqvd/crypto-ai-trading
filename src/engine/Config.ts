@@ -14,7 +14,14 @@ export interface TradingConfig {
   minVolume: number;
   maxPositionPct: number;
   maxTotalExposurePct: number;
-  exitPriceTarget: number;
+  // Exit strategy
+  exitPriceTarget: number;       // Take profit at this price (default 0.85)
+  stopLossPct: number;           // Exit if position loses this % of entry (default 0.40)
+  trailingStopActivation: number;// Activate trailing stop after this % gain (default 0.20)
+  trailingStopDistance: number;  // Trail this % below peak price (default 0.12)
+  timeDecayHours: number;        // Exit losing positions this many hours before expiry (default 6)
+  edgeReversalEnabled: boolean;  // Exit if original thesis is invalidated (default true)
+  momentumExitCycles: number;    // Exit after this many consecutive decline cycles (default 3)
   maxOrderSpreadPct: number;
   minOrderBookShares: number;
   scanIntervalMs: number;
@@ -44,6 +51,12 @@ export function loadConfig(): TradingConfig {
     maxPositionPct: parseFloat(process.env.MAX_POSITION_PCT || '0.05'),
     maxTotalExposurePct: parseFloat(process.env.MAX_TOTAL_EXPOSURE_PCT || '0.50'),
     exitPriceTarget: parseFloat(process.env.EXIT_PRICE_TARGET || '0.85'),
+    stopLossPct: parseFloat(process.env.STOP_LOSS_PCT || '0.40'),
+    trailingStopActivation: parseFloat(process.env.TRAILING_STOP_ACTIVATION || '0.20'),
+    trailingStopDistance: parseFloat(process.env.TRAILING_STOP_DISTANCE || '0.12'),
+    timeDecayHours: parseFloat(process.env.TIME_DECAY_HOURS || '6'),
+    edgeReversalEnabled: process.env.EDGE_REVERSAL_ENABLED !== 'false',
+    momentumExitCycles: parseInt(process.env.MOMENTUM_EXIT_CYCLES || '3'),
     maxOrderSpreadPct: parseFloat(process.env.MAX_ORDER_SPREAD_PCT || '0.03'),
     minOrderBookShares: parseFloat(process.env.MIN_ORDER_BOOK_SHARES || '5'),
     scanIntervalMs: parseInt(process.env.SCAN_INTERVAL_MS || '60000'),
