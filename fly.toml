@@ -32,8 +32,6 @@ primary_region = "gru"
   cpu_kind = "shared"
   cpus     = 1
 
-# [[mounts]] — descomentar após criar volume via CLI:
-#   flyctl volumes create bot_data --app crypto-ai-trading --region gru --size 1
-# [[mounts]]
-#   source      = "bot_data"
-#   destination = "/app/data"
+[[mounts]]
+  source      = "bot_data"
+  destination = "/app/data"
