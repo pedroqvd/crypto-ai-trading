@@ -15,79 +15,11 @@
   const btnText = document.getElementById('btn-text');
   const btnLoading = document.getElementById('btn-loading');
 
-  // Check if already logged in
-  const existingToken = getCookie('auth_token');
-  if (existingToken) {
-    // Verify token is still valid
-    fetch('/api/auth/status', {
-      headers: { 'Authorization': 'Bearer ' + existingToken }
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (data.authenticated) {
-        window.location.href = '/';
-      }
-    })
-    .catch(() => {});
-  }
-
   // Toggle password visibility
   toggleBtn.addEventListener('click', () => {
     const type = passwordInput.type === 'password' ? 'text' : 'password';
     passwordInput.type = type;
     toggleBtn.textContent = type === 'password' ? '👁️' : '🙈';
-  });
-
-  // Form submission
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
-
-    if (!email || !password) {
-      showError('Preencha todos os campos.');
-      return;
-    }
-
-    // Show loading
-    setLoading(true);
-    hideError();
-
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.token) {
-        // Save token in secure cookie
-        setCookie('auth_token', data.token, 1); // 1 day expiry
-
-        // Redirect to dashboard
-        window.location.href = '/';
-      } else {
-        // Show error
-        const errorMessages = {
-          'INVALID_CREDENTIALS': 'E-mail ou senha incorretos.',
-          'RATE_LIMITED': 'Muitas tentativas. Tente novamente em 15 minutos.',
-          'NOT_CONFIGURED': 'Sistema de autenticação não configurado. Execute o setup.',
-        };
-        
-        showError(errorMessages[data.code] || data.error || 'Erro desconhecido. Tente novamente.');
-        
-        // Shake the form
-        form.classList.add('shake');
-        setTimeout(() => form.classList.remove('shake'), 400);
-      }
-    } catch (err) {
-      showError('Erro de conexão. Verifique se o servidor está rodando.');
-    } finally {
-      setLoading(false);
-    }
   });
 
   // Handle Enter key
@@ -96,6 +28,87 @@
       form.dispatchEvent(new Event('submit'));
     }
   });
+
+  // ========================================
+  // BOOTSTRAP — Load backend URL then wire up
+  // ========================================
+  async function init() {
+    // When frontend is on Vercel and bot is on Fly.io,
+    // backendUrl will be set and all API calls go directly to Fly.io.
+    // When Fly.io serves the frontend directly, backendUrl is '' (same origin).
+    let backendUrl = '';
+    try {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      backendUrl = (cfg.backendUrl || '').replace(/\/$/, '');
+    } catch (_) {
+      // Config fetch failed — assume same-origin
+    }
+
+    function apiCall(path, options) {
+      const url = backendUrl ? backendUrl + path : path;
+      return fetch(url, options);
+    }
+
+    // Check if already logged in
+    const existingToken = localStorage.getItem('auth_token');
+    if (existingToken) {
+      apiCall('/api/auth/status', {
+        headers: { 'Authorization': 'Bearer ' + existingToken },
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.authenticated) window.location.href = '/';
+        })
+        .catch(() => {});
+    }
+
+    // Form submission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email || !password) {
+        showError('Preencha todos os campos.');
+        return;
+      }
+
+      setLoading(true);
+      hideError();
+
+      try {
+        const response = await apiCall('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.token) {
+          localStorage.setItem('auth_token', data.token);
+          window.location.href = '/';
+        } else {
+          const errorMessages = {
+            'INVALID_CREDENTIALS': 'E-mail ou senha incorretos.',
+            'RATE_LIMITED': 'Muitas tentativas. Tente novamente em 15 minutos.',
+            'NOT_CONFIGURED': 'Sistema de autenticação não configurado. Execute o setup.',
+          };
+
+          showError(errorMessages[data.code] || data.error || 'Erro desconhecido. Tente novamente.');
+
+          form.classList.add('shake');
+          setTimeout(() => form.classList.remove('shake'), 400);
+        }
+      } catch (err) {
+        showError('Erro de conexão. Verifique se o servidor está rodando.');
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
 
   // ========================================
   // HELPERS
@@ -115,15 +128,6 @@
     btnLoading.hidden = !loading;
   }
 
-  function setCookie(name, value, days) {
-    const expires = new Date(Date.now() + days * 86400000).toUTCString();
-    document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Strict; Secure`;
-  }
-
-  function getCookie(name) {
-    const cookies = document.cookie.split(';').map(c => c.trim());
-    const found = cookies.find(c => c.startsWith(name + '='));
-    return found ? found.split('=')[1] : null;
-  }
+  init().catch(console.error);
 
 })();

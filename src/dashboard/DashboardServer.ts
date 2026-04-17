@@ -23,8 +23,14 @@ export class DashboardServer {
   constructor(private engine: TradingEngine) {
     this.app = express();
     this.server = createServer(this.app);
+
+    // Allow any explicitly configured origins; fall back to wildcard
+    const allowedOrigins = config.allowedOrigins.length > 0
+      ? config.allowedOrigins
+      : '*';
+
     this.io = new SocketIOServer(this.server, {
-      cors: { origin: '*', methods: ['GET', 'POST'] },
+      cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
     });
     this.authService = new AuthService();
 
@@ -39,16 +45,26 @@ export class DashboardServer {
   // MIDDLEWARE
   // ========================================
   private setupMiddleware(): void {
-    this.app.use(cors());
+    const allowedOriginsValue = config.allowedOrigins.length > 0
+      ? config.allowedOrigins
+      : '*';
+
+    this.app.use(cors({ origin: allowedOriginsValue }));
     this.app.use(express.json());
 
     // Security headers
     this.app.use((req, res, next) => {
+      // Build connect-src: allow self + ws/wss + backend URL when running split (Vercel + Fly.io)
+      const extraConnect = config.backendUrl
+        ? ` ${config.backendUrl} ${config.backendUrl.replace(/^http/, 'ws')}`
+        : '';
+
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('X-Frame-Options', 'DENY');
       res.setHeader('X-XSS-Protection', '1; mode=block');
       res.setHeader('Referrer-Policy', 'no-referrer');
-      res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; img-src 'self' data:");
+      res.setHeader('Content-Security-Policy',
+        `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:${extraConnect}; img-src 'self' data:`);
       next();
     });
 
@@ -63,6 +79,13 @@ export class DashboardServer {
   // AUTH ROUTES (PUBLIC — before middleware)
   // ========================================
   private setupAuthRoutes(): void {
+    // Public config endpoint — tells the frontend where the backend lives
+    // when running split (Vercel frontend → Fly.io backend).
+    // Empty string means same-origin (frontend served by the bot itself).
+    this.app.get('/api/config', (req, res) => {
+      res.json({ backendUrl: config.backendUrl });
+    });
+
     // Login page
     this.app.get('/login', (req, res) => {
       res.sendFile(path.join(__dirname, '../../public/login.html'));
@@ -146,6 +169,21 @@ export class DashboardServer {
     // Risk status
     this.app.get('/api/risk', (req, res) => {
       res.json(this.engine.getRiskManager().getStatus());
+    });
+
+    // Reset circuit breaker (manual override — auth protected)
+    this.app.post('/api/risk/reset', (req, res) => {
+      const riskManager = this.engine.getRiskManager();
+      const status = riskManager.getStatus();
+
+      if (!status.circuitBreaker) {
+        res.status(400).json({ error: 'Circuit breaker não está ativo.' });
+        return;
+      }
+
+      riskManager.resetCircuitBreaker();
+      logger.warn('Dashboard', '⚠️ Circuit breaker resetado manualmente via dashboard');
+      res.json({ success: true, message: 'Circuit breaker resetado. Trading reativado.' });
     });
 
     // Notifications
@@ -236,9 +274,25 @@ export class DashboardServer {
   }
 
   // ========================================
+  // VERCEL — Expose Express app for serverless handler
+  // ========================================
+  getExpressApp(): express.Application {
+    return this.app;
+  }
+
+  // ========================================
   // START
   // ========================================
   start(): void {
+    this.server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        logger.error('Dashboard', `❌ Porta ${config.dashboardPort} já está em uso. Dashboard não iniciado.`);
+      } else {
+        logger.error('Dashboard', `❌ Erro ao iniciar servidor: ${err.message}`);
+      }
+      process.exit(1);
+    });
+
     this.server.listen(config.dashboardPort, () => {
       logger.info('Dashboard', `\n🌐 Dashboard: http://localhost:${config.dashboardPort}`);
       logger.info('Dashboard', `🔐 Login: http://localhost:${config.dashboardPort}/login`);

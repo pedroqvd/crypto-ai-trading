@@ -20,7 +20,7 @@ export interface TradeRecord {
   kellyFraction: number;
   confidence: number;
   reasoning: string;
-  status: 'open' | 'won' | 'lost' | 'cancelled';
+  status: 'open' | 'won' | 'lost' | 'cancelled' | 'exited';
   exitPrice?: number;
   pnl?: number;
   resolvedAt?: string;
@@ -44,17 +44,25 @@ export class TradeJournal {
   private trades: TradeRecord[] = [];
   private dataDir: string;
   private tradesFile: string;
+  private persistenceAvailable = false;
 
   constructor() {
     this.dataDir = path.join(process.cwd(), 'data');
     this.tradesFile = path.join(this.dataDir, 'trade_history.json');
-    this.ensureDataDir();
-    this.loadFromDisk();
+    this.persistenceAvailable = this.ensureDataDir();
+    if (this.persistenceAvailable) this.loadFromDisk();
   }
 
-  private ensureDataDir(): void {
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
+  // Returns true when filesystem is writable (false on Vercel / read-only envs)
+  private ensureDataDir(): boolean {
+    try {
+      if (!fs.existsSync(this.dataDir)) {
+        fs.mkdirSync(this.dataDir, { recursive: true });
+      }
+      return true;
+    } catch {
+      logger.warn('TradeJournal', 'Filesystem read-only — running in-memory mode (data will not persist)');
+      return false;
     }
   }
 
@@ -72,6 +80,7 @@ export class TradeJournal {
   }
 
   private saveToDisk(): void {
+    if (!this.persistenceAvailable) return;
     try {
       fs.writeFileSync(this.tradesFile, JSON.stringify(this.trades, null, 2));
     } catch (err) {
@@ -98,6 +107,66 @@ export class TradeJournal {
 
     this.saveToDisk();
     logger.info('TradeJournal', `Trade resolved: ${trade.status} "${trade.question}" P&L: $${trade.pnl?.toFixed(2)}`);
+  }
+
+  cancelTrade(tradeId: string): void {
+    const trade = this.trades.find(t => t.id === tradeId);
+    if (!trade) return;
+
+    trade.status = 'cancelled';
+    trade.pnl = 0;
+    trade.resolvedAt = new Date().toISOString();
+
+    this.saveToDisk();
+    logger.info('TradeJournal', `Trade cancelled: "${trade.question}"`);
+  }
+
+  /**
+   * Record an early exit (sell before resolution).
+   * P&L is based on the spread between exit price and entry price.
+   * exitPrice: the price at which we sold (e.g., 0.85 for a YES position)
+   * pnl: (exitPrice - entryPrice) × size, pre-calculated by the caller
+   */
+  exitTrade(tradeId: string, exitPrice: number, pnl: number): void {
+    const trade = this.trades.find(t => t.id === tradeId);
+    if (!trade) return;
+
+    trade.status = 'exited';
+    trade.exitPrice = exitPrice;
+    trade.pnl = pnl;
+    trade.resolvedAt = new Date().toISOString();
+
+    this.saveToDisk();
+    logger.info('TradeJournal',
+      `Trade exited early: "${trade.question}" @ $${exitPrice.toFixed(4)}, P&L: $${pnl.toFixed(2)}`
+    );
+  }
+
+  getDailyReport(date: string, bankrollStart: number): DailyReport {
+    const dayTrades = this.trades.filter(t => t.timestamp.startsWith(date));
+    const closed = dayTrades.filter(t => t.status !== 'open');
+    const wins = closed.filter(t => t.status === 'won').length;
+    const losses = closed.filter(t => t.status === 'lost').length;
+    const totalPnl = closed.reduce((sum, t) => sum + (t.pnl || 0), 0);
+    const avgEdge = dayTrades.length > 0
+      ? dayTrades.reduce((sum, t) => sum + t.edge, 0) / dayTrades.length
+      : 0;
+    const avgEv = dayTrades.length > 0
+      ? dayTrades.reduce((sum, t) => sum + t.ev, 0) / dayTrades.length
+      : 0;
+
+    return {
+      date,
+      tradesCount: dayTrades.length,
+      wins,
+      losses,
+      winRate: closed.length > 0 ? (wins / closed.length) * 100 : 0,
+      totalPnl,
+      avgEdge,
+      avgEv,
+      bankrollStart,
+      bankrollEnd: bankrollStart + totalPnl,
+    };
   }
 
   getOpenTrades(): TradeRecord[] {

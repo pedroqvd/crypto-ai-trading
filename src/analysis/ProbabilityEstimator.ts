@@ -1,307 +1,279 @@
 // ================================================
 // PROBABILITY ESTIMATOR — True Probability Model
-// Phase 1: Heuristic signals
+//
+// Design principle: trust the market price by default.
+// The market aggregates far more information than our
+// heuristics can. We only deviate when:
+//
+//  1. There is a structural inefficiency (book spread)
+//  2. An external LLM estimate (Claude) disagrees
+//  3. Historical calibration reveals a systematic bias
+//
+// The old "mean reversion" signals were removed because
+// pushing every price toward 50% generates fake edges
+// and is not supported by prediction market research.
 // ================================================
 
 import { ParsedMarket } from '../services/GammaApiClient';
+import { NewsResult } from '../services/NewsApiClient';
 import { logger } from '../utils/Logger';
 
 export interface ProbabilityEstimate {
   marketId: string;
   question: string;
-  marketPrice: number;           // Current implied probability
-  estimatedTrueProb: number;     // Our estimate of true probability
-  confidence: number;            // 0-1, how confident we are
-  signals: SignalResult[];       // Individual signal contributions
+  marketPrice: number;
+  estimatedTrueProb: number;
+  confidence: number;
+  signals: SignalResult[];
 }
 
 interface SignalResult {
   name: string;
   weight: number;
-  adjustment: number;            // +/- adjustment to market price
+  adjustment: number;
   reasoning: string;
 }
+
+export interface ExternalEstimate {
+  probability: number;
+  confidence: number;
+  source: string;
+}
+
+export interface CalibrationInput {
+  adjustment: number;
+  confidence: number;
+  sampleSize: number;
+}
+
+// Maximum shift from market price — requires all signals aligned + high confidence
+const MAX_ADJUSTMENT = 0.15;
 
 export class ProbabilityEstimator {
 
   /**
-   * Estimate the true probability of a market outcome.
-   * 
-   * Phase 1 (Heuristic) — Uses market microstructure signals:
-   * 1. Volume/Liquidity ratio: High volume with low liquidity suggests hidden info
-   * 2. Price extremity: Markets near 0% or 100% are harder to misprice
-   * 3. Time to expiry: Near-expiry markets are more efficiently priced
-   * 4. Bid-ask spread proxy: Large gap between yes+no vs 1.0 suggests inefficiency
-   * 5. Volume momentum: Markets with recent volume surges may be updating
+   * Estimate the true probability of a market YES outcome.
+   *
+   * Signals (in priority order):
+   *  1. Book inefficiency — structural edge when YES+NO≠1.0
+   *  2. Volume/liquidity anomaly — unusual ratio may signal informed flow
+   *  3. Calibration correction — historical bias correction (optional)
+   *  4. External estimate — Claude or other LLM (optional, high weight)
+   *
+   * Final adjustment is dampened by consensus ratio and liquidity,
+   * then hard-capped at ±MAX_ADJUSTMENT.
    */
-  estimate(market: ParsedMarket, allMarkets?: ParsedMarket[]): ProbabilityEstimate {
+  estimate(
+    market: ParsedMarket,
+    _allMarkets?: ParsedMarket[],
+    newsResult?: NewsResult,
+    externalEstimate?: ExternalEstimate,
+    calibrationInput?: CalibrationInput
+  ): ProbabilityEstimate {
     const signals: SignalResult[] = [];
     const marketPrice = market.yesPrice;
 
-    // Signal 1: Volume/Liquidity Ratio
-    signals.push(this.volumeLiquiditySignal(market));
+    // Signal 1: Structural book inefficiency (always computed)
+    signals.push(this.bookInefficiencySignal(market));
 
-    // Signal 2: Price Extremity Discount
-    signals.push(this.priceExtremitySignal(market));
+    // Signal 2: Volume/liquidity anomaly (directional only when extreme)
+    signals.push(this.volumeAnomalySignal(market));
 
-    // Signal 3: Time Decay
-    signals.push(this.timeDecaySignal(market));
-
-    // Signal 4: Spread/Inefficiency
-    signals.push(this.spreadInefficiencySignal(market));
-
-    // Signal 5: Volume Significance
-    signals.push(this.volumeSignificanceSignal(market, allMarkets));
-
-    // Signal 6: Liquidity-Weighted Mean Reversion (strongest signal)
-    signals.push(this.liquidityMeanReversionSignal(market));
-
-    // Combine signals: weighted sum of adjustments
-    let totalWeight = 0;
-    let weightedAdjustment = 0;
-
-    for (const signal of signals) {
-      totalWeight += signal.weight;
-      weightedAdjustment += signal.adjustment * signal.weight;
+    // Signal 3: Calibration correction (if provided by BayesianCalibrator)
+    if (calibrationInput && calibrationInput.sampleSize >= 10) {
+      signals.push(this.calibrationSignal(calibrationInput));
     }
 
-    const avgAdjustment = totalWeight > 0 ? weightedAdjustment / totalWeight : 0;
+    // Signal 4: External LLM estimate (if provided by ClaudeAnalyzer)
+    if (externalEstimate) {
+      signals.push(this.externalEstimateSignal(externalEstimate, marketPrice));
+    }
 
-    // Apply adjustment to market price — use amplification factor
-    // Low-liquidity markets get bigger adjustments
-    const liquidityFactor = market.liquidity < 20000 ? 2.0 : market.liquidity < 50000 ? 1.5 : 1.0;
-    const finalAdjustment = avgAdjustment * liquidityFactor;
+    // Weighted average of adjustments
+    let totalWeight = 0;
+    let weightedAdj = 0;
+    for (const s of signals) {
+      totalWeight += s.weight;
+      weightedAdj += s.adjustment * s.weight;
+    }
+    const avgAdj = totalWeight > 0 ? weightedAdj / totalWeight : 0;
 
-    let estimatedTrueProb = marketPrice + finalAdjustment;
-    estimatedTrueProb = Math.max(0.01, Math.min(0.99, estimatedTrueProb));
+    // Consensus gate: penalise conflicting signals
+    const sig = signals.filter(s => Math.abs(s.adjustment) > 0.003);
+    const posW = sig.filter(s => s.adjustment > 0).reduce((sum, s) => sum + s.weight, 0);
+    const negW = sig.filter(s => s.adjustment < 0).reduce((sum, s) => sum + s.weight, 0);
+    const totalSig = posW + negW;
+    const dominantW = Math.max(posW, negW);
+    const consensusRatio = totalSig > 0 ? dominantW / totalSig : 0;
 
-    // Confidence: based on signal agreement and market quality
-    const confidence = this.calculateConfidence(signals, market);
+    const consensusMult =
+      consensusRatio >= 0.80 ? 1.00 :
+      consensusRatio >= 0.60 ? 0.60 :
+      totalSig === 0         ? 0.00 :
+                               0.20;
 
-    logger.debug('ProbEst',
-      `"${market.question.substring(0, 40)}..." → Mkt: ${(marketPrice * 100).toFixed(0)}%, ` +
-      `Est: ${(estimatedTrueProb * 100).toFixed(0)}%, Adj: ${(finalAdjustment * 100).toFixed(1)}%, ` +
-      `Conf: ${(confidence * 100).toFixed(0)}%`
+    // Liquidity dampening: large markets are harder to misprice
+    const liqDamp =
+      market.liquidity >= 200_000 ? 0.25 :
+      market.liquidity >= 100_000 ? 0.45 :
+      market.liquidity >=  50_000 ? 0.70 :
+                                    1.00;
+
+    // Hard cap at MAX_ADJUSTMENT
+    const finalAdj = Math.max(-MAX_ADJUSTMENT, Math.min(MAX_ADJUSTMENT,
+      avgAdj * consensusMult * liqDamp
+    ));
+
+    let estimatedTrueProb = Math.max(0.01, Math.min(0.99, marketPrice + finalAdj));
+
+    const confidence = this.calcConfidence(
+      signals, market, consensusRatio, estimatedTrueProb, newsResult, externalEstimate
     );
 
-    return {
-      marketId: market.id,
-      question: market.question,
-      marketPrice,
-      estimatedTrueProb,
-      confidence,
-      signals,
-    };
+    logger.debug('ProbEst',
+      `"${market.question.substring(0, 40)}..." ` +
+      `mkt=${(marketPrice * 100).toFixed(0)}% ` +
+      `est=${(estimatedTrueProb * 100).toFixed(0)}% ` +
+      `adj=${(finalAdj * 100).toFixed(1)}% ` +
+      `conf=${(confidence * 100).toFixed(0)}%` +
+      (externalEstimate ? ` [${externalEstimate.source}]` : '') +
+      (newsResult?.hasRecentNews ? ` 📰` : '')
+    );
+
+    return { marketId: market.id, question: market.question, marketPrice, estimatedTrueProb, confidence, signals };
   }
 
-  // ========================================
-  // SIGNAL 1: Volume/Liquidity Ratio
-  // High ratio → informed traders may be moving the price
-  // This can suggest underpricing on the direction of flow
-  // ========================================
-  private volumeLiquiditySignal(market: ParsedMarket): SignalResult {
-    const ratio = market.liquidity > 0 ? market.volume / market.liquidity : 0;
-
-    let adjustment = 0;
-    let reasoning = '';
-
-    if (ratio > 20) {
-      // Very high turnover — price is likely efficient, slight contrarian lean
-      adjustment = -0.015 * (market.yesPrice - 0.5);
-      reasoning = `Volume/Liquidez extremo (${ratio.toFixed(0)}x). Mercado provavelmente eficiente, leve reversão.`;
-    } else if (ratio > 5) {
-      // Moderate turnover — some signal, follow the flow
-      adjustment = 0.01 * Math.sign(market.yesPrice - 0.5);
-      reasoning = `Volume/Liquidez moderado (${ratio.toFixed(0)}x). Confirmação da direção.`;
-    } else if (ratio < 1) {
-      // Low turnover — market may be stale / mispriced → stronger mean reversion
-      adjustment = 0.04 * (0.5 - market.yesPrice);
-      reasoning = `Volume/Liquidez baixo (${ratio.toFixed(1)}x). Mercado estagnado — possível mispricing.`;
-    } else {
-      reasoning = `Volume/Liquidez normal (${ratio.toFixed(1)}x). Sem sinal forte.`;
-    }
-
-    return { name: 'Volume/Liquidity', weight: 1.5, adjustment, reasoning };
-  }
-
-  // ========================================
-  // SIGNAL 2: Price Extremity
-  // Prices near 0 or 1 are hard to misprice (more participant agreement)
-  // Prices near 0.5 have more room for mispricing
-  // ========================================
-  private priceExtremitySignal(market: ParsedMarket): SignalResult {
-    const distFrom50 = Math.abs(market.yesPrice - 0.5);
-
-    let adjustment = 0;
-    let reasoning = '';
-
-    if (distFrom50 > 0.4) {
-      // Very extreme (>90% or <10%) — likely correctly priced
-      adjustment = 0;
-      reasoning = `Preço extremo (${(market.yesPrice * 100).toFixed(0)}%). Sem ajuste — consenso forte.`;
-    } else if (distFrom50 > 0.25) {
-      // Moderate confidence, slight mean reversion
-      adjustment = -0.005 * Math.sign(market.yesPrice - 0.5);
-      reasoning = `Preço moderado (${(market.yesPrice * 100).toFixed(0)}%). Leve reversão à média.`;
-    } else {
-      // Near 50% — maximum uncertainty, more room for edge
-      adjustment = 0;
-      reasoning = `Preço próximo de 50% (${(market.yesPrice * 100).toFixed(0)}%). Incerteza máxima.`;
-    }
-
-    return { name: 'Price Extremity', weight: 1.0, adjustment, reasoning };
-  }
-
-  // ========================================
-  // SIGNAL 3: Time Decay
-  // Markets near expiration tend to be more efficient
-  // ========================================
-  private timeDecaySignal(market: ParsedMarket): SignalResult {
-    let adjustment = 0;
-    let reasoning = '';
-
-    if (!market.endDate) {
-      return { name: 'Time Decay', weight: 0.5, adjustment: 0, reasoning: 'Sem data de expiração.' };
-    }
-
-    const now = Date.now();
-    const end = new Date(market.endDate).getTime();
-    const hoursRemaining = (end - now) / (1000 * 60 * 60);
-
-    if (hoursRemaining < 24) {
-      // Very close to expiry — market is very efficient
-      adjustment = 0;
-      reasoning = `<24h para expirar. Mercado altamente eficiente — sem ajuste.`;
-    } else if (hoursRemaining < 72) {
-      // 1-3 days — moderately efficient
-      adjustment = -0.005 * Math.sign(market.yesPrice - 0.5);
-      reasoning = `${Math.round(hoursRemaining)}h para expirar. Eficiência moderada.`;
-    } else if (hoursRemaining > 720) {
-      // 30+ days — more room for mispricing
-      adjustment = 0.01 * (0.5 - market.yesPrice);
-      reasoning = `${Math.round(hoursRemaining / 24)} dias restantes. Mais espaço para mispricing.`;
-    } else {
-      reasoning = `${Math.round(hoursRemaining / 24)} dias restantes. Neutro.`;
-    }
-
-    return { name: 'Time Decay', weight: 1.2, adjustment, reasoning };
-  }
-
-  // ========================================
-  // SIGNAL 4: Spread / Inefficiency
-  // If yesPrice + noPrice != 1.0, there's a spread (inefficiency)
-  // ========================================
-  private spreadInefficiencySignal(market: ParsedMarket): SignalResult {
+  // ──────────────────────────────────────────────────────────────
+  // SIGNAL 1: Book Inefficiency
+  // When YES price + NO price ≠ 1.0 the market has structural slack.
+  // A sum < 1.0 means both sides are cheap (under-round).
+  // A sum > 1.0 means both sides are expensive (over-round).
+  // We translate this into a directional nudge only when the
+  // current side is relatively cheaper.
+  // ──────────────────────────────────────────────────────────────
+  private bookInefficiencySignal(market: ParsedMarket): SignalResult {
     const sum = market.yesPrice + market.noPrice;
     const spread = Math.abs(sum - 1.0);
 
-    let adjustment = 0;
-    let reasoning = '';
-
-    if (spread > 0.05) {
-      // Large spread — market might be inefficient
-      // Adjust towards the cheaper side
-      if (sum < 1.0) {
-        // Both sides are cheap — arbitrage-like opportunity
-        adjustment = 0.02;
-        reasoning = `Spread alto (soma=${sum.toFixed(3)}). Ambos os lados estão baratos.`;
-      } else {
-        // Both sides are expensive
-        adjustment = -0.02;
-        reasoning = `Spread alto (soma=${sum.toFixed(3)}). Ambos os lados estão caros.`;
-      }
-    } else if (spread > 0.02) {
-      adjustment = spread * 0.5 * (sum < 1 ? 1 : -1);
-      reasoning = `Spread moderado (soma=${sum.toFixed(3)}). Leve oportunidade.`;
-    } else {
-      reasoning = `Spread pequeno (soma=${sum.toFixed(3)}). Mercado eficiente.`;
+    if (spread < 0.02) {
+      return { name: 'Book Efficiency', weight: 1.0, adjustment: 0, reasoning: `Book tight (sum=${sum.toFixed(3)}).` };
     }
 
-    return { name: 'Spread/Inefficiency', weight: 2.0, adjustment, reasoning };
+    // Under-round: both sides cheap. Favour the side the market leans to.
+    // Over-round: both sides expensive — this is a low-quality market; small negative signal.
+    const dir = sum < 1.0 ? Math.sign(market.yesPrice - 0.5) : -Math.sign(market.yesPrice - 0.5);
+    const adj = spread * 0.4 * dir;
+
+    return {
+      name: 'Book Inefficiency',
+      weight: 1.5,
+      adjustment: adj,
+      reasoning: `Book ${sum < 1 ? 'under' : 'over'}-round (sum=${sum.toFixed(3)}, spread=${(spread * 100).toFixed(1)}%).`,
+    };
   }
 
-  // ========================================
-  // SIGNAL 5: Volume Significance
-  // Compare this market's volume to median — outliers may have more informed flow
-  // ========================================
-  private volumeSignificanceSignal(market: ParsedMarket, allMarkets?: ParsedMarket[]): SignalResult {
-    let adjustment = 0;
-    let reasoning = '';
-
-    if (!allMarkets || allMarkets.length === 0) {
-      return { name: 'Volume Significance', weight: 0.5, adjustment: 0, reasoning: 'Sem dados comparativos.' };
-    }
-
-    const volumes = allMarkets.map(m => m.volume).sort((a, b) => a - b);
-    const medianVolume = volumes[Math.floor(volumes.length / 2)];
-    const ratio = medianVolume > 0 ? market.volume / medianVolume : 1;
-
-    if (ratio > 10) {
-      // Top-volume market — very well-priced
-      adjustment = 0;
-      reasoning = `Volume ${ratio.toFixed(0)}x acima da mediana. Mercado muito líquido e eficiente.`;
-    } else if (ratio < 0.1) {
-      // Very low volume — higher chance of mispricing, but lower confidence
-      adjustment = 0.015 * (0.5 - market.yesPrice);
-      reasoning = `Volume ${ratio.toFixed(2)}x abaixo da mediana. Possível mispricing, mas baixa confiança.`;
-    } else {
-      reasoning = `Volume normal (${ratio.toFixed(1)}x da mediana).`;
-    }
-
-    return { name: 'Volume Significance', weight: 1.0, adjustment, reasoning };
-  }
-
-  // ========================================
-  // SIGNAL 6: Liquidity Mean Reversion
-  // Low-liquidity markets with prices away from 50% are prime targets
-  // for mispricing — they have fewer participants maintaining efficiency
-  // ========================================
-  private liquidityMeanReversionSignal(market: ParsedMarket): SignalResult {
-    let adjustment = 0;
-    let reasoning = '';
-
+  // ──────────────────────────────────────────────────────────────
+  // SIGNAL 2: Volume/Liquidity Anomaly
+  // An extreme vol/liq ratio (>20×) on a market that isn't near
+  // 0% or 100% can reflect informed trading. We cautiously
+  // follow the direction implied by the current price move.
+  // Low vol/liq means little discovery — we stay neutral.
+  // ──────────────────────────────────────────────────────────────
+  private volumeAnomalySignal(market: ParsedMarket): SignalResult {
+    const ratio = market.liquidity > 0 ? market.volume / market.liquidity : 0;
     const distFrom50 = Math.abs(market.yesPrice - 0.5);
-    const direction = Math.sign(0.5 - market.yesPrice); // Push towards 50%
 
-    if (market.liquidity < 15000 && distFrom50 > 0.1) {
-      // Low liquidity + price away from 50% → strong mean reversion signal
-      adjustment = 0.04 * direction;
-      reasoning = `Baixa liquidez ($${(market.liquidity / 1000).toFixed(0)}K) com preço ${(market.yesPrice * 100).toFixed(0)}%. Forte sinal de mispricing.`;
-    } else if (market.liquidity < 30000 && distFrom50 > 0.15) {
-      adjustment = 0.025 * direction;
-      reasoning = `Liquidez moderada ($${(market.liquidity / 1000).toFixed(0)}K) com preço ${(market.yesPrice * 100).toFixed(0)}%. Possível mispricing.`;
-    } else if (market.liquidity < 50000 && distFrom50 > 0.25) {
-      adjustment = 0.015 * direction;
-      reasoning = `Liquidez ok ($${(market.liquidity / 1000).toFixed(0)}K) mas preço extremo (${(market.yesPrice * 100).toFixed(0)}%). Leve oportunidade.`;
-    } else {
-      reasoning = `Liquidez e preço dentro do normal. Sem sinal de mean-reversion.`;
+    // Only act on extreme ratios for non-extreme prices
+    if (ratio > 20 && distFrom50 < 0.4) {
+      const dir = Math.sign(market.yesPrice - 0.5); // Follow the current direction
+      return {
+        name: 'Volume Anomaly',
+        weight: 1.2,
+        adjustment: 0.015 * dir,
+        reasoning: `Extreme vol/liq (${ratio.toFixed(0)}×) — confirms current direction.`,
+      };
     }
 
-    return { name: 'Liquidity Mean Reversion', weight: 2.5, adjustment, reasoning };
+    if (ratio < 0.5) {
+      return {
+        name: 'Volume Anomaly',
+        weight: 0.5,
+        adjustment: 0,
+        reasoning: `Low vol/liq (${ratio.toFixed(1)}×) — little price discovery, neutral.`,
+      };
+    }
+
+    return { name: 'Volume Anomaly', weight: 0.5, adjustment: 0, reasoning: `Vol/liq normal (${ratio.toFixed(1)}×).` };
   }
 
-  // ========================================
-  // CONFIDENCE CALCULATOR
-  // ========================================
-  private calculateConfidence(signals: SignalResult[], market: ParsedMarket): number {
-    let confidence = 0.5; // Start at 50%
+  // ──────────────────────────────────────────────────────────────
+  // SIGNAL 3: Calibration Correction
+  // Applies historical bias from BayesianCalibrator. If we've
+  // consistently over/under-estimated this probability range,
+  // correct for it with weight proportional to sample size.
+  // ──────────────────────────────────────────────────────────────
+  private calibrationSignal(cal: CalibrationInput): SignalResult {
+    return {
+      name: 'Calibration',
+      weight: 1.0 + cal.confidence,
+      adjustment: cal.adjustment * cal.confidence,
+      reasoning: `Historical bias correction: ${cal.adjustment > 0 ? '+' : ''}${(cal.adjustment * 100).toFixed(1)}% (n=${cal.sampleSize}).`,
+    };
+  }
 
-    // Higher liquidity → more confidence in our estimate
-    if (market.liquidity > 50000) confidence += 0.15;
-    else if (market.liquidity > 10000) confidence += 0.10;
-    else if (market.liquidity < 1000) confidence -= 0.15;
+  // ──────────────────────────────────────────────────────────────
+  // SIGNAL 4: External Estimate (Claude / LLM)
+  // High-weight directional signal when an external model
+  // disagrees with the market. Weight scales with the
+  // stated confidence of the external estimate.
+  // ──────────────────────────────────────────────────────────────
+  private externalEstimateSignal(ext: ExternalEstimate, marketPrice: number): SignalResult {
+    const deviation = ext.probability - marketPrice;
+    // Weight is 2× the confidence — a confident external estimate dominates heuristics
+    const weight = 2.0 * ext.confidence;
 
-    // Higher volume → more confidence
-    if (market.volume > 100000) confidence += 0.10;
-    else if (market.volume < 5000) confidence -= 0.10;
+    return {
+      name: `External (${ext.source})`,
+      weight,
+      adjustment: deviation,
+      reasoning: `${ext.source} estimates ${(ext.probability * 100).toFixed(0)}% ` +
+        `(mkt=${(marketPrice * 100).toFixed(0)}%, Δ=${(deviation * 100).toFixed(1)}%, conf=${(ext.confidence * 100).toFixed(0)}%).`,
+    };
+  }
 
-    // Signal agreement → more confidence
-    const adjustmentSigns = signals.map(s => Math.sign(s.adjustment)).filter(s => s !== 0);
-    if (adjustmentSigns.length > 0) {
-      const allSameSign = adjustmentSigns.every(s => s === adjustmentSigns[0]);
-      if (allSameSign) confidence += 0.10;
-    }
+  // ──────────────────────────────────────────────────────────────
+  // CONFIDENCE
+  // Starts at 0.4 (sceptical by default). Grows when signals
+  // agree and we have more market data. News and Claude boosts
+  // are additive.
+  // ──────────────────────────────────────────────────────────────
+  private calcConfidence(
+    signals: SignalResult[],
+    market: ParsedMarket,
+    consensusRatio: number,
+    _estimatedTrueProb: number,
+    newsResult?: NewsResult,
+    external?: ExternalEstimate
+  ): number {
+    let conf = 0.40;
 
-    return Math.max(0.1, Math.min(0.9, confidence));
+    // More liquid/traded → market price is more reliable as baseline
+    if (market.liquidity > 100_000) conf += 0.10;
+    else if (market.liquidity < 5_000)  conf -= 0.10;
+
+    if (market.volume > 200_000) conf += 0.05;
+    else if (market.volume < 5_000) conf -= 0.05;
+
+    // Signal consensus
+    if (consensusRatio >= 0.80) conf += 0.10;
+    else if (consensusRatio < 0.55 && signals.length > 1) conf -= 0.10;
+
+    // News: fresh coverage increases certainty
+    if (newsResult?.hasRecentNews) conf += 0.07;
+
+    // External estimate: the confidence it carries directly adds to ours
+    if (external) conf += external.confidence * 0.20;
+
+    return Math.max(0.15, Math.min(0.90, conf));
   }
 }

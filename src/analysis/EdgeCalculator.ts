@@ -8,21 +8,27 @@ import { config } from '../engine/Config';
 export interface EdgeAnalysis {
   marketId: string;
   question: string;
-  
+
   // Prices
   marketPrice: number;           // P_implied (what market says)
   estimatedTrueProb: number;     // P_true (what we estimate)
-  
+
   // Edge
   edge: number;                  // P_true - P_implied (raw)
   edgePercent: number;           // Edge as percentage
-  
+
   // Expected Value
   ev: number;                    // EV per $1 bet
   evPercent: number;             // EV as percentage
-  
+
   // Confidence in estimate
   confidence: number;            // 0-1
+
+  // Market data needed for execution
+  liquidity: number;             // Market liquidity (for Kelly cap)
+  yesTokenId: string;            // CLOB token ID for YES side
+  noTokenId: string;             // CLOB token ID for NO side
+  negRisk: boolean;              // Negative risk market flag
 
   // Decision
   side: 'BUY_YES' | 'BUY_NO' | 'NO_TRADE';
@@ -51,7 +57,11 @@ export class EdgeCalculator {
     question: string,
     marketYesPrice: number,
     estimatedTrueProb: number,
-    confidence: number
+    confidence: number,
+    liquidity: number = 0,
+    yesTokenId: string = '',
+    noTokenId: string = '',
+    negRisk: boolean = false
   ): EdgeAnalysis {
     // Clamp prices to valid range
     const yesPrice = Math.max(0.01, Math.min(0.99, marketYesPrice));
@@ -112,6 +122,10 @@ export class EdgeCalculator {
       ev,
       evPercent: ev * 100,
       confidence: adjustedConfidence,
+      liquidity,
+      yesTokenId,
+      noTokenId,
+      negRisk,
       side,
       recommendedPrice,
       reasoning,

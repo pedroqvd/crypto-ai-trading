@@ -17,6 +17,8 @@ export interface GammaMarket {
   active: boolean;
   closed: boolean;
   endDate: string;
+  startDate?: string;          // Market open date (proxy for creation date)
+  createdAt?: string;          // Explicit creation timestamp when available
   description: string;
   clobTokenIds?: string;       // JSON: "[\"tokenId1\", \"tokenId2\"]"
   acceptingOrders: boolean;
@@ -48,11 +50,21 @@ export interface ParsedMarket {
   active: boolean;
   closed: boolean;
   endDate: string;
+  createdAt: string;           // Market creation/start date for age signal
   description: string;
   yesTokenId: string;
   noTokenId: string;
   acceptingOrders: boolean;
   negRisk: boolean;
+  eventId?: string;            // Parent event ID for correlation analysis
+  eventTitle?: string;         // Parent event title
+}
+
+export interface ParsedEvent {
+  id: string;
+  title: string;
+  slug: string;
+  markets: ParsedMarket[];     // All markets under this event
 }
 
 export class GammaApiClient {
@@ -94,7 +106,7 @@ export class GammaApiClient {
       const parsed = rawMarkets
         .filter(m => m.active && !m.closed && m.acceptingOrders)
         .map(m => this.parseMarket(m))
-        .filter(m => m.yesTokenId && m.noTokenId); // Must have token IDs
+        .filter(m => m.yesTokenId && m.noTokenId);
 
       this.setCache(cacheKey, parsed);
       logger.debug('GammaApi', `Fetched ${parsed.length} active markets`);
@@ -146,7 +158,63 @@ export class GammaApiClient {
       return allMarkets;
     } catch (err) {
       logger.error('GammaApi', 'Failed full market scan', err instanceof Error ? err.message : err);
-      return allMarkets; // Return whatever we got
+      return allMarkets;
+    }
+  }
+
+  // ========================================
+  // FETCH ACTIVE EVENTS WITH NESTED MARKETS
+  // Used for correlation analysis — groups related markets by event
+  // ========================================
+  async getActiveEventsWithMarkets(maxPages = 3): Promise<ParsedEvent[]> {
+    const cacheKey = 'active-events';
+    const cached = this.getFromCache<ParsedEvent[]>(cacheKey);
+    if (cached) return cached;
+
+    const allEvents: ParsedEvent[] = [];
+
+    try {
+      for (let page = 0; page < maxPages; page++) {
+        const response = await this.client.get('/events', {
+          params: {
+            active: true,
+            closed: false,
+            limit: 50,
+            offset: page * 50,
+            order: 'volume',
+            ascending: false,
+          },
+        });
+
+        const rawEvents: GammaEvent[] = response.data || [];
+        if (rawEvents.length === 0) break;
+
+        for (const event of rawEvents) {
+          if (!event.markets || event.markets.length < 2) continue;
+
+          const parsedMarkets = event.markets
+            .map(m => this.parseMarket(m, event.id, event.title))
+            .filter(m => m.yesTokenId && m.noTokenId && m.active && !m.closed);
+
+          if (parsedMarkets.length >= 2) {
+            allEvents.push({
+              id: event.id,
+              title: event.title,
+              slug: event.slug,
+              markets: parsedMarkets,
+            });
+          }
+        }
+
+        if (rawEvents.length < 50) break;
+      }
+
+      this.setCache(cacheKey, allEvents, 120_000); // 2 min cache for events
+      logger.debug('GammaApi', `Fetched ${allEvents.length} active events with markets`);
+      return allEvents;
+    } catch (err) {
+      logger.error('GammaApi', 'Failed to fetch events', err instanceof Error ? err.message : err);
+      return allEvents;
     }
   }
 
@@ -179,7 +247,7 @@ export class GammaApiClient {
   // ========================================
   // PARSER
   // ========================================
-  private parseMarket(m: GammaMarket): ParsedMarket {
+  private parseMarket(m: GammaMarket, eventId?: string, eventTitle?: string): ParsedMarket {
     let yesPrice = 0.5;
     let noPrice = 0.5;
     let yesTokenId = '';
@@ -201,6 +269,9 @@ export class GammaApiClient {
       }
     } catch { /* fallback defaults */ }
 
+    // Use the earliest available date as creation proxy
+    const createdAt = m.createdAt || m.startDate || '';
+
     return {
       id: m.id,
       question: m.question || 'Unknown',
@@ -213,11 +284,14 @@ export class GammaApiClient {
       active: m.active,
       closed: m.closed,
       endDate: m.endDate || '',
+      createdAt,
       description: m.description || '',
       yesTokenId,
       noTokenId,
       acceptingOrders: m.acceptingOrders ?? false,
       negRisk: m.negRisk ?? false,
+      eventId,
+      eventTitle,
     };
   }
 

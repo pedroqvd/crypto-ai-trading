@@ -1,0 +1,47 @@
+# ================================================
+# .dockerignore — exclui arquivos desnecessários
+# da imagem Docker (reduz tamanho e tempo de build)
+# ================================================
+
+# Dependências (serão instaladas no container)
+node_modules/
+
+# Build anterior (será recompilado)
+dist/
+
+# Arquivos de ambiente (nunca incluir no build!)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Dados persistentes (montado como volume)
+data/
+
+# Controle de versão
+.git/
+.gitignore
+
+# Documentação e configurações de dev
+*.md
+.claude/
+.github/
+
+# Arquivos de teste
+tests/
+jest.config.js
+tsconfig.test.json
+
+# Ferramentas de CI/Deploy (não precisam estar na imagem)
+deploy.sh
+vercel.json
+ecosystem.config.js
+
+# Temporários e OS
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
