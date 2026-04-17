@@ -32,11 +32,6 @@ primary_region = "gru"
   cpu_kind = "shared"
   cpus     = 1
 
-# Volume persistente desativado temporariamente.
-# Para ativar: instalar flyctl e rodar:
-#   fly volumes create bot_data -r gru -n 1
-# Depois descomentar as linhas abaixo:
-# [[mounts]]
-#   source      = "bot_data"
-#   destination = "/app/data"
-#   initial_size = "1gb"
+[[mounts]]
+  source      = "bot_data"
+  destination = "/app/data"
