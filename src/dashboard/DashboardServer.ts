@@ -233,8 +233,8 @@ export class DashboardServer {
       'maxPositionPct', 'maxTotalExposurePct', 'scanIntervalMs',
       'exitPriceTarget', 'stopLossPct', 'trailingStopActivation',
       'trailingStopDistance', 'timeDecayHours', 'edgeReversalEnabled', 'momentumExitCycles',
-      'correlationEnabled', 'discordWebhookUrl',
-      'privateKey', 'newsApiKey',
+      'correlationEnabled', 'claudeEnabled', 'claudeApiKey', 'calibrationEnabled',
+      'discordWebhookUrl', 'privateKey', 'newsApiKey',
     ]);
 
     this.app.post('/api/settings', (req, res) => {

@@ -176,6 +176,22 @@
       <div class="settings-section">
         <h3>🔗 Integrações</h3>
         <div class="settings-field">
+          <label>Claude AI (confirmação de trades)</label>
+          <div class="toggle-row">
+            <span id="claude-enabled-label" class="toggle-label">Desativado</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="s-claude-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <span class="settings-hint">Quando ativado, Claude confirma cada trade antes de executar</span>
+        </div>
+        <div class="settings-field">
+          <label for="s-claude-key">Claude API Key</label>
+          <input type="password" id="s-claude-key" placeholder="sk-ant-...">
+          <span id="claude-key-status" class="settings-hint"></span>
+        </div>
+        <div class="settings-field">
           <label for="s-discord">Discord Webhook URL</label>
           <input type="text" id="s-discord" placeholder="https://discord.com/api/webhooks/...">
         </div>
