@@ -201,8 +201,8 @@
       try {
         const res = await authFetch('/api/settings');
         const cfg = await res.json();
-        $('s-dry-run').checked       = !cfg.dryRun;
-        $('dry-run-label').textContent = cfg.dryRun ? 'DRY-RUN' : 'LIVE';
+        $('s-dry-run').checked       = cfg.dryRun;
+        $('dry-run-label').textContent = cfg.dryRun ? 'Simulação' : 'Real';
         $('s-bankroll').value         = cfg.bankroll;
         $('s-scan-interval').value    = cfg.scanIntervalMs / 1000;
         $('s-min-edge').value         = +(cfg.minEdge * 100).toFixed(1);
@@ -230,7 +230,7 @@
     const dryRunToggle = $('s-dry-run');
     if (dryRunToggle) {
       dryRunToggle.addEventListener('change', () => {
-        $('dry-run-label').textContent = dryRunToggle.checked ? 'LIVE' : 'DRY-RUN';
+        $('dry-run-label').textContent = dryRunToggle.checked ? 'Simulação' : 'Real';
       });
     }
 
@@ -240,7 +240,7 @@
         settingsSave.textContent = '⏳ Salvando...';
         try {
           const body = {
-            dryRun:              !$('s-dry-run').checked,
+            dryRun:              $('s-dry-run').checked,
             bankroll:             parseFloat($('s-bankroll').value),
             scanIntervalMs:       parseFloat($('s-scan-interval').value) * 1000,
             minEdge:              parseFloat($('s-min-edge').value) / 100,
