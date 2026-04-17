@@ -11,16 +11,16 @@ export interface GammaMarket {
   question: string;
   conditionId: string;
   slug: string;
-  outcomePrices: string;       // JSON: "[0.65, 0.35]"
+  outcomePrices: string;
   volume: string;
   liquidity: string;
   active: boolean;
   closed: boolean;
   endDate: string;
-  startDate?: string;          // Market open date (proxy for creation date)
-  createdAt?: string;          // Explicit creation timestamp when available
+  startDate?: string;
+  createdAt?: string;
   description: string;
-  clobTokenIds?: string;       // JSON: "[\"tokenId1\", \"tokenId2\"]"
+  clobTokenIds?: string;
   acceptingOrders: boolean;
   negRisk: boolean;
   enableOrderBook: boolean;
@@ -50,27 +50,27 @@ export interface ParsedMarket {
   active: boolean;
   closed: boolean;
   endDate: string;
-  createdAt: string;           // Market creation/start date for age signal
+  createdAt: string;
   description: string;
   yesTokenId: string;
   noTokenId: string;
   acceptingOrders: boolean;
   negRisk: boolean;
-  eventId?: string;            // Parent event ID for correlation analysis
-  eventTitle?: string;         // Parent event title
+  eventId?: string;
+  eventTitle?: string;
 }
 
 export interface ParsedEvent {
   id: string;
   title: string;
   slug: string;
-  markets: ParsedMarket[];     // All markets under this event
+  markets: ParsedMarket[];
 }
 
 export class GammaApiClient {
   private client: AxiosInstance;
   private cache: Map<string, { data: unknown; expiry: number }> = new Map();
-  private defaultTTL = 30_000; // 30 seconds
+  private defaultTTL = 30_000;
 
   constructor() {
     this.client = axios.create({
@@ -78,13 +78,9 @@ export class GammaApiClient {
       timeout: 15_000,
       headers: { 'Accept': 'application/json' },
     });
-
     logger.info('GammaApi', 'Gamma API client initialized');
   }
 
-  // ========================================
-  // FETCH ACTIVE, TRADEABLE MARKETS
-  // ========================================
   async getActiveMarkets(limit = 100): Promise<ParsedMarket[]> {
     const cacheKey = `active-markets-${limit}`;
     const cached = this.getFromCache<ParsedMarket[]>(cacheKey);
@@ -92,22 +88,13 @@ export class GammaApiClient {
 
     try {
       const response = await this.client.get('/markets', {
-        params: {
-          active: true,
-          closed: false,
-          limit,
-          order: 'volume',
-          ascending: false,
-        },
+        params: { active: true, closed: false, limit, order: 'volume', ascending: false },
       });
-
       const rawMarkets: GammaMarket[] = response.data || [];
-
       const parsed = rawMarkets
         .filter(m => m.active && !m.closed && m.acceptingOrders)
         .map(m => this.parseMarket(m))
         .filter(m => m.yesTokenId && m.noTokenId);
-
       this.setCache(cacheKey, parsed);
       logger.debug('GammaApi', `Fetched ${parsed.length} active markets`);
       return parsed;
@@ -117,55 +104,43 @@ export class GammaApiClient {
     }
   }
 
-  // ========================================
-  // FETCH ALL PAGES OF MARKETS
-  // ========================================
+  // Fetches all pages in parallel for speed, then discards trailing empty pages
   async getAllActiveMarkets(maxPages = 5): Promise<ParsedMarket[]> {
     const cacheKey = 'all-active-markets';
     const cached = this.getFromCache<ParsedMarket[]>(cacheKey);
     if (cached) return cached;
 
-    const allMarkets: ParsedMarket[] = [];
-
     try {
-      for (let page = 0; page < maxPages; page++) {
-        const response = await this.client.get('/markets', {
-          params: {
-            active: true,
-            closed: false,
-            limit: 100,
-            offset: page * 100,
-            order: 'volume',
-            ascending: false,
-          },
-        });
+      const pagePromises = Array.from({ length: maxPages }, (_, i) =>
+        this.client.get('/markets', {
+          params: { active: true, closed: false, limit: 100, offset: i * 100, order: 'volume', ascending: false },
+        })
+          .then(r => (r.data as GammaMarket[]) || [])
+          .catch(() => [] as GammaMarket[])
+      );
 
-        const rawMarkets: GammaMarket[] = response.data || [];
+      const pages = await Promise.all(pagePromises);
+      const allMarkets: ParsedMarket[] = [];
+
+      for (const rawMarkets of pages) {
         if (rawMarkets.length === 0) break;
-
         const parsed = rawMarkets
           .filter(m => m.active && !m.closed && m.acceptingOrders)
           .map(m => this.parseMarket(m))
           .filter(m => m.yesTokenId && m.noTokenId);
-
         allMarkets.push(...parsed);
-
-        if (rawMarkets.length < 100) break; // Last page
+        if (rawMarkets.length < 100) break;
       }
 
-      this.setCache(cacheKey, allMarkets, 60_000); // 1 min cache for full scan
+      this.setCache(cacheKey, allMarkets, 60_000);
       logger.info('GammaApi', `Full scan: ${allMarkets.length} tradeable markets found`);
       return allMarkets;
     } catch (err) {
       logger.error('GammaApi', 'Failed full market scan', err instanceof Error ? err.message : err);
-      return allMarkets;
+      return [];
     }
   }
 
-  // ========================================
-  // FETCH ACTIVE EVENTS WITH NESTED MARKETS
-  // Used for correlation analysis — groups related markets by event
-  // ========================================
   async getActiveEventsWithMarkets(maxPages = 3): Promise<ParsedEvent[]> {
     const cacheKey = 'active-events';
     const cached = this.getFromCache<ParsedEvent[]>(cacheKey);
@@ -176,40 +151,24 @@ export class GammaApiClient {
     try {
       for (let page = 0; page < maxPages; page++) {
         const response = await this.client.get('/events', {
-          params: {
-            active: true,
-            closed: false,
-            limit: 50,
-            offset: page * 50,
-            order: 'volume',
-            ascending: false,
-          },
+          params: { active: true, closed: false, limit: 50, offset: page * 50, order: 'volume', ascending: false },
         });
-
         const rawEvents: GammaEvent[] = response.data || [];
         if (rawEvents.length === 0) break;
 
         for (const event of rawEvents) {
           if (!event.markets || event.markets.length < 2) continue;
-
           const parsedMarkets = event.markets
             .map(m => this.parseMarket(m, event.id, event.title))
             .filter(m => m.yesTokenId && m.noTokenId && m.active && !m.closed);
-
           if (parsedMarkets.length >= 2) {
-            allEvents.push({
-              id: event.id,
-              title: event.title,
-              slug: event.slug,
-              markets: parsedMarkets,
-            });
+            allEvents.push({ id: event.id, title: event.title, slug: event.slug, markets: parsedMarkets });
           }
         }
-
         if (rawEvents.length < 50) break;
       }
 
-      this.setCache(cacheKey, allEvents, 120_000); // 2 min cache for events
+      this.setCache(cacheKey, allEvents, 120_000);
       logger.debug('GammaApi', `Fetched ${allEvents.length} active events with markets`);
       return allEvents;
     } catch (err) {
@@ -218,23 +177,25 @@ export class GammaApiClient {
     }
   }
 
-  // ========================================
-  // FETCH SINGLE MARKET BY ID
-  // ========================================
   async getMarketById(marketId: string): Promise<ParsedMarket | null> {
+    const cacheKey = `market-${marketId}`;
+    const cached = this.getFromCache<ParsedMarket>(cacheKey);
+    if (cached) return cached;
+
     try {
       const response = await this.client.get(`/markets/${marketId}`);
       if (!response.data) return null;
-      return this.parseMarket(response.data);
+      const market = this.parseMarket(response.data);
+      // Closed markets don't change — cache them longer
+      const ttl = market.closed ? 600_000 : 30_000;
+      this.setCache(cacheKey, market, ttl);
+      return market;
     } catch (err) {
       logger.error('GammaApi', `Failed to fetch market ${marketId}`, err instanceof Error ? err.message : err);
       return null;
     }
   }
 
-  // ========================================
-  // HEALTH CHECK
-  // ========================================
   async healthCheck(): Promise<boolean> {
     try {
       await this.client.get('/markets', { params: { limit: 1 } });
@@ -244,34 +205,22 @@ export class GammaApiClient {
     }
   }
 
-  // ========================================
-  // PARSER
-  // ========================================
   private parseMarket(m: GammaMarket, eventId?: string, eventTitle?: string): ParsedMarket {
-    let yesPrice = 0.5;
-    let noPrice = 0.5;
-    let yesTokenId = '';
-    let noTokenId = '';
-
+    let yesPrice = 0.5, noPrice = 0.5, yesTokenId = '', noTokenId = '';
     try {
       if (m.outcomePrices) {
         const prices = JSON.parse(m.outcomePrices);
         yesPrice = parseFloat(prices[0]) || 0.5;
         noPrice = parseFloat(prices[1]) || 0.5;
       }
-    } catch { /* fallback defaults */ }
-
+    } catch { /* fallback */ }
     try {
       if (m.clobTokenIds) {
         const tokens = JSON.parse(m.clobTokenIds);
         yesTokenId = tokens[0] || '';
         noTokenId = tokens[1] || '';
       }
-    } catch { /* fallback defaults */ }
-
-    // Use the earliest available date as creation proxy
-    const createdAt = m.createdAt || m.startDate || '';
-
+    } catch { /* fallback */ }
     return {
       id: m.id,
       question: m.question || 'Unknown',
@@ -284,7 +233,7 @@ export class GammaApiClient {
       active: m.active,
       closed: m.closed,
       endDate: m.endDate || '',
-      createdAt,
+      createdAt: m.createdAt || m.startDate || '',
       description: m.description || '',
       yesTokenId,
       noTokenId,
@@ -295,22 +244,14 @@ export class GammaApiClient {
     };
   }
 
-  // ========================================
-  // CACHE
-  // ========================================
   private getFromCache<T>(key: string): T | null {
     const entry = this.cache.get(key);
-    if (entry && Date.now() < entry.expiry) {
-      return entry.data as T;
-    }
+    if (entry && Date.now() < entry.expiry) return entry.data as T;
     this.cache.delete(key);
     return null;
   }
 
   private setCache(key: string, data: unknown, ttl?: number): void {
-    this.cache.set(key, {
-      data,
-      expiry: Date.now() + (ttl || this.defaultTTL),
-    });
+    this.cache.set(key, { data, expiry: Date.now() + (ttl || this.defaultTTL) });
   }
 }

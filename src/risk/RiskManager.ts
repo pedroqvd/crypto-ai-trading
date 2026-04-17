@@ -29,13 +29,9 @@ export class RiskManager {
     this.resetDailyIfNeeded();
   }
 
-  /**
-   * Check if a new trade is allowed given current risk state
-   */
   checkTrade(stakeAmount: number, marketId: string): RiskCheck {
     this.resetDailyIfNeeded();
 
-    // Circuit breaker
     if (this.circuitBreakerActive) {
       return {
         allowed: false,
@@ -46,7 +42,6 @@ export class RiskManager {
       };
     }
 
-    // Check drawdown
     const drawdown = this.getDrawdownPct();
     if (drawdown >= 15) {
       this.circuitBreakerActive = true;
@@ -60,7 +55,6 @@ export class RiskManager {
       };
     }
 
-    // Check total exposure
     const maxExposure = this.currentBankroll * config.maxTotalExposurePct;
     if (this.totalExposure + stakeAmount > maxExposure) {
       return {
@@ -72,7 +66,6 @@ export class RiskManager {
       };
     }
 
-    // Check position size
     const maxPosition = this.currentBankroll * config.maxPositionPct;
     if (stakeAmount > maxPosition) {
       return {
@@ -84,7 +77,6 @@ export class RiskManager {
       };
     }
 
-    // Check daily loss limit (10% of bankroll)
     const dailyLossLimit = this.currentBankroll * 0.10;
     if (this.dailyLoss >= dailyLossLimit) {
       return {
@@ -105,18 +97,12 @@ export class RiskManager {
     };
   }
 
-  /**
-   * Register a new position
-   */
   registerPosition(stake: number): void {
     this.totalExposure += stake;
     this.positionCount++;
     logger.debug('RiskMgr', `Posição registrada: +$${stake.toFixed(2)}. Exposição total: $${this.totalExposure.toFixed(2)}`);
   }
 
-  /**
-   * Close a position and update P&L
-   */
   closePosition(stake: number, pnl: number): void {
     this.totalExposure = Math.max(0, this.totalExposure - stake);
     this.positionCount = Math.max(0, this.positionCount - 1);
@@ -126,17 +112,19 @@ export class RiskManager {
       this.dailyLoss += Math.abs(pnl);
     }
 
-    // Update peak
     if (this.currentBankroll > this.peakBankroll) {
       this.peakBankroll = this.currentBankroll;
+    }
+
+    // Auto-reset circuit breaker quando drawdown se recupera abaixo de 5%
+    if (this.circuitBreakerActive && this.getDrawdownPct() < 5) {
+      this.circuitBreakerActive = false;
+      logger.info('RiskMgr', '🔄 Circuit breaker auto-resetado: drawdown se recuperou abaixo de 5%.');
     }
 
     logger.debug('RiskMgr', `Posição fechada. P&L: $${pnl.toFixed(2)}. Bankroll: $${this.currentBankroll.toFixed(2)}`);
   }
 
-  /**
-   * Reset circuit breaker (manual override)
-   */
   resetCircuitBreaker(): void {
     this.circuitBreakerActive = false;
     logger.info('RiskMgr', '🔄 Circuit breaker resetado manualmente.');

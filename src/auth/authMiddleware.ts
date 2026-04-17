@@ -11,18 +11,32 @@ import { AuthService } from './AuthService';
  */
 export function createAuthMiddleware(authService: AuthService) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    // Always allow access to login page and auth endpoints
+    // Always allow access to login page, auth endpoints, and the dashboard HTML.
+    // The dashboard HTML is safe to serve publicly — all sensitive data comes
+    // from /api/* endpoints which remain protected. The dashboard.js bundled
+    // script enforces client-side auth: if no token in localStorage, it
+    // redirects to /login before making any API calls.
     const publicPaths = [
+      '/',
+      '/index.html',
       '/login',
       '/login.html',
       '/api/auth/login',
       '/api/auth/status',
       '/api/config',
       '/css/login.css',
+      '/css/dashboard.css',
       '/js/login.js',
+      '/js/dashboard.js',
     ];
 
-    if (publicPaths.some(p => req.path === p || req.path.startsWith(p))) {
+    if (publicPaths.some(p => req.path === p)) {
+      next();
+      return;
+    }
+
+    // Allow static asset subpaths (fonts, images, etc.)
+    if (req.path.startsWith('/css/') || req.path.startsWith('/js/') || req.path.startsWith('/img/')) {
       next();
       return;
     }
