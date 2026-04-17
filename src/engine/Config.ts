@@ -30,6 +30,10 @@ export interface TradingConfig {
   newsApiKey: string;
   newsRelevanceHours: number;
   correlationEnabled: boolean;
+  claudeApiKey: string;
+  claudeEnabled: boolean;
+  claudeMaxCallsPerCycle: number;
+  calibrationEnabled: boolean;
   backendUrl: string;
   allowedOrigins: string[];
   logLevel: 'debug' | 'info' | 'warn';
@@ -61,6 +65,10 @@ export function loadConfig(): TradingConfig {
     newsApiKey: process.env.NEWS_API_KEY || '',
     newsRelevanceHours: parseInt(process.env.NEWS_RELEVANCE_HOURS || '6'),
     correlationEnabled: process.env.CORRELATION_ENABLED !== 'false',
+    claudeApiKey: process.env.CLAUDE_API_KEY || '',
+    claudeEnabled: process.env.CLAUDE_ENABLED !== 'false',
+    claudeMaxCallsPerCycle: parseInt(process.env.CLAUDE_MAX_CALLS_PER_CYCLE || '5'),
+    calibrationEnabled: process.env.CALIBRATION_ENABLED !== 'false',
     backendUrl: (process.env.BACKEND_URL || '').replace(/\/$/, ''),
     allowedOrigins: process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)

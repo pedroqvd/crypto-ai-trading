@@ -216,10 +216,13 @@
         $('s-edge-reversal').checked      = cfg.edgeReversalEnabled;
         $('s-momentum-cycles').value      = cfg.momentumExitCycles;
         $('s-max-exposure').value         = +(cfg.maxTotalExposurePct * 100).toFixed(0);
-        $('s-correlation').checked    = cfg.correlationEnabled;
-        $('s-discord').value          = cfg.discordWebhookUrl || '';
-        $('pk-status').textContent       = cfg.hasPrivateKey ? '✅ Configurada' : '❌ Não configurada';
-        $('news-key-status').textContent   = cfg.hasNewsApiKey ? '✅ Configurada' : '❌ Não configurada';
+        $('s-correlation').checked       = cfg.correlationEnabled;
+        $('s-claude-enabled').checked    = cfg.claudeEnabled;
+        $('claude-enabled-label').textContent = cfg.claudeEnabled ? 'Ativado' : 'Desativado';
+        $('s-discord').value             = cfg.discordWebhookUrl || '';
+        $('pk-status').textContent          = cfg.hasPrivateKey    ? '✅ Configurada' : '❌ Não configurada';
+        $('claude-key-status').textContent  = cfg.hasClaudeApiKey  ? '✅ Configurada' : '❌ Não configurada';
+        $('news-key-status').textContent    = cfg.hasNewsApiKey    ? '✅ Configurada' : '❌ Não configurada';
       } catch (e) {
         console.error('Erro ao carregar settings:', e);
       }
@@ -259,11 +262,14 @@
             momentumExitCycles:      parseInt($('s-momentum-cycles').value),
             maxTotalExposurePct:     parseFloat($('s-max-exposure').value) / 100,
             correlationEnabled:   $('s-correlation').checked,
+            claudeEnabled:        $('s-claude-enabled').checked,
             discordWebhookUrl:    $('s-discord').value.trim(),
           };
           // Only send keys if user typed something
           const pk = $('s-private-key').value.trim();
           if (pk) body.privateKey = pk;
+          const ck = $('s-claude-key').value.trim();
+          if (ck) body.claudeApiKey = ck;
           const nk = $('s-news-key').value.trim();
           if (nk) body.newsApiKey = nk;
 

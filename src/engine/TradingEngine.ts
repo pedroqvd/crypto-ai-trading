@@ -16,6 +16,8 @@ import { EdgeCalculator, EdgeAnalysis } from '../analysis/EdgeCalculator';
 import { KellyCalculator } from '../analysis/KellyCalculator';
 import { RiskManager } from '../risk/RiskManager';
 import { CorrelationAnalyzer } from '../analysis/CorrelationAnalyzer';
+import { ClaudeAnalyzer } from '../services/ClaudeAnalyzer';
+import { BayesianCalibrator } from '../analysis/BayesianCalibrator';
 
 export interface EngineStatus {
   running: boolean;
@@ -51,6 +53,8 @@ export class TradingEngine extends EventEmitter {
   private kellyCalc: KellyCalculator;
   private riskManager: RiskManager;
   private correlationAnalyzer: CorrelationAnalyzer;
+  private claudeAnalyzer: ClaudeAnalyzer | null = null;
+  private calibrator: BayesianCalibrator;
 
   // State
   private running = false;
@@ -84,6 +88,11 @@ export class TradingEngine extends EventEmitter {
     this.kellyCalc = new KellyCalculator();
     this.riskManager = new RiskManager(this.journal);
     this.correlationAnalyzer = new CorrelationAnalyzer();
+    this.calibrator = new BayesianCalibrator();
+    if (config.claudeEnabled && config.claudeApiKey) {
+      this.claudeAnalyzer = new ClaudeAnalyzer(config.claudeApiKey, config.claudeMaxCallsPerCycle);
+      logger.info('Engine', '🤖 Claude AI analysis enabled');
+    }
 
     const openTrades = this.journal.getOpenTrades();
     openTrades.forEach(t => this.activeMarketIds.add(t.marketId));
@@ -164,6 +173,9 @@ export class TradingEngine extends EventEmitter {
     edgeReversalEnabled: boolean;
     momentumExitCycles: number;
     correlationEnabled: boolean;
+    claudeEnabled: boolean;
+    claudeApiKey: string;
+    calibrationEnabled: boolean;
     discordWebhookUrl: string;
     privateKey: string;
     newsApiKey: string;
@@ -171,6 +183,12 @@ export class TradingEngine extends EventEmitter {
     Object.assign(config, updates);
     if (updates.bankroll !== undefined) {
       this.riskManager.updateBankroll(updates.bankroll);
+    }
+    // Reinitialize Claude if key or enabled state changed
+    if (updates.claudeApiKey !== undefined || updates.claudeEnabled !== undefined) {
+      this.claudeAnalyzer = (config.claudeEnabled && config.claudeApiKey)
+        ? new ClaudeAnalyzer(config.claudeApiKey, config.claudeMaxCallsPerCycle)
+        : null;
     }
     logger.info('Engine', `⚙️ Config atualizada: ${JSON.stringify(
       Object.fromEntries(Object.entries(updates).map(([k, v]) =>
@@ -196,9 +214,12 @@ export class TradingEngine extends EventEmitter {
       edgeReversalEnabled: config.edgeReversalEnabled,
       momentumExitCycles: config.momentumExitCycles,
       correlationEnabled: config.correlationEnabled,
+      claudeEnabled: config.claudeEnabled,
+      calibrationEnabled: config.calibrationEnabled,
       discordWebhookUrl: config.discordWebhookUrl || '',
       hasPrivateKey: !!config.privateKey,
       hasNewsApiKey: !!config.newsApiKey,
+      hasClaudeApiKey: !!config.claudeApiKey,
     };
   }
 
@@ -214,6 +235,7 @@ export class TradingEngine extends EventEmitter {
   private async runCycle(): Promise<void> {
     this.cycleCount++;
     this.lastScanAt = new Date().toISOString();
+    this.claudeAnalyzer?.resetCycleCounter();
     logger.info('Engine', `\n--- Ciclo #${this.cycleCount} ---`);
 
     // Step 1: Scan markets (flat list + events for correlation)
@@ -307,15 +329,25 @@ export class TradingEngine extends EventEmitter {
     const edgeAnalyses: EdgeAnalysis[] = [];
 
     for (const market of filtered) {
-      // Note: news is fetched per-opportunity in executeOpportunities (rate limit friendly)
       const probEstimate = this.probEstimator.estimate(market, allMarkets);
+
+      // Apply Bayesian calibration correction when enough history exists
+      let calibratedProb = probEstimate.estimatedTrueProb;
+      let calibratedConf = probEstimate.confidence;
+      if (config.calibrationEnabled) {
+        const cal = this.calibrator.getCalibrationAdjustment(probEstimate.estimatedTrueProb);
+        if (cal) {
+          calibratedProb = Math.max(0.01, Math.min(0.99, probEstimate.estimatedTrueProb + cal.adjustment));
+          calibratedConf = Math.min(0.95, probEstimate.confidence + cal.confidence * 0.1);
+        }
+      }
 
       const edgeAnalysis = this.edgeCalc.calculateEdge(
         market.id,
         market.question,
         market.yesPrice,
-        probEstimate.estimatedTrueProb,
-        probEstimate.confidence,
+        calibratedProb,
+        calibratedConf,
         market.liquidity,
         market.yesTokenId,
         market.noTokenId,
@@ -437,6 +469,28 @@ export class TradingEngine extends EventEmitter {
           if (newsResult.sentiment) {
             this.logDecision('opportunity',
               `📰 Notícias confirmam (${newsResult.sentiment}) para "${opp.question.substring(0, 40)}..."`
+            );
+          }
+        }
+      }
+
+      // ── CLAUDE AI CONFIRMATION ──────────────────────────────────────
+      if (this.claudeAnalyzer && config.claudeEnabled) {
+        const market = await this.gammaApi.getMarketById(opp.marketId);
+        if (market) {
+          const claudeEst = await this.claudeAnalyzer.estimateProbability(market);
+          if (claudeEst && claudeEst.confidence >= 0.5) {
+            const claudeBullish = claudeEst.probability > market.yesPrice;
+            const ourBullish    = opp.side === 'BUY_YES';
+            if (claudeBullish !== ourBullish) {
+              this.logDecision('reject',
+                `🤖 Claude discorda (est=${(claudeEst.probability * 100).toFixed(0)}%, conf=${(claudeEst.confidence * 100).toFixed(0)}%) ` +
+                `para "${opp.question.substring(0, 40)}..." — skipping`
+              );
+              continue;
+            }
+            this.logDecision('opportunity',
+              `🤖 Claude confirma: est=${(claudeEst.probability * 100).toFixed(0)}% — "${claudeEst.reasoning}"`
             );
           }
         }
@@ -602,6 +656,9 @@ export class TradingEngine extends EventEmitter {
         this.riskManager.closePosition(trade.stake, pnl);
         this.activeMarketIds.delete(trade.marketId);
         this.positionState.delete(trade.id);
+        if (config.calibrationEnabled) {
+          this.calibrator.recordOutcome(trade.entryPrice, won);
+        }
 
         if (won) {
           this.logDecision('monitor', `🎯 GANHOU: "${trade.question.substring(0, 50)}..." → +$${pnl.toFixed(2)}`);
@@ -705,6 +762,9 @@ export class TradingEngine extends EventEmitter {
         this.riskManager.closePosition(trade.stake, pnl);
         this.activeMarketIds.delete(trade.marketId);
         this.positionState.delete(trade.id);
+        if (config.calibrationEnabled) {
+          this.calibrator.recordOutcome(trade.entryPrice, pnl >= 0);
+        }
 
         this.logDecision('monitor',
           `${pnl >= 0 ? '💰' : '💸'} SAÍDA [${exitReason}] — P&L ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`
