@@ -273,9 +273,6 @@ export class DashboardServer {
     });
   }
 
-  // ========================================
-  // VERCEL — Expose Express app for serverless handler
-  // ========================================
   getExpressApp(): express.Application {
     return this.app;
   }
