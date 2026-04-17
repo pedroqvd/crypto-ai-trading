@@ -15,7 +15,9 @@ import { ProbabilityEstimator } from '../analysis/ProbabilityEstimator';
 import { EdgeCalculator, EdgeAnalysis } from '../analysis/EdgeCalculator';
 import { KellyCalculator } from '../analysis/KellyCalculator';
 import { RiskManager } from '../risk/RiskManager';
-import { CorrelationAnalyzer, CorrelationOpportunity } from '../analysis/CorrelationAnalyzer';
+import { CorrelationAnalyzer } from '../analysis/CorrelationAnalyzer';
+import { BayesianCalibrator } from '../analysis/BayesianCalibrator';
+import { ClaudeAnalyzer } from '../services/ClaudeAnalyzer';
 
 export interface EngineStatus {
   running: boolean;
@@ -51,6 +53,8 @@ export class TradingEngine extends EventEmitter {
   private kellyCalc: KellyCalculator;
   private riskManager: RiskManager;
   private correlationAnalyzer: CorrelationAnalyzer;
+  private calibrator: BayesianCalibrator | null = null;
+  private claudeAnalyzer: ClaudeAnalyzer | null = null;
 
   // State
   private running = false;
@@ -77,6 +81,13 @@ export class TradingEngine extends EventEmitter {
     this.riskManager = new RiskManager(this.journal);
     this.correlationAnalyzer = new CorrelationAnalyzer();
 
+    if (config.calibrationEnabled) {
+      this.calibrator = new BayesianCalibrator();
+    }
+    if (config.claudeEnabled && config.claudeApiKey) {
+      this.claudeAnalyzer = new ClaudeAnalyzer(config.claudeApiKey, config.claudeMaxCallsPerCycle);
+    }
+
     const openTrades = this.journal.getOpenTrades();
     openTrades.forEach(t => this.activeMarketIds.add(t.marketId));
 
@@ -102,6 +113,8 @@ export class TradingEngine extends EventEmitter {
     logger.info('Engine', `🚪 Exit Target: ${(config.exitPriceTarget * 100).toFixed(0)}%`);
     logger.info('Engine', `📰 News: ${config.newsApiKey ? `✅ (${config.newsRelevanceHours}h window)` : '❌ disabled'}`);
     logger.info('Engine', `🔗 Correlation: ${config.correlationEnabled ? '✅' : '❌'}`);
+    logger.info('Engine', `🤖 Claude: ${this.claudeAnalyzer ? `✅ (max ${config.claudeMaxCallsPerCycle}/cycle)` : '❌ disabled'}`);
+    logger.info('Engine', `📊 Calibration: ${this.calibrator ? '✅' : '❌'}`);
     logger.info('Engine', `⏱️ Scan Interval: ${config.scanIntervalMs / 1000}s`);
     logger.info('Engine', `🚀 ========================================\n`);
 
@@ -149,6 +162,9 @@ export class TradingEngine extends EventEmitter {
     this.cycleCount++;
     logger.info('Engine', `\n--- Ciclo #${this.cycleCount} ---`);
 
+    // Reset per-cycle Claude rate limit
+    this.claudeAnalyzer?.resetCycleCounter();
+
     // Step 1: Scan markets (flat list + events for correlation)
     const { markets, events } = await this.scanMarkets();
     if (markets.length === 0) {
@@ -159,13 +175,18 @@ export class TradingEngine extends EventEmitter {
     // Step 2: Filter
     const filtered = this.filterMarkets(markets);
 
-    // Step 3: Analyze — probability, edge, EV
-    const opportunities = await this.analyzeMarkets(filtered, markets);
+    // Step 3: Analyze — probability, edge, EV (enriched by Claude + calibration)
+    const heuristicOpps = await this.analyzeMarkets(filtered, markets);
 
-    // Step 4: Correlation analysis (runs in parallel with main pipeline)
-    if (config.correlationEnabled && events.length > 0) {
-      await this.runCorrelationAnalysis(events, markets);
-    }
+    // Step 4: Correlation arbitrage (detects + returns EdgeAnalysis for execution)
+    const correlationOpps = config.correlationEnabled && events.length > 0
+      ? await this.runCorrelationAnalysis(events, markets)
+      : [];
+
+    // Merge and rank by EV (correlation opps get priority — they're mathematical alpha)
+    const opportunities = [...correlationOpps, ...heuristicOpps]
+      .sort((a, b) => b.ev - a.ev)
+      .slice(0, 5);
 
     // Step 5: Execute best opportunities
     await this.executeOpportunities(opportunities);
@@ -229,8 +250,27 @@ export class TradingEngine extends EventEmitter {
     const edgeAnalyses: EdgeAnalysis[] = [];
 
     for (const market of filtered) {
-      // Note: news is fetched per-opportunity in executeOpportunities (rate limit friendly)
-      const probEstimate = this.probEstimator.estimate(market, allMarkets);
+      // Calibration correction for this market's probability range
+      const calInput = this.calibrator
+        ? this.calibrator.getCalibrationAdjustment(market.yesPrice) ?? undefined
+        : undefined;
+
+      // Heuristic probability estimate (structural signals only)
+      let probEstimate = this.probEstimator.estimate(market, allMarkets, undefined, undefined, calInput);
+
+      // Claude enrichment: only call for markets that look promising
+      // (initial heuristic confidence ≥ 0.45) to save API quota
+      if (this.claudeAnalyzer && probEstimate.confidence >= 0.45) {
+        const claudeEst = await this.claudeAnalyzer.estimateProbability(market);
+        if (claudeEst) {
+          // Re-estimate with Claude as external signal
+          probEstimate = this.probEstimator.estimate(market, allMarkets, undefined, {
+            probability: claudeEst.probability,
+            confidence: claudeEst.confidence,
+            source: 'Claude',
+          }, calInput);
+        }
+      }
 
       const edgeAnalysis = this.edgeCalc.calculateEdge(
         market.id,
@@ -271,19 +311,69 @@ export class TradingEngine extends EventEmitter {
 
   // ========================================
   // STEP 4: CORRELATION ANALYSIS
+  // Finds cross-market pricing inconsistencies and converts
+  // them into EdgeAnalysis objects ready for execution.
+  // This is the most reliable alpha source: pure maths.
   // ========================================
-  private async runCorrelationAnalysis(events: ParsedEvent[], allMarkets: ParsedMarket[]): Promise<void> {
+  private async runCorrelationAnalysis(events: ParsedEvent[], allMarkets: ParsedMarket[]): Promise<EdgeAnalysis[]> {
     const inconsistencies = this.correlationAnalyzer.findInconsistencies(events);
-    if (inconsistencies.length === 0) return;
+    if (inconsistencies.length === 0) return [];
+
+    const marketMap = new Map(allMarkets.map(m => [m.id, m]));
+    const result: EdgeAnalysis[] = [];
 
     for (const opp of inconsistencies.slice(0, 3)) {
       const summary = this.correlationAnalyzer.summarize(opp);
       this.logDecision('opportunity', `🔗 CORRELAÇÃO: ${summary}`);
 
-      // Boost the mispriced market if it's in our opportunity list
-      // (the correlation signal acts as additional confirmation)
-      logger.debug('Correlation', summary);
+      // Skip markets already in an open position
+      if (this.activeMarketIds.has(opp.marketId)) continue;
+
+      const market = marketMap.get(opp.marketId);
+      if (!market || !market.yesTokenId) continue;
+
+      const edge = Math.abs(opp.mispricing);
+      if (edge < config.minEdge) continue;
+
+      const side = opp.recommendation;
+      const price = side === 'BUY_YES' ? opp.yesPrice : (1 - opp.yesPrice);
+      const pTrue = opp.fairPrice;
+
+      // EV uses fair price as the true probability (mathematical arbitrage)
+      const TAKER_FEE = 0.02;
+      const ev = side === 'BUY_YES'
+        ? pTrue * (1 / price - 1) * (1 - TAKER_FEE) - (1 - pTrue)
+        : (1 - pTrue) * (1 / price - 1) * (1 - TAKER_FEE) - pTrue;
+
+      if (ev <= 0) continue;
+
+      result.push({
+        marketId: opp.marketId,
+        question: opp.question,
+        marketPrice: opp.yesPrice,
+        estimatedTrueProb: pTrue,
+        edge,
+        edgePercent: edge * 100,
+        ev,
+        evPercent: ev * 100,
+        confidence: 0.65,
+        liquidity: market.liquidity,
+        yesTokenId: market.yesTokenId,
+        noTokenId: market.noTokenId,
+        negRisk: market.negRisk,
+        side,
+        recommendedPrice: price,
+        reasoning: `[CORRELAÇÃO ${opp.type === 'over_book' ? 'OVER' : 'UNDER'}-BOOK] ${summary}`,
+      });
     }
+
+    if (result.length > 0) {
+      this.logDecision('opportunity',
+        `🔗 ${result.length} oportunidade(s) de correlação prontas para execução.`
+      );
+    }
+
+    return result;
   }
 
   // ========================================
@@ -511,6 +601,11 @@ export class TradingEngine extends EventEmitter {
             this.riskManager.closePosition(trade.stake, pnl);
             this.activeMarketIds.delete(trade.marketId);
 
+            // Record early-exit as a win for calibration
+            if (this.calibrator) {
+              this.calibrator.recordOutcome(trade.entryPrice, true);
+            }
+
             this.logDecision('monitor',
               `💰 SAÍDA ANTECIPADA: "${trade.question.substring(0, 50)}..." ` +
               `@ $${currentSidePrice.toFixed(3)} (target=${(config.exitPriceTarget * 100).toFixed(0)}%), ` +
@@ -550,6 +645,11 @@ export class TradingEngine extends EventEmitter {
         const pnl = won ? (trade.size * 1) - trade.stake : -trade.stake;
         this.riskManager.closePosition(trade.stake, pnl);
         this.activeMarketIds.delete(trade.marketId);
+
+        // Feed outcome to calibrator for self-improvement
+        if (this.calibrator) {
+          this.calibrator.recordOutcome(trade.entryPrice, won);
+        }
 
         if (won) {
           this.logDecision('monitor', `🎯 GANHOU: "${trade.question.substring(0, 50)}..." → +$${pnl.toFixed(2)}`);

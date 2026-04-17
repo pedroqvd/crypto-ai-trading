@@ -43,6 +43,14 @@ export interface TradingConfig {
   // Correlation analysis
   correlationEnabled: boolean;  // Detect pricing inconsistencies between related markets
 
+  // Claude LLM analysis
+  claudeApiKey: string;
+  claudeEnabled: boolean;
+  claudeMaxCallsPerCycle: number;
+
+  // Bayesian calibration
+  calibrationEnabled: boolean;
+
   // Remote integration
   oracleBackendUrl: string;   // Full URL of Oracle Cloud backend when frontend runs on a separate host (e.g. Vercel)
   allowedOrigins: string[];   // CORS allowed origins (comma-separated in env)
@@ -90,6 +98,14 @@ export function loadConfig(): TradingConfig {
 
     // Correlation
     correlationEnabled: process.env.CORRELATION_ENABLED !== 'false',
+
+    // Claude LLM analysis
+    claudeApiKey: process.env.CLAUDE_API_KEY || '',
+    claudeEnabled: process.env.CLAUDE_ENABLED !== 'false',
+    claudeMaxCallsPerCycle: parseInt(process.env.CLAUDE_MAX_CALLS_PER_CYCLE || '5'),
+
+    // Bayesian calibration
+    calibrationEnabled: process.env.CALIBRATION_ENABLED !== 'false',
 
     // Remote integration
     oracleBackendUrl: (process.env.ORACLE_BACKEND_URL || '').replace(/\/$/, ''),
