@@ -51,7 +51,8 @@ export class ProbabilityEstimator {
     market: ParsedMarket,
     allMarkets?: ParsedMarket[],
     medianVolume?: number,
-    newsResult?: NewsResult
+    newsResult?: NewsResult,
+    learnedWeights?: Record<string, number>
   ): ProbabilityEstimate {
     const signals: SignalResult[] = [];
     const marketPrice = market.yesPrice;
@@ -64,7 +65,15 @@ export class ProbabilityEstimator {
     signals.push(this.volumeSignificanceSignal(market, allMarkets, medianVolume));
     signals.push(this.liquidityMeanReversionSignal(market));
     signals.push(this.marketCalibrationSignal(market));
-    signals.push(this.marketAgeSignal(market));   // Signal 8 — new
+    signals.push(this.marketAgeSignal(market));
+
+    // Apply learned weight multipliers when available (Phase 4 ensemble)
+    if (learnedWeights) {
+      for (const signal of signals) {
+        const multiplier = learnedWeights[signal.name] ?? 1.0;
+        signal.weight *= multiplier;
+      }
+    }
 
     // Weighted average of all adjustments
     let totalWeight = 0;

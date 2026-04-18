@@ -3,356 +3,443 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Polymarket AI Trader — Dashboard</title>
-  <meta name="description" content="Real-time monitoring dashboard for the Polymarket AI Autonomous Trader">
+  <title>Polymarket AI · Terminal</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/dashboard.css">
 </head>
 <body>
-  <!-- ========================================
-       HEADER
-       ======================================== -->
-  <header id="header">
-    <div class="header-left">
-      <div class="logo">
-        <span class="logo-icon">🤖</span>
-        <h1>Polymarket AI Trader</h1>
-      </div>
-      <div id="bot-status" class="status-badge status-connecting">
-        <span class="status-dot"></span>
-        <span class="status-text">Conectando...</span>
-      </div>
-    </div>
-    <div class="header-right">
-      <div class="header-stat">
-        <span class="header-stat-label">Bankroll</span>
-        <span id="header-bankroll" class="header-stat-value">$0.00</span>
-      </div>
-      <div class="header-stat">
-        <span class="header-stat-label">P&L Total</span>
-        <span id="header-pnl" class="header-stat-value pnl-neutral">$0.00</span>
-      </div>
-      <div class="header-stat">
-        <span class="header-stat-label">Uptime</span>
-        <span id="header-uptime" class="header-stat-value">00:00:00</span>
-      </div>
-      <button id="bot-toggle-btn" class="bot-toggle-btn bot-stop" title="Parar bot">■ Parar Bot</button>
-      <button id="settings-btn" class="settings-btn" title="Configurações">⚙️</button>
-      <button id="logout-btn" class="logout-btn" title="Sair">🔓 Sair</button>
-    </div>
-  </header>
 
-  <!-- ========================================
-       SETTINGS DRAWER
-       ======================================== -->
-  <div id="settings-overlay" class="settings-overlay hidden"></div>
-  <aside id="settings-drawer" class="settings-drawer hidden">
-    <div class="settings-header">
-      <h2>⚙️ Configurações</h2>
-      <button id="settings-close" class="settings-close">✕</button>
+  <!-- ═══════════════════════════════════════════
+       SETTINGS OVERLAY + DRAWER
+  ═══════════════════════════════════════════ -->
+  <div id="settings-overlay" class="overlay hidden"></div>
+  <aside id="settings-drawer" class="drawer hidden">
+    <div class="drawer-head">
+      <div class="drawer-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Configurações
+      </div>
+      <button id="settings-close" class="icon-btn">✕</button>
     </div>
-    <div class="settings-body">
+    <div class="drawer-body">
 
-      <!-- Operação -->
-      <div class="settings-section">
-        <h3>🤖 Operação</h3>
-        <div class="settings-field">
-          <label>Modo</label>
+      <div class="cfg-section">
+        <div class="cfg-section-title">Operação</div>
+        <div class="cfg-field">
+          <label>Modo de Execução</label>
           <div class="toggle-row">
-            <span id="dry-run-label" class="toggle-label">DRY-RUN</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="s-dry-run">
-              <span class="toggle-slider"></span>
-            </label>
+            <span id="dry-run-label" class="toggle-label">Simulação</span>
+            <label class="switch"><input type="checkbox" id="s-dry-run"><span class="switch-track"></span></label>
           </div>
-          <span class="settings-hint">🟢 Ligado = Simulação &nbsp;|&nbsp; 🔴 Desligado = Dinheiro real</span>
+          <span class="cfg-hint">Ligado = Simulação · Desligado = Dinheiro real</span>
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-bankroll">Bankroll (USDC)</label>
           <input type="number" id="s-bankroll" min="1" step="1" placeholder="1000">
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-scan-interval">Intervalo de Scan (segundos)</label>
           <input type="number" id="s-scan-interval" min="10" step="10" placeholder="60">
         </div>
       </div>
 
-      <!-- Wallet -->
-      <div class="settings-section">
-        <h3>👛 Wallet</h3>
-        <div class="settings-field">
-          <label for="s-private-key">Chave Privada (Polygon)</label>
-          <input type="password" id="s-private-key" placeholder="0x... (obrigatório para modo LIVE)">
-          <span id="pk-status" class="settings-hint"></span>
+      <div class="cfg-section">
+        <div class="cfg-section-title">Wallet</div>
+        <div class="cfg-field">
+          <label for="s-private-key">Chave Privada Polygon</label>
+          <input type="password" id="s-private-key" placeholder="0x... (modo LIVE)">
+          <span id="pk-status" class="cfg-hint"></span>
         </div>
       </div>
 
-      <!-- Estratégia -->
-      <div class="settings-section">
-        <h3>📊 Estratégia</h3>
-        <div class="settings-field">
+      <div class="cfg-section">
+        <div class="cfg-section-title">Estratégia</div>
+        <div class="cfg-field">
           <label for="s-min-edge">Edge Mínimo (%)</label>
-          <input type="number" id="s-min-edge" min="0.5" max="50" step="0.5" placeholder="3">
+          <input type="number" id="s-min-edge" min="0.5" max="50" step="0.5" placeholder="1">
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-kelly">Fração Kelly (%)</label>
           <input type="number" id="s-kelly" min="1" max="25" step="1" placeholder="25">
         </div>
-        <div class="settings-field">
-          <label for="s-max-pos">Posição Máxima (% do bankroll)</label>
+        <div class="cfg-field">
+          <label for="s-max-pos">Posição Máxima (% bankroll)</label>
           <input type="number" id="s-max-pos" min="0.1" max="20" step="0.5" placeholder="5">
         </div>
       </div>
 
-      <!-- Saída -->
-      <div class="settings-section">
-        <h3>🚪 Estratégia de Saída</h3>
-        <div class="settings-field">
+      <div class="cfg-section">
+        <div class="cfg-section-title">Estratégia de Saída</div>
+        <div class="cfg-field">
           <label for="s-exit-target">Alvo de Lucro (%)</label>
           <input type="number" id="s-exit-target" min="50" max="99" step="1" placeholder="85">
-          <span class="settings-hint">Fechar posição quando preço atingir este % (ex: 85 = fechar a 0.85)</span>
+          <span class="cfg-hint">Fechar quando preço atingir X¢ (ex: 85 → fechar a 0.85)</span>
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-stop-loss">Stop-Loss (%)</label>
           <input type="number" id="s-stop-loss" min="5" max="80" step="5" placeholder="40">
-          <span class="settings-hint">Fechar se posição cair este % do preço de entrada</span>
+          <span class="cfg-hint">Fechar se posição cair X% do preço de entrada</span>
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-trailing-activation">Trailing Stop — Ativação (%)</label>
           <input type="number" id="s-trailing-activation" min="5" max="50" step="5" placeholder="20">
-          <span class="settings-hint">Ativar trailing stop após este % de ganho</span>
+          <span class="cfg-hint">Ativar trailing stop após X% de ganho</span>
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-trailing-distance">Trailing Stop — Distância (%)</label>
           <input type="number" id="s-trailing-distance" min="3" max="30" step="1" placeholder="12">
-          <span class="settings-hint">Fechar se cair este % abaixo do pico</span>
+          <span class="cfg-hint">Fechar se cair X% abaixo do pico</span>
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-time-decay">Decay de Tempo (horas)</label>
           <input type="number" id="s-time-decay" min="1" max="24" step="1" placeholder="6">
-          <span class="settings-hint">Fechar posições perdendo com menos de X horas para expirar</span>
+          <span class="cfg-hint">Fechar posições perdendo com menos de X horas para expirar</span>
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label>Reversão de Edge</label>
           <div class="toggle-row">
             <span id="edge-reversal-label" class="toggle-label">Ativada</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="s-edge-reversal">
-              <span class="toggle-slider"></span>
-            </label>
+            <label class="switch"><input type="checkbox" id="s-edge-reversal"><span class="switch-track"></span></label>
           </div>
-          <span class="settings-hint">Fechar se a tese original for invalidada pelo mercado</span>
+          <span class="cfg-hint">Fechar se a tese original for invalidada pelo mercado</span>
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-momentum-cycles">Saída por Momentum (ciclos)</label>
           <input type="number" id="s-momentum-cycles" min="1" max="10" step="1" placeholder="3">
-          <span class="settings-hint">Fechar após X ciclos consecutivos de queda em posição perdedora</span>
+          <span class="cfg-hint">Fechar após X ciclos consecutivos de queda em posição perdedora</span>
         </div>
       </div>
 
-      <!-- Risco -->
-      <div class="settings-section">
-        <h3>🛡️ Risco</h3>
-        <div class="settings-field">
+      <div class="cfg-section">
+        <div class="cfg-section-title">Risco</div>
+        <div class="cfg-field">
           <label for="s-max-exposure">Exposição Máxima Total (%)</label>
           <input type="number" id="s-max-exposure" min="1" max="100" step="5" placeholder="50">
         </div>
-        <div class="settings-field">
-          <label>Correlação entre Mercados</label>
+        <div class="cfg-field">
+          <label>Análise de Correlação</label>
           <div class="toggle-row">
             <span class="toggle-label">Ativada</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="s-correlation">
-              <span class="toggle-slider"></span>
-            </label>
+            <label class="switch"><input type="checkbox" id="s-correlation"><span class="switch-track"></span></label>
           </div>
         </div>
       </div>
 
-      <!-- Integrações -->
-      <div class="settings-section">
-        <h3>🔗 Integrações</h3>
-        <div class="settings-field">
-          <label>Claude AI (confirmação de trades)</label>
+      <div class="cfg-section">
+        <div class="cfg-section-title">Integrações</div>
+        <div class="cfg-field">
+          <label>Claude AI — Gate de confirmação</label>
           <div class="toggle-row">
             <span id="claude-enabled-label" class="toggle-label">Desativado</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="s-claude-enabled">
-              <span class="toggle-slider"></span>
-            </label>
+            <label class="switch"><input type="checkbox" id="s-claude-enabled"><span class="switch-track"></span></label>
           </div>
-          <span class="settings-hint">Quando ativado, Claude confirma cada trade antes de executar</span>
+          <span class="cfg-hint">Claude confirma cada trade antes de executar</span>
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-claude-key">Claude API Key</label>
           <input type="password" id="s-claude-key" placeholder="sk-ant-...">
-          <span id="claude-key-status" class="settings-hint"></span>
+          <span id="claude-key-status" class="cfg-hint"></span>
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-discord">Discord Webhook URL</label>
           <input type="text" id="s-discord" placeholder="https://discord.com/api/webhooks/...">
         </div>
-        <div class="settings-field">
+        <div class="cfg-field">
           <label for="s-news-key">News API Key</label>
           <input type="password" id="s-news-key" placeholder="newsapi.org key">
-          <span id="news-key-status" class="settings-hint"></span>
+          <span id="news-key-status" class="cfg-hint"></span>
         </div>
       </div>
 
-      <div class="settings-warning">
-        ⚠️ Configurações aplicadas imediatamente. Para persistir após restart, configure as variáveis de ambiente no Fly.io (Secrets).
+      <div class="cfg-warning">
+        ⚠ Configurações aplicadas imediatamente. Para persistir após restart, configure as variáveis no Fly.io Secrets.
       </div>
 
-      <div class="settings-actions">
-        <button id="settings-save" class="btn-save">💾 Salvar</button>
-        <button id="settings-cancel" class="btn-cancel">Cancelar</button>
+      <div class="drawer-actions">
+        <button id="settings-save" class="btn-primary">Salvar Configurações</button>
+        <button id="settings-cancel" class="btn-ghost">Cancelar</button>
       </div>
     </div>
   </aside>
 
-  <!-- ========================================
-       MAIN CONTENT
-       ======================================== -->
-  <main id="main-content">
+  <!-- ═══════════════════════════════════════════
+       TOPBAR
+  ═══════════════════════════════════════════ -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-mark">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">POLYMARKET AI</span>
+        <span class="brand-sub">AUTONOMOUS TRADER</span>
+      </div>
+    </div>
 
-    <!-- ROW 1: Stats Cards -->
-    <section class="stats-row">
-      <div class="stat-card glass">
-        <div class="stat-card-icon">📊</div>
-        <div class="stat-card-content">
-          <span class="stat-card-label">Mercados Escaneados</span>
-          <span id="stat-markets" class="stat-card-value">0</span>
-        </div>
-      </div>
-      <div class="stat-card glass">
-        <div class="stat-card-icon">🎯</div>
-        <div class="stat-card-content">
-          <span class="stat-card-label">Oportunidades</span>
-          <span id="stat-opportunities" class="stat-card-value">0</span>
-        </div>
-      </div>
-      <div class="stat-card glass">
-        <div class="stat-card-icon">⚡</div>
-        <div class="stat-card-content">
-          <span class="stat-card-label">Trades Executados</span>
-          <span id="stat-trades" class="stat-card-value">0</span>
-        </div>
-      </div>
-      <div class="stat-card glass">
-        <div class="stat-card-icon">🏆</div>
-        <div class="stat-card-content">
-          <span class="stat-card-label">Win Rate</span>
-          <span id="stat-winrate" class="stat-card-value">0%</span>
-        </div>
-      </div>
-      <div class="stat-card glass">
-        <div class="stat-card-icon">📐</div>
-        <div class="stat-card-content">
-          <span class="stat-card-label">Ciclo</span>
-          <span id="stat-cycle" class="stat-card-value">#0</span>
-        </div>
-      </div>
-    </section>
+    <div id="bot-status" class="status-chip chip-connecting">
+      <span class="chip-led"></span>
+      <span class="status-text">Conectando...</span>
+    </div>
 
-    <!-- ROW 2: Two columns -->
-    <section class="two-col">
-      <!-- LEFT: Open Positions -->
-      <div class="panel glass" id="positions-panel">
-        <div class="panel-header">
-          <h2>📈 Posições Abertas</h2>
-          <span id="positions-count" class="badge">0</span>
+    <div class="topbar-metrics">
+      <div class="tm">
+        <span class="tm-label">BANKROLL</span>
+        <span id="header-bankroll" class="tm-value">$—</span>
+      </div>
+      <div class="tm-div"></div>
+      <div class="tm">
+        <span class="tm-label">P&amp;L TOTAL</span>
+        <span id="header-pnl" class="tm-value pnl-neutral">$0.00</span>
+      </div>
+      <div class="tm-div"></div>
+      <div class="tm">
+        <span class="tm-label">UPTIME</span>
+        <span id="header-uptime" class="tm-value mono">00:00:00</span>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <button id="bot-toggle-btn" class="btn-danger bot-stop">■ Parar</button>
+      <button id="settings-btn" class="btn-ghost-purple">⚙ Config</button>
+      <button id="logout-btn" class="btn-ghost-red">Sair</button>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════════
+       KPI STRIP
+  ═══════════════════════════════════════════ -->
+  <div class="kpi-strip">
+    <div class="kpi">
+      <span class="kpi-label">CICLO</span>
+      <span id="stat-cycle" class="kpi-val mono">#0</span>
+    </div>
+    <div class="kpi">
+      <span class="kpi-label">MERCADOS</span>
+      <span id="stat-markets" class="kpi-val mono">0</span>
+    </div>
+    <div class="kpi kpi-accent-cyan">
+      <span class="kpi-label">OPORTUNIDADES</span>
+      <span id="stat-opportunities" class="kpi-val mono">0</span>
+    </div>
+    <div class="kpi kpi-accent-violet">
+      <span class="kpi-label">TRADES</span>
+      <span id="stat-trades" class="kpi-val mono">0</span>
+    </div>
+    <div class="kpi kpi-accent-emerald">
+      <span class="kpi-label">WIN RATE</span>
+      <span id="stat-winrate" class="kpi-val mono">—</span>
+    </div>
+    <div class="kpi kpi-accent-amber">
+      <span class="kpi-label">AVG EDGE</span>
+      <span id="stat-avg-edge" class="kpi-val mono">—</span>
+    </div>
+    <div class="kpi">
+      <span class="kpi-label">POSIÇÕES</span>
+      <span id="stat-open-positions" class="kpi-val mono">0</span>
+    </div>
+    <div class="kpi">
+      <span class="kpi-label">MODO</span>
+      <span id="footer-mode" class="kpi-val mode-badge">DRY-RUN</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       MAIN GRID
+  ═══════════════════════════════════════════ -->
+  <div class="main-grid">
+
+    <!-- ─── LEFT COLUMN ─── -->
+    <div class="col-left">
+
+      <!-- Positions -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="indicator cyan"></span>
+            Posições Abertas
+          </div>
+          <span id="positions-count" class="chip-count cyan">0</span>
         </div>
-        <div class="panel-body">
-          <div id="positions-list" class="positions-list">
-            <div class="empty-state">Nenhuma posição aberta ainda.</div>
+        <div class="panel-body scrollable" id="positions-list">
+          <div class="empty-state">
+            <span class="empty-icon">📊</span>
+            <span>Nenhuma posição aberta</span>
           </div>
         </div>
       </div>
 
-      <!-- RIGHT: Risk Panel -->
-      <div class="panel glass" id="risk-panel">
-        <div class="panel-header">
-          <h2>🛡️ Gestão de Risco</h2>
+      <!-- Risk -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="indicator amber"></span>
+            Gestão de Risco
+          </div>
         </div>
         <div class="panel-body">
-          <div class="risk-grid">
-            <div class="risk-item">
-              <span class="risk-label">Drawdown</span>
-              <div class="risk-bar-container">
-                <div id="risk-drawdown-bar" class="risk-bar" style="width: 0%"></div>
+          <div class="risk-block">
+            <div class="risk-row">
+              <span class="risk-lbl">Drawdown</span>
+              <div class="risk-track">
+                <div id="risk-drawdown-bar" class="risk-fill fill-rose" style="width:0%"></div>
               </div>
-              <span id="risk-drawdown" class="risk-value">0.0%</span>
+              <span id="risk-drawdown" class="risk-num">0%</span>
             </div>
-            <div class="risk-item">
-              <span class="risk-label">Exposição</span>
-              <div class="risk-bar-container">
-                <div id="risk-exposure-bar" class="risk-bar exposure-bar" style="width: 0%"></div>
+            <div class="risk-row">
+              <span class="risk-lbl">Exposição</span>
+              <div class="risk-track">
+                <div id="risk-exposure-bar" class="risk-fill fill-cyan" style="width:0%"></div>
               </div>
-              <span id="risk-exposure" class="risk-value">$0 / $0</span>
+              <span id="risk-exposure" class="risk-num">$0</span>
             </div>
-            <div class="risk-item">
-              <span class="risk-label">Posições</span>
-              <span id="risk-positions" class="risk-value-large">0</span>
+          </div>
+          <div class="risk-stats">
+            <div class="risk-stat">
+              <span class="risk-stat-lbl">Posições</span>
+              <span id="risk-positions" class="risk-stat-val">0</span>
             </div>
-            <div class="risk-item">
-              <span class="risk-label">Perda Diária</span>
-              <span id="risk-daily-loss" class="risk-value-large">$0</span>
+            <div class="risk-stat">
+              <span class="risk-stat-lbl">Perda Diária</span>
+              <span id="risk-daily-loss" class="risk-stat-val">$0</span>
             </div>
-            <div class="risk-item">
-              <span class="risk-label">Circuit Breaker</span>
-              <div class="risk-circuit-row">
-                <span id="risk-circuit" class="risk-value-large risk-ok">✅ OK</span>
-                <button id="reset-circuit-btn" class="reset-circuit-btn hidden" title="Resetar circuit breaker e retomar operações">
-                  🔄 Resetar
-                </button>
+            <div class="risk-stat">
+              <span class="risk-stat-lbl">Circuit Breaker</span>
+              <div class="circuit-row">
+                <span id="risk-circuit" class="risk-stat-val ok">● OK</span>
+                <button id="reset-circuit-btn" class="btn-reset hidden">Reset</button>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </section>
 
-    <!-- ROW 3: AI Decision Feed -->
-    <section class="panel glass full-width" id="decisions-panel">
-      <div class="panel-header">
-        <h2>🧠 Decisões da IA</h2>
-        <span class="panel-subtitle">Feed em tempo real</span>
-      </div>
-      <div class="panel-body">
-        <div id="decisions-feed" class="decisions-feed">
-          <div class="empty-state">Aguardando primeiro ciclo de análise...</div>
+    </div>
+
+    <!-- ─── CENTER COLUMN: AI Terminal ─── -->
+    <div class="col-center">
+      <div class="panel panel-terminal">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="indicator violet pulsing"></span>
+            Terminal IA
+          </div>
+          <div class="live-badge">
+            <span class="live-dot"></span>
+            LIVE
+          </div>
+        </div>
+        <div class="terminal-body scrollable" id="decisions-feed">
+          <div class="empty-state">
+            <span class="empty-icon">🧠</span>
+            <span>Aguardando primeiro ciclo de análise...</span>
+          </div>
         </div>
       </div>
-    </section>
+    </div>
 
-    <!-- ROW 4: Trade Journal -->
-    <section class="panel glass full-width" id="journal-panel">
-      <div class="panel-header">
-        <h2>📒 Trade Journal</h2>
-        <div class="journal-filters">
-          <button class="filter-btn active" data-filter="all">Todos</button>
-          <button class="filter-btn" data-filter="open">Abertos</button>
-          <button class="filter-btn" data-filter="won">Ganhos</button>
-          <button class="filter-btn" data-filter="lost">Perdas</button>
+    <!-- ─── RIGHT COLUMN ─── -->
+    <div class="col-right">
+
+      <!-- Calibration -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="indicator emerald"></span>
+            Calibração IA
+          </div>
+          <a class="panel-link" id="refresh-cal" title="Atualizar">↻</a>
+        </div>
+        <div class="panel-body">
+          <div class="cal-grid">
+            <div class="cal-metric">
+              <span class="cal-lbl">Brier Score (50 trades)</span>
+              <span id="cal-brier" class="cal-val">—</span>
+              <span id="cal-brier-qual" class="cal-qual">aguardando dados</span>
+            </div>
+            <div class="cal-metric">
+              <span class="cal-lbl">Total Predições</span>
+              <span id="cal-total" class="cal-val mono">0</span>
+            </div>
+          </div>
+          <div class="cal-categories" id="cal-categories">
+            <div class="cat-row">
+              <span class="cat-pill sports">Sports</span>
+              <span class="cat-n" id="cat-sports-n">0</span>
+              <span class="cat-brier" id="cat-sports-b">—</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-pill politics">Politics</span>
+              <span class="cat-n" id="cat-politics-n">0</span>
+              <span class="cat-brier" id="cat-politics-b">—</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-pill crypto">Crypto</span>
+              <span class="cat-n" id="cat-crypto-n">0</span>
+              <span class="cat-brier" id="cat-crypto-b">—</span>
+            </div>
+            <div class="cat-row">
+              <span class="cat-pill general">General</span>
+              <span class="cat-n" id="cat-general-n">0</span>
+              <span class="cat-brier" id="cat-general-b">—</span>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="panel-body">
-        <div class="table-container">
+
+      <!-- Notifications -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <span class="indicator rose"></span>
+            Alertas
+          </div>
+          <span id="notif-count" class="chip-count rose">0</span>
+        </div>
+        <div class="panel-body scrollable" id="notifications-feed">
+          <div class="empty-state">
+            <span class="empty-icon">🔔</span>
+            <span>Sem alertas recentes</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       TRADE JOURNAL
+  ═══════════════════════════════════════════ -->
+  <section class="journal-section">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <span class="indicator violet"></span>
+          Trade Journal
+        </div>
+        <div class="jtabs">
+          <button class="jtab active" data-filter="all">Todos</button>
+          <button class="jtab" data-filter="open">Abertos</button>
+          <button class="jtab" data-filter="won">Ganhos</button>
+          <button class="jtab" data-filter="lost">Perdas</button>
+        </div>
+      </div>
+      <div class="panel-body table-panel">
+        <div class="table-wrap">
           <table id="journal-table">
             <thead>
               <tr>
-                <th>Data</th>
-                <th>Mercado</th>
-                <th>Lado</th>
-                <th>Preço</th>
-                <th>Stake</th>
-                <th>Edge</th>
+                <th>DATA</th>
+                <th>MERCADO</th>
+                <th>LADO</th>
+                <th>PREÇO</th>
+                <th>STAKE</th>
+                <th>EDGE</th>
                 <th>EV</th>
-                <th>Status</th>
-                <th>P&L</th>
+                <th>STATUS</th>
+                <th>P&amp;L</th>
               </tr>
             </thead>
             <tbody id="journal-body">
@@ -361,26 +448,8 @@
           </table>
         </div>
       </div>
-    </section>
-
-    <!-- ROW 5: Notifications -->
-    <section class="panel glass full-width" id="notifications-panel">
-      <div class="panel-header">
-        <h2>🔔 Notificações</h2>
-      </div>
-      <div class="panel-body">
-        <div id="notifications-feed" class="notifications-feed">
-          <div class="empty-state">Nenhuma notificação ainda.</div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <!-- Footer -->
-  <footer>
-    <span>Polymarket AI Trader v1.0 — Autonomous Trading Engine</span>
-    <span id="footer-mode" class="mode-badge">DRY-RUN</span>
-  </footer>
+    </div>
+  </section>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/dashboard.js"></script>
