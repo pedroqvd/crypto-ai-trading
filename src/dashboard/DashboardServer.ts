@@ -197,6 +197,16 @@ export class DashboardServer {
       res.json({ status: 'ok', timestamp: Date.now() });
     });
 
+    // Calibration report (Brier score, per-category stats, bucket accuracy)
+    this.app.get('/api/calibration', (req, res) => {
+      res.json(this.engine.getCalibrationReport());
+    });
+
+    // Ensemble signal weights
+    this.app.get('/api/ensemble', (req, res) => {
+      res.json(this.engine.getEnsembleStats());
+    });
+
     // Bot control — stop
     this.app.post('/api/bot/stop', (req, res) => {
       if (!this.engine.isRunning()) {

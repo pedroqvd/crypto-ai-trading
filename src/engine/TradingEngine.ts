@@ -18,6 +18,7 @@ import { RiskManager } from '../risk/RiskManager';
 import { CorrelationAnalyzer } from '../analysis/CorrelationAnalyzer';
 import { ClaudeAnalyzer } from '../services/ClaudeAnalyzer';
 import { BayesianCalibrator } from '../analysis/BayesianCalibrator';
+import { EnsembleWeightTracker } from '../analysis/EnsembleWeightTracker';
 
 export interface EngineStatus {
   running: boolean;
@@ -55,6 +56,9 @@ export class TradingEngine extends EventEmitter {
   private correlationAnalyzer: CorrelationAnalyzer;
   private claudeAnalyzer: ClaudeAnalyzer | null = null;
   private calibrator: BayesianCalibrator;
+  private ensembleTracker: EnsembleWeightTracker;
+  // In-memory signal snapshots for ensemble learning (tradeId → signals)
+  private tradeSignals = new Map<string, Array<{ name: string; adjustment: number; weight: number }>>();
 
   // State
   private running = false;
@@ -89,6 +93,7 @@ export class TradingEngine extends EventEmitter {
     this.riskManager = new RiskManager(this.journal);
     this.correlationAnalyzer = new CorrelationAnalyzer();
     this.calibrator = new BayesianCalibrator();
+    this.ensembleTracker = new EnsembleWeightTracker();
     if (config.claudeEnabled && config.claudeApiKey) {
       this.claudeAnalyzer = new ClaudeAnalyzer(config.claudeApiKey, config.claudeMaxCallsPerCycle);
       logger.info('Engine', '🤖 Claude AI analysis enabled');
@@ -223,6 +228,14 @@ export class TradingEngine extends EventEmitter {
     };
   }
 
+  getCalibrationReport() {
+    return this.calibrator.getCalibrationReport();
+  }
+
+  getEnsembleStats() {
+    return this.ensembleTracker.getStats();
+  }
+
   stop(): void {
     this.running = false;
     logger.info('Engine', '🛑 Engine stopped');
@@ -325,17 +338,26 @@ export class TradingEngine extends EventEmitter {
   // ========================================
   // STEP 3: ANALYZE
   // ========================================
+  // Stores signal snapshots by marketId for ensemble learning
+  private pendingSignals = new Map<string, Array<{ name: string; adjustment: number; weight: number }>>();
+
   private async analyzeMarkets(filtered: ParsedMarket[], allMarkets: ParsedMarket[]): Promise<EdgeAnalysis[]> {
     const edgeAnalyses: EdgeAnalysis[] = [];
+    const learnedWeights = this.ensembleTracker.getLearnedWeights();
 
     for (const market of filtered) {
-      const probEstimate = this.probEstimator.estimate(market, allMarkets);
+      const probEstimate = this.probEstimator.estimate(market, allMarkets, undefined, undefined, learnedWeights);
 
-      // Apply Bayesian calibration correction when enough history exists
+      // Store signal snapshot for ensemble learning at resolution
+      this.pendingSignals.set(market.id, probEstimate.signals.map(s => ({
+        name: s.name, adjustment: s.adjustment, weight: s.weight,
+      })));
+
+      // Apply Bayesian calibration correction (category-aware, time-weighted)
       let calibratedProb = probEstimate.estimatedTrueProb;
       let calibratedConf = probEstimate.confidence;
       if (config.calibrationEnabled) {
-        const cal = this.calibrator.getCalibrationAdjustment(probEstimate.estimatedTrueProb);
+        const cal = this.calibrator.getCalibrationAdjustment(probEstimate.estimatedTrueProb, market.question);
         if (cal) {
           calibratedProb = Math.max(0.01, Math.min(0.99, probEstimate.estimatedTrueProb + cal.adjustment));
           calibratedConf = Math.min(0.95, probEstimate.confidence + cal.confidence * 0.1);
@@ -574,6 +596,9 @@ export class TradingEngine extends EventEmitter {
         this.journal.recordTrade(tradeRecord);
         this.riskManager.registerPosition(finalStake);
         this.activeMarketIds.add(opp.marketId);
+        // Store signal snapshot for ensemble learning at resolution
+        const signals = this.pendingSignals.get(opp.marketId);
+        if (signals) this.tradeSignals.set(tradeRecord.id, signals);
 
         this.logDecision('trade',
           `✅ ${opp.side} "${opp.question.substring(0, 50)}..." @ $${price.toFixed(4)}, ` +
@@ -657,7 +682,12 @@ export class TradingEngine extends EventEmitter {
         this.activeMarketIds.delete(trade.marketId);
         this.positionState.delete(trade.id);
         if (config.calibrationEnabled) {
-          this.calibrator.recordOutcome(trade.entryPrice, won);
+          this.calibrator.recordOutcome(trade.entryPrice, won, trade.question);
+          const signals = this.tradeSignals.get(trade.id);
+          if (signals) {
+            this.ensembleTracker.recordOutcome(signals, won, trade.side);
+            this.tradeSignals.delete(trade.id);
+          }
         }
 
         if (won) {
@@ -763,7 +793,12 @@ export class TradingEngine extends EventEmitter {
         this.activeMarketIds.delete(trade.marketId);
         this.positionState.delete(trade.id);
         if (config.calibrationEnabled) {
-          this.calibrator.recordOutcome(trade.entryPrice, pnl >= 0);
+          this.calibrator.recordOutcome(trade.entryPrice, pnl >= 0, trade.question);
+          const signals = this.tradeSignals.get(trade.id);
+          if (signals) {
+            this.ensembleTracker.recordOutcome(signals, pnl >= 0, trade.side);
+            this.tradeSignals.delete(trade.id);
+          }
         }
 
         this.logDecision('monitor',
