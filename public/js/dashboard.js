@@ -6,7 +6,7 @@
   'use strict';
 
   // ========================================
-  // AUTH — Get token from localStorage
+  // AUTH
   // ========================================
   const authToken = localStorage.getItem('auth_token');
   if (!authToken) {
@@ -20,57 +20,60 @@
   const $ = (id) => document.getElementById(id);
 
   const els = {
-    botStatus: $('bot-status'),
-    statusDot: null,
-    statusText: null,
-    bankroll: $('header-bankroll'),
-    pnl: $('header-pnl'),
-    uptime: $('header-uptime'),
-    statMarkets: $('stat-markets'),
+    botStatus:         $('bot-status'),
+    bankroll:          $('header-bankroll'),
+    pnl:               $('header-pnl'),
+    uptime:            $('header-uptime'),
+    statMarkets:       $('stat-markets'),
     statOpportunities: $('stat-opportunities'),
-    statTrades: $('stat-trades'),
-    statWinrate: $('stat-winrate'),
-    statCycle: $('stat-cycle'),
-    positionsList: $('positions-list'),
-    positionsCount: $('positions-count'),
-    riskDrawdown: $('risk-drawdown'),
-    riskDrawdownBar: $('risk-drawdown-bar'),
-    riskExposure: $('risk-exposure'),
-    riskExposureBar: $('risk-exposure-bar'),
-    riskPositions: $('risk-positions'),
-    riskDailyLoss: $('risk-daily-loss'),
-    riskCircuit: $('risk-circuit'),
-    resetCircuitBtn: $('reset-circuit-btn'),
-    decisionsFeed: $('decisions-feed'),
-    journalBody: $('journal-body'),
+    statTrades:        $('stat-trades'),
+    statWinrate:       $('stat-winrate'),
+    statCycle:         $('stat-cycle'),
+    statAvgEdge:       $('stat-avg-edge'),
+    statOpenPositions: $('stat-open-positions'),
+    footerMode:        $('footer-mode'),
+    positionsList:     $('positions-list'),
+    positionsCount:    $('positions-count'),
+    riskDrawdown:      $('risk-drawdown'),
+    riskDrawdownBar:   $('risk-drawdown-bar'),
+    riskExposure:      $('risk-exposure'),
+    riskExposureBar:   $('risk-exposure-bar'),
+    riskPositions:     $('risk-positions'),
+    riskDailyLoss:     $('risk-daily-loss'),
+    riskCircuit:       $('risk-circuit'),
+    resetCircuitBtn:   $('reset-circuit-btn'),
+    decisionsFeed:     $('decisions-feed'),
+    journalBody:       $('journal-body'),
     notificationsFeed: $('notifications-feed'),
-    footerMode: $('footer-mode'),
+    notifCount:        $('notif-count'),
+    // Calibration
+    calBrier:          $('cal-brier'),
+    calTotal:          $('cal-total'),
+    calBrierQual:      $('cal-brier-qual'),
+    catSportsN:        $('cat-sports-n'),
+    catSportsB:        $('cat-sports-b'),
+    catPoliticsN:      $('cat-politics-n'),
+    catPoliticsB:      $('cat-politics-b'),
+    catCryptoN:        $('cat-crypto-n'),
+    catCryptoB:        $('cat-crypto-b'),
+    catGeneralN:       $('cat-general-n'),
+    catGeneralB:       $('cat-general-b'),
   };
 
   let currentFilter = 'all';
+  let notifTotal    = 0;
 
   // ========================================
-  // BOOTSTRAP — Load backend URL then connect
+  // BOOTSTRAP
   // ========================================
   async function init() {
-    // Fetch config from the host serving this page.
-    // When frontend is on Vercel and bot is on Fly.io,
-    // Vercel sets BACKEND_URL → backendUrl points to Fly.io.
-    // When Fly.io serves the frontend directly, backendUrl is ''
-    // and all connections stay relative (same origin).
     let backendUrl = '';
     try {
       const res = await fetch('/api/config');
       const cfg = await res.json();
       backendUrl = (cfg.backendUrl || '').replace(/\/$/, '');
-    } catch (_) {
-      // Config fetch failed — assume same-origin
-    }
+    } catch (_) {}
 
-    // ========================================
-    // AUTH FETCH — Adds JWT token to all API calls
-    // Prepends backendUrl when connecting cross-origin (Vercel → Fly.io)
-    // ========================================
     function authFetch(path, options = {}) {
       const headers = Object.assign({}, options.headers, {
         'Authorization': 'Bearer ' + authToken,
@@ -80,7 +83,7 @@
     }
 
     // ========================================
-    // SOCKET CONNECTION (with JWT auth)
+    // SOCKET
     // ========================================
     const socketOpts = {
       auth: { token: authToken },
@@ -88,65 +91,56 @@
     };
     const socket = backendUrl ? io(backendUrl, socketOpts) : io(socketOpts);
 
-    // ========================================
-    // SOCKET EVENTS
-    // ========================================
     socket.on('connect', () => {
-      console.log('🟢 Connected (authenticated)');
       setStatus('connecting', 'Conectado');
     });
 
     socket.on('connect_error', (err) => {
       if (err.message === 'Autenticação necessária') {
-        console.log('🔴 Auth failed — redirecting to login');
         localStorage.removeItem('auth_token');
         window.location.href = '/login';
         return;
       }
-      console.log('🔴 Connection error:', err.message);
       setStatus('stopped', 'Erro');
     });
 
-    socket.on('disconnect', () => {
-      console.log('🔴 Disconnected');
-      setStatus('stopped', 'Desconectado');
-    });
+    socket.on('disconnect', () => setStatus('stopped', 'Desconectado'));
 
-    // Initial state from server
     socket.on('init', (data) => {
-      console.log('📦 Received initial state:', data);
-      if (data.status) updateStatus(data.status);
-      if (data.decisions) renderDecisions(data.decisions);
+      if (data.status)        updateStatus(data.status);
+      if (data.decisions)     renderDecisions(data.decisions);
       if (data.trades) {
         updateTradeStats(data.trades.stats);
         renderPositions(data.trades.open);
         renderJournal(data.trades.recent);
       }
-      if (data.risk) updateRisk(data.risk);
+      if (data.risk)          updateRisk(data.risk);
       if (data.notifications) renderNotifications(data.notifications);
+      fetchCalibration(authFetch);
     });
 
-    // Real-time updates
-    socket.on('statusUpdate', (status) => updateStatus(status));
-    socket.on('decision', (decision) => addDecision(decision));
-    socket.on('tradeExecuted', (trade) => {
+    socket.on('statusUpdate',   (status) => updateStatus(status));
+    socket.on('decision',       (decision) => addDecision(decision));
+    socket.on('tradeExecuted',  (trade) => {
       addPosition(trade);
       addJournalRow(trade);
       flashElement(els.statTrades);
     });
-    socket.on('tradeResolved', (data) => {
+    socket.on('tradeResolved',  (data) => {
       removePosition(data.trade.marketId);
       updateJournalRow(data.trade.id, data.won, data.pnl);
+      fetchCalibration(authFetch);
     });
-    socket.on('notification', (notification) => addNotification(notification));
-    socket.on('scanComplete', () => flashElement(els.statMarkets));
+    socket.on('notification',   (n) => addNotification(n));
+    socket.on('scanComplete',   () => flashElement(els.statMarkets));
+    socket.on('settingsUpdated', () => {});
 
     // ========================================
     // JOURNAL FILTERS
     // ========================================
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    document.querySelectorAll('.jtab').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.jtab').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentFilter = btn.dataset.filter;
         authFetch('/api/trades')
@@ -176,6 +170,19 @@
       });
     }
 
+    // Second statusUpdate listener — update bot toggle button
+    socket.on('statusUpdate', (status) => {
+      if (botToggleBtn) {
+        if (status.running) {
+          botToggleBtn.textContent = '■ Parar';
+          botToggleBtn.className = 'btn-danger bot-stop';
+        } else {
+          botToggleBtn.textContent = '▶ Iniciar';
+          botToggleBtn.className = 'btn-danger bot-start';
+        }
+      }
+    });
+
     // ========================================
     // SETTINGS DRAWER
     // ========================================
@@ -191,7 +198,6 @@
       settingsOverlay.classList.remove('hidden');
       loadSettingsValues();
     }
-
     function closeSettings() {
       settingsDrawer.classList.add('hidden');
       settingsOverlay.classList.add('hidden');
@@ -201,43 +207,49 @@
       try {
         const res = await authFetch('/api/settings');
         const cfg = await res.json();
-        $('s-dry-run').checked       = cfg.dryRun;
-        $('dry-run-label').textContent = cfg.dryRun ? 'Simulação' : 'Real';
-        $('s-bankroll').value         = cfg.bankroll;
-        $('s-scan-interval').value    = cfg.scanIntervalMs / 1000;
-        $('s-min-edge').value         = +(cfg.minEdge * 100).toFixed(1);
-        $('s-kelly').value            = +(cfg.kellyFraction * 100).toFixed(0);
-        $('s-max-pos').value          = +(cfg.maxPositionPct * 100).toFixed(1);
-        $('s-exit-target').value          = +(cfg.exitPriceTarget * 100).toFixed(0);
-        $('s-stop-loss').value            = +(cfg.stopLossPct * 100).toFixed(0);
-        $('s-trailing-activation').value  = +(cfg.trailingStopActivation * 100).toFixed(0);
-        $('s-trailing-distance').value    = +(cfg.trailingStopDistance * 100).toFixed(0);
-        $('s-time-decay').value           = cfg.timeDecayHours;
-        $('s-edge-reversal').checked      = cfg.edgeReversalEnabled;
-        $('s-momentum-cycles').value      = cfg.momentumExitCycles;
-        $('s-max-exposure').value         = +(cfg.maxTotalExposurePct * 100).toFixed(0);
-        $('s-correlation').checked       = cfg.correlationEnabled;
-        $('s-claude-enabled').checked    = cfg.claudeEnabled;
+        $('s-dry-run').checked              = cfg.dryRun;
+        $('dry-run-label').textContent      = cfg.dryRun ? 'Simulação' : 'Real';
+        $('s-bankroll').value               = cfg.bankroll;
+        $('s-scan-interval').value          = cfg.scanIntervalMs / 1000;
+        $('s-min-edge').value               = +(cfg.minEdge * 100).toFixed(1);
+        $('s-kelly').value                  = +(cfg.kellyFraction * 100).toFixed(0);
+        $('s-max-pos').value                = +(cfg.maxPositionPct * 100).toFixed(1);
+        $('s-exit-target').value            = +(cfg.exitPriceTarget * 100).toFixed(0);
+        $('s-stop-loss').value              = +(cfg.stopLossPct * 100).toFixed(0);
+        $('s-trailing-activation').value    = +(cfg.trailingStopActivation * 100).toFixed(0);
+        $('s-trailing-distance').value      = +(cfg.trailingStopDistance * 100).toFixed(0);
+        $('s-time-decay').value             = cfg.timeDecayHours;
+        $('s-edge-reversal').checked        = cfg.edgeReversalEnabled;
+        $('s-momentum-cycles').value        = cfg.momentumExitCycles;
+        $('s-max-exposure').value           = +(cfg.maxTotalExposurePct * 100).toFixed(0);
+        $('s-correlation').checked          = cfg.correlationEnabled;
+        $('s-claude-enabled').checked       = cfg.claudeEnabled;
         $('claude-enabled-label').textContent = cfg.claudeEnabled ? 'Ativado' : 'Desativado';
-        $('s-discord').value             = cfg.discordWebhookUrl || '';
-        $('pk-status').textContent          = cfg.hasPrivateKey    ? '✅ Configurada' : '❌ Não configurada';
-        $('claude-key-status').textContent  = cfg.hasClaudeApiKey  ? '✅ Configurada' : '❌ Não configurada';
-        $('news-key-status').textContent    = cfg.hasNewsApiKey    ? '✅ Configurada' : '❌ Não configurada';
+        $('s-discord').value                = cfg.discordWebhookUrl || '';
+        $('pk-status').textContent          = cfg.hasPrivateKey   ? '✅ Configurada' : '❌ Não configurada';
+        $('claude-key-status').textContent  = cfg.hasClaudeApiKey ? '✅ Configurada' : '❌ Não configurada';
+        $('news-key-status').textContent    = cfg.hasNewsApiKey   ? '✅ Configurada' : '❌ Não configurada';
       } catch (e) {
         console.error('Erro ao carregar settings:', e);
       }
     }
 
-    if (settingsBtn)    settingsBtn.addEventListener('click', openSettings);
+    if (settingsBtn)     settingsBtn.addEventListener('click', openSettings);
     if (settingsOverlay) settingsOverlay.addEventListener('click', closeSettings);
-    if (settingsClose)  settingsClose.addEventListener('click', closeSettings);
-    if (settingsCancel) settingsCancel.addEventListener('click', closeSettings);
+    if (settingsClose)   settingsClose.addEventListener('click', closeSettings);
+    if (settingsCancel)  settingsCancel.addEventListener('click', closeSettings);
 
-    // Dry-run toggle label
     const dryRunToggle = $('s-dry-run');
     if (dryRunToggle) {
       dryRunToggle.addEventListener('change', () => {
         $('dry-run-label').textContent = dryRunToggle.checked ? 'Simulação' : 'Real';
+      });
+    }
+
+    const claudeToggle = $('s-claude-enabled');
+    if (claudeToggle) {
+      claudeToggle.addEventListener('change', () => {
+        $('claude-enabled-label').textContent = claudeToggle.checked ? 'Ativado' : 'Desativado';
       });
     }
 
@@ -247,25 +259,24 @@
         settingsSave.textContent = '⏳ Salvando...';
         try {
           const body = {
-            dryRun:              $('s-dry-run').checked,
-            bankroll:             parseFloat($('s-bankroll').value),
-            scanIntervalMs:       parseFloat($('s-scan-interval').value) * 1000,
-            minEdge:              parseFloat($('s-min-edge').value) / 100,
-            kellyFraction:        parseFloat($('s-kelly').value) / 100,
-            maxPositionPct:       parseFloat($('s-max-pos').value) / 100,
-            exitPriceTarget:         parseFloat($('s-exit-target').value) / 100,
-            stopLossPct:             parseFloat($('s-stop-loss').value) / 100,
-            trailingStopActivation:  parseFloat($('s-trailing-activation').value) / 100,
-            trailingStopDistance:    parseFloat($('s-trailing-distance').value) / 100,
-            timeDecayHours:          parseFloat($('s-time-decay').value),
-            edgeReversalEnabled:     $('s-edge-reversal').checked,
-            momentumExitCycles:      parseInt($('s-momentum-cycles').value),
-            maxTotalExposurePct:     parseFloat($('s-max-exposure').value) / 100,
-            correlationEnabled:   $('s-correlation').checked,
-            claudeEnabled:        $('s-claude-enabled').checked,
-            discordWebhookUrl:    $('s-discord').value.trim(),
+            dryRun:                $('s-dry-run').checked,
+            bankroll:              parseFloat($('s-bankroll').value),
+            scanIntervalMs:        parseFloat($('s-scan-interval').value) * 1000,
+            minEdge:               parseFloat($('s-min-edge').value) / 100,
+            kellyFraction:         parseFloat($('s-kelly').value) / 100,
+            maxPositionPct:        parseFloat($('s-max-pos').value) / 100,
+            exitPriceTarget:       parseFloat($('s-exit-target').value) / 100,
+            stopLossPct:           parseFloat($('s-stop-loss').value) / 100,
+            trailingStopActivation:parseFloat($('s-trailing-activation').value) / 100,
+            trailingStopDistance:  parseFloat($('s-trailing-distance').value) / 100,
+            timeDecayHours:        parseFloat($('s-time-decay').value),
+            edgeReversalEnabled:   $('s-edge-reversal').checked,
+            momentumExitCycles:    parseInt($('s-momentum-cycles').value),
+            maxTotalExposurePct:   parseFloat($('s-max-exposure').value) / 100,
+            correlationEnabled:    $('s-correlation').checked,
+            claudeEnabled:         $('s-claude-enabled').checked,
+            discordWebhookUrl:     $('s-discord').value.trim(),
           };
-          // Only send keys if user typed something
           const pk = $('s-private-key').value.trim();
           if (pk) body.privateKey = pk;
           const ck = $('s-claude-key').value.trim();
@@ -280,7 +291,12 @@
           });
           if (res.ok) {
             closeSettings();
-            addNotification({ type: 'system', title: '⚙️ Configurações salvas', message: 'As configurações foram aplicadas imediatamente.', timestamp: new Date().toISOString() });
+            addNotification({
+              type: 'system',
+              title: '⚙️ Configurações salvas',
+              message: 'Aplicadas imediatamente.',
+              timestamp: new Date().toISOString(),
+            });
           } else {
             const d = await res.json().catch(() => ({}));
             alert('Erro ao salvar: ' + (d.error || res.statusText));
@@ -289,28 +305,15 @@
           alert('Erro de conexão ao salvar configurações.');
         } finally {
           settingsSave.disabled = false;
-          settingsSave.textContent = '💾 Salvar';
+          settingsSave.textContent = 'Salvar Configurações';
         }
       });
     }
 
-    // Update bot toggle button based on status updates
-    socket.on('statusUpdate', (status) => {
-      if (botToggleBtn) {
-        if (status.running) {
-          botToggleBtn.textContent = '■ Parar Bot';
-          botToggleBtn.className = 'bot-toggle-btn bot-stop';
-        } else {
-          botToggleBtn.textContent = '▶ Iniciar Bot';
-          botToggleBtn.className = 'bot-toggle-btn bot-start';
-        }
-      }
-    });
-
     // ========================================
     // LOGOUT
     // ========================================
-    const logoutBtn = document.getElementById('logout-btn');
+    const logoutBtn = $('logout-btn');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
         localStorage.removeItem('auth_token');
@@ -324,73 +327,151 @@
     // ========================================
     if (els.resetCircuitBtn) {
       els.resetCircuitBtn.addEventListener('click', async () => {
-        if (!confirm('Resetar o circuit breaker e retomar operações? Certifique-se de que as condições de mercado são favoráveis.')) {
-          return;
-        }
-
+        if (!confirm('Resetar o circuit breaker e retomar operações?')) return;
         els.resetCircuitBtn.disabled = true;
-        els.resetCircuitBtn.textContent = '⏳ Resetando...';
-
+        els.resetCircuitBtn.textContent = '⏳';
         try {
           const res = await authFetch('/api/risk/reset', { method: 'POST' });
           if (res.ok) {
-            els.riskCircuit.textContent = '✅ OK';
-            els.riskCircuit.className = 'risk-value-large risk-ok';
+            els.riskCircuit.textContent = '● OK';
+            els.riskCircuit.className = 'risk-stat-val ok';
             els.resetCircuitBtn.classList.add('hidden');
             addNotification({
               type: 'system',
               title: '🔄 Circuit Breaker Resetado',
-              message: 'O circuit breaker foi desativado manualmente. Bot retomará operações no próximo ciclo.',
+              message: 'Bot retomará operações no próximo ciclo.',
               timestamp: new Date().toISOString(),
             });
           } else {
             const data = await res.json().catch(() => ({}));
-            alert('Erro ao resetar circuit breaker: ' + (data.error || res.statusText));
+            alert('Erro: ' + (data.error || res.statusText));
           }
         } catch (err) {
-          alert('Erro de rede ao resetar circuit breaker.');
-          console.error(err);
+          alert('Erro de rede.');
         } finally {
           els.resetCircuitBtn.disabled = false;
-          els.resetCircuitBtn.textContent = '🔄 Resetar';
+          els.resetCircuitBtn.textContent = 'Reset';
         }
       });
     }
+
+    // ========================================
+    // CALIBRATION REFRESH BUTTON
+    // ========================================
+    const refreshCal = $('refresh-cal');
+    if (refreshCal) {
+      refreshCal.addEventListener('click', (e) => {
+        e.preventDefault();
+        fetchCalibration(authFetch);
+      });
+    }
+  }
+
+  // ========================================
+  // CALIBRATION
+  // ========================================
+  async function fetchCalibration(authFetch) {
+    try {
+      const res = await authFetch('/api/calibration');
+      if (!res.ok) return;
+      const data = await res.json();
+      renderCalibration(data);
+    } catch (_) {}
+  }
+
+  function renderCalibration(data) {
+    if (!data) return;
+
+    const brier = data.rollingBrier50;
+    if (brier !== null && brier !== undefined) {
+      els.calBrier.textContent = brier.toFixed(3);
+      // Brier score: lower is better. Perfect=0, baseline=0.25
+      if (brier < 0.15) {
+        els.calBrierQual.textContent = 'Excelente';
+        els.calBrierQual.className = 'cal-qual good';
+      } else if (brier < 0.22) {
+        els.calBrierQual.textContent = 'Bom';
+        els.calBrierQual.className = 'cal-qual ok';
+      } else {
+        els.calBrierQual.textContent = 'Acumulando dados';
+        els.calBrierQual.className = 'cal-qual';
+      }
+    } else {
+      els.calBrier.textContent = '—';
+      els.calBrierQual.textContent = 'aguardando dados';
+      els.calBrierQual.className = 'cal-qual';
+    }
+
+    const total = data.totalPredictions || 0;
+    els.calTotal.textContent = formatNumber(total);
+
+    // Per-category stats
+    const cats = data.categoryStats || {};
+    updateCatRow('sports',   cats.sports);
+    updateCatRow('politics', cats.politics);
+    updateCatRow('crypto',   cats.crypto);
+    updateCatRow('general',  cats.general);
+  }
+
+  function updateCatRow(cat, stats) {
+    const nEl = $('cat-' + cat + '-n');
+    const bEl = $('cat-' + cat + '-b');
+    if (!nEl || !bEl) return;
+    if (!stats || stats.n === 0) {
+      nEl.textContent = '0';
+      bEl.textContent = '—';
+      return;
+    }
+    nEl.textContent = stats.n;
+    bEl.textContent = stats.brier !== null && stats.brier !== undefined
+      ? stats.brier.toFixed(3)
+      : '—';
   }
 
   // ========================================
   // STATUS UPDATES
   // ========================================
   function updateStatus(status) {
-    // Mode
     if (status.dryRun) {
       setStatus('dryrun', 'Dry-Run');
-      els.footerMode.textContent = 'DRY-RUN';
-      els.footerMode.className = 'mode-badge dryrun';
+      if (els.footerMode) {
+        els.footerMode.textContent = 'DRY-RUN';
+        els.footerMode.className = 'kpi-val mode-badge dryrun';
+      }
     } else if (status.running) {
       setStatus('running', 'Operando');
-      els.footerMode.textContent = 'LIVE';
-      els.footerMode.className = 'mode-badge live';
+      if (els.footerMode) {
+        els.footerMode.textContent = 'LIVE';
+        els.footerMode.className = 'kpi-val mode-badge live';
+      }
     } else {
       setStatus('stopped', 'Parado');
+      if (els.footerMode) {
+        els.footerMode.textContent = 'PARADO';
+        els.footerMode.className = 'kpi-val mode-badge';
+      }
     }
 
-    // Stats
     els.bankroll.textContent = formatMoney(status.bankroll);
 
     const pnlVal = status.totalPnl || 0;
     els.pnl.textContent = (pnlVal >= 0 ? '+' : '') + formatMoney(pnlVal);
-    els.pnl.className = 'header-stat-value ' + (pnlVal > 0 ? 'pnl-positive' : pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
+    els.pnl.className = 'tm-value ' + (pnlVal > 0 ? 'pnl-positive' : pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
 
-    els.uptime.textContent = formatUptime(status.uptime);
-    els.statMarkets.textContent = formatNumber(status.marketsScanned);
+    if (status.startTime && status.startTime > 0) {
+      engineStartTime = status.startTime;
+    }
+
+    els.statMarkets.textContent       = formatNumber(status.marketsScanned);
     els.statOpportunities.textContent = formatNumber(status.opportunitiesFound);
-    els.statTrades.textContent = formatNumber(status.tradesExecuted);
-    els.statCycle.textContent = '#' + status.cycleCount;
+    els.statTrades.textContent        = formatNumber(status.tradesExecuted);
+    els.statCycle.textContent         = '#' + (status.cycleCount || 0);
   }
 
   function setStatus(type, text) {
-    els.botStatus.className = 'status-badge status-' + type;
+    if (!els.botStatus) return;
+    // Keep base class, swap chip-* modifier
+    els.botStatus.className = 'status-chip chip-' + type;
     const txt = els.botStatus.querySelector('.status-text');
     if (txt) txt.textContent = text;
   }
@@ -400,8 +481,16 @@
   // ========================================
   function updateTradeStats(stats) {
     if (!stats) return;
-    els.statTrades.textContent = formatNumber(stats.totalTrades);
-    els.statWinrate.textContent = stats.winRate.toFixed(0) + '%';
+    els.statTrades.textContent   = formatNumber(stats.totalTrades);
+    els.statWinrate.textContent  = stats.winRate.toFixed(0) + '%';
+    if (els.statOpenPositions) {
+      els.statOpenPositions.textContent = formatNumber(stats.openTrades || 0);
+    }
+    if (els.statAvgEdge && stats.avgEdge !== undefined) {
+      els.statAvgEdge.textContent = stats.avgEdge > 0
+        ? '+' + (stats.avgEdge * 100).toFixed(1) + '%'
+        : '—';
+    }
   }
 
   // ========================================
@@ -409,22 +498,23 @@
   // ========================================
   function renderPositions(positions) {
     if (!positions || positions.length === 0) {
-      els.positionsList.innerHTML = '<div class="empty-state">Nenhuma posição aberta ainda.</div>';
+      els.positionsList.innerHTML = '<div class="empty-state"><span class="empty-icon">📊</span><span>Nenhuma posição aberta</span></div>';
       els.positionsCount.textContent = '0';
+      if (els.statOpenPositions) els.statOpenPositions.textContent = '0';
       return;
     }
-
     els.positionsCount.textContent = positions.length;
-    els.positionsList.innerHTML = positions.map(p => createPositionHTML(p)).join('');
+    if (els.statOpenPositions) els.statOpenPositions.textContent = positions.length;
+    els.positionsList.innerHTML = positions.map(createPositionHTML).join('');
   }
 
   function addPosition(trade) {
     const emptyState = els.positionsList.querySelector('.empty-state');
     if (emptyState) els.positionsList.innerHTML = '';
-
     els.positionsList.insertAdjacentHTML('afterbegin', createPositionHTML(trade));
     const count = els.positionsList.querySelectorAll('.position-item').length;
     els.positionsCount.textContent = count;
+    if (els.statOpenPositions) els.statOpenPositions.textContent = count;
   }
 
   function removePosition(marketId) {
@@ -437,8 +527,9 @@
     setTimeout(() => {
       const count = els.positionsList.querySelectorAll('.position-item').length;
       els.positionsCount.textContent = count;
+      if (els.statOpenPositions) els.statOpenPositions.textContent = count;
       if (count === 0) {
-        els.positionsList.innerHTML = '<div class="empty-state">Nenhuma posição aberta.</div>';
+        els.positionsList.innerHTML = '<div class="empty-state"><span class="empty-icon">📊</span><span>Nenhuma posição aberta</span></div>';
       }
     }, 350);
   }
@@ -446,14 +537,12 @@
   function createPositionHTML(trade) {
     const sideClass = trade.side === 'BUY_YES' ? 'side-yes' : 'side-no';
     const sideLabel = trade.side === 'BUY_YES' ? 'YES' : 'NO';
-    return `
-      <div class="position-item" data-market-id="${trade.marketId}">
-        <span class="position-question" title="${escapeHtml(trade.question)}">${escapeHtml(trade.question)}</span>
-        <span class="position-side ${sideClass}">${sideLabel}</span>
-        <span class="position-stake">$${trade.stake.toFixed(2)}</span>
-        <span class="position-edge pnl-positive">+${(trade.edge * 100).toFixed(1)}%</span>
-      </div>
-    `;
+    return `<div class="position-item" data-market-id="${escapeAttr(trade.marketId)}">
+      <span class="position-question" title="${escapeAttr(trade.question)}">${escapeHtml(trade.question)}</span>
+      <span class="position-side ${sideClass}">${sideLabel}</span>
+      <span class="position-stake">$${trade.stake.toFixed(2)}</span>
+      <span class="position-edge">+${(trade.edge * 100).toFixed(1)}%</span>
+    </div>`;
   }
 
   // ========================================
@@ -462,30 +551,28 @@
   function updateRisk(risk) {
     if (!risk) return;
 
-    // Drawdown
     els.riskDrawdown.textContent = risk.drawdownPct.toFixed(1) + '%';
     els.riskDrawdownBar.style.width = Math.min(risk.drawdownPct / 15 * 100, 100) + '%';
 
-    // Exposure
     els.riskExposure.textContent = `$${formatNumber(risk.totalExposure)} / $${formatNumber(risk.maxExposure)}`;
-    const exposurePct = risk.maxExposure > 0 ? (risk.totalExposure / risk.maxExposure * 100) : 0;
-    els.riskExposureBar.style.width = Math.min(exposurePct, 100) + '%';
+    const expPct = risk.maxExposure > 0 ? (risk.totalExposure / risk.maxExposure * 100) : 0;
+    els.riskExposureBar.style.width = Math.min(expPct, 100) + '%';
 
-    // Positions
     els.riskPositions.textContent = risk.positionCount;
+    if (els.statOpenPositions && risk.positionCount !== undefined) {
+      els.statOpenPositions.textContent = risk.positionCount;
+    }
 
-    // Daily loss
     els.riskDailyLoss.textContent = '$' + formatNumber(risk.dailyLoss);
-    els.riskDailyLoss.className = 'risk-value-large ' + (risk.dailyLoss > 0 ? 'risk-danger' : '');
+    els.riskDailyLoss.className = 'risk-stat-val' + (risk.dailyLoss > 0 ? ' danger' : '');
 
-    // Circuit breaker — show/hide reset button based on state
     if (risk.circuitBreaker) {
       els.riskCircuit.textContent = '🚨 ATIVO';
-      els.riskCircuit.className = 'risk-value-large risk-danger';
+      els.riskCircuit.className = 'risk-stat-val danger';
       if (els.resetCircuitBtn) els.resetCircuitBtn.classList.remove('hidden');
     } else {
-      els.riskCircuit.textContent = '✅ OK';
-      els.riskCircuit.className = 'risk-value-large risk-ok';
+      els.riskCircuit.textContent = '● OK';
+      els.riskCircuit.className = 'risk-stat-val ok';
       if (els.resetCircuitBtn) els.resetCircuitBtn.classList.add('hidden');
     }
   }
@@ -495,7 +582,7 @@
   // ========================================
   function renderDecisions(decisions) {
     if (!decisions || decisions.length === 0) {
-      els.decisionsFeed.innerHTML = '<div class="empty-state">Aguardando primeiro ciclo...</div>';
+      els.decisionsFeed.innerHTML = '<div class="empty-state"><span class="empty-icon">🧠</span><span>Aguardando primeiro ciclo...</span></div>';
       return;
     }
     els.decisionsFeed.innerHTML = '';
@@ -511,18 +598,15 @@
       reject: '⛔', risk: '🚨', monitor: '📡', system: '⚙️',
     };
 
-    const html = `
-      <div class="decision-item type-${decision.type}">
-        <span class="decision-time">${formatTime(decision.timestamp)}</span>
-        <span class="decision-icon">${iconMap[decision.type] || '📋'}</span>
-        <span class="decision-message">${escapeHtml(decision.message)}</span>
-      </div>
-    `;
+    const html = `<div class="dec-line type-${escapeAttr(decision.type || 'system')}">
+      <span class="dec-ts">${formatTime(decision.timestamp)}</span>
+      <span class="dec-icon">${iconMap[decision.type] || '📋'}</span>
+      <span class="dec-msg">${escapeHtml(decision.message)}</span>
+    </div>`;
 
     if (prepend) {
       els.decisionsFeed.insertAdjacentHTML('afterbegin', html);
-      // Keep max 50 items
-      while (els.decisionsFeed.children.length > 50) {
+      while (els.decisionsFeed.children.length > 100) {
         els.decisionsFeed.removeChild(els.decisionsFeed.lastChild);
       }
     } else {
@@ -539,36 +623,32 @@
       return;
     }
     els.journalBody.innerHTML = '';
-    trades.reverse().forEach(t => addJournalRow(t, false));
+    [...trades].reverse().forEach(t => addJournalRow(t, false));
   }
 
   function addJournalRow(trade, prepend = true) {
+    if (currentFilter !== 'all' && trade.status !== currentFilter) return;
     const emptyRow = els.journalBody.querySelector('.empty-state');
     if (emptyRow) els.journalBody.innerHTML = '';
 
-    const statusClass = 'status-' + trade.status;
     const statusLabel = { open: '⏳ Aberto', won: '✅ Ganhou', lost: '❌ Perdeu', cancelled: '🚫 Cancelado', exited: '💰 Saída' };
-    const pnlText = trade.pnl !== undefined && trade.pnl !== null
+    const pnlText = trade.pnl != null
       ? (trade.pnl >= 0 ? '+' : '') + '$' + trade.pnl.toFixed(2)
       : '—';
     const pnlClass = trade.pnl > 0 ? 'pnl-positive' : trade.pnl < 0 ? 'pnl-negative' : '';
+    const q = trade.question || '';
 
-    // Apply filter
-    if (currentFilter !== 'all' && trade.status !== currentFilter) return;
-
-    const html = `
-      <tr data-trade-id="${trade.id}" class="${trade.dryRun ? 'dryrun-row' : ''}">
-        <td>${formatTime(trade.timestamp)}</td>
-        <td title="${escapeHtml(trade.question)}">${escapeHtml(trade.question.substring(0, 40))}${trade.question.length > 40 ? '...' : ''}</td>
-        <td><span class="position-side ${trade.side === 'BUY_YES' ? 'side-yes' : 'side-no'}">${trade.side === 'BUY_YES' ? 'YES' : 'NO'}</span></td>
-        <td>$${trade.entryPrice.toFixed(4)}</td>
-        <td>$${trade.stake.toFixed(2)}</td>
-        <td class="pnl-positive">+${(trade.edge * 100).toFixed(1)}%</td>
-        <td>+${(trade.ev * 100).toFixed(1)}%</td>
-        <td class="${statusClass}">${statusLabel[trade.status] || trade.status}</td>
-        <td class="${pnlClass}">${pnlText}</td>
-      </tr>
-    `;
+    const html = `<tr data-trade-id="${escapeAttr(trade.id)}" class="${trade.dryRun ? 'dryrun-row' : ''}">
+      <td>${formatTime(trade.timestamp)}</td>
+      <td title="${escapeAttr(q)}">${escapeHtml(q.substring(0, 40))}${q.length > 40 ? '...' : ''}</td>
+      <td><span class="position-side ${trade.side === 'BUY_YES' ? 'side-yes' : 'side-no'}">${trade.side === 'BUY_YES' ? 'YES' : 'NO'}</span></td>
+      <td>$${trade.entryPrice.toFixed(4)}</td>
+      <td>$${trade.stake.toFixed(2)}</td>
+      <td class="pnl-positive">+${(trade.edge * 100).toFixed(1)}%</td>
+      <td>+${(trade.ev * 100).toFixed(1)}%</td>
+      <td class="status-${trade.status}">${statusLabel[trade.status] || trade.status}</td>
+      <td class="${pnlClass}">${pnlText}</td>
+    </tr>`;
 
     if (prepend) {
       els.journalBody.insertAdjacentHTML('afterbegin', html);
@@ -580,20 +660,15 @@
   function updateJournalRow(tradeId, won, pnl) {
     const row = els.journalBody.querySelector(`[data-trade-id="${tradeId}"]`);
     if (!row) return;
-
     const cells = row.querySelectorAll('td');
-    const statusCell = cells[7];
-    const pnlCell = cells[8];
-
-    if (statusCell) {
-      statusCell.textContent = won ? '✅ Ganhou' : '❌ Perdeu';
-      statusCell.className = won ? 'status-won' : 'status-lost';
+    if (cells[7]) {
+      cells[7].textContent = won ? '✅ Ganhou' : '❌ Perdeu';
+      cells[7].className = won ? 'status-won' : 'status-lost';
     }
-    if (pnlCell) {
-      pnlCell.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
-      pnlCell.className = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+    if (cells[8]) {
+      cells[8].textContent = pnl != null ? (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2) : '—';
+      cells[8].className = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : '';
     }
-
     row.classList.add(won ? 'flash-green' : 'flash-red');
   }
 
@@ -603,6 +678,7 @@
   function renderNotifications(notifications) {
     if (!notifications || notifications.length === 0) return;
     els.notificationsFeed.innerHTML = '';
+    notifTotal = 0;
     notifications.forEach(n => addNotification(n, false));
   }
 
@@ -610,34 +686,34 @@
     const emptyState = els.notificationsFeed.querySelector('.empty-state');
     if (emptyState) els.notificationsFeed.innerHTML = '';
 
-    const html = `
-      <div class="notification-item type-${notification.type}">
-        <span class="notification-time">${formatTime(notification.timestamp)}</span>
-        <span class="notification-title">${escapeHtml(notification.title)}</span>
-        <span class="notification-message">${escapeHtml(notification.message)}</span>
+    const html = `<div class="notif-item type-${escapeAttr(notification.type || 'system')}">
+      <span class="notif-ts">${formatTime(notification.timestamp)}</span>
+      <div class="notif-body">
+        <span class="notif-title">${escapeHtml(notification.title)}</span>
+        <span class="notif-msg">${escapeHtml(notification.message)}</span>
       </div>
-    `;
+    </div>`;
 
     if (prepend) {
       els.notificationsFeed.insertAdjacentHTML('afterbegin', html);
+      notifTotal++;
+      if (els.notifCount) els.notifCount.textContent = notifTotal;
       while (els.notificationsFeed.children.length > 30) {
         els.notificationsFeed.removeChild(els.notificationsFeed.lastChild);
       }
     } else {
       els.notificationsFeed.insertAdjacentHTML('beforeend', html);
+      notifTotal++;
+      if (els.notifCount) els.notifCount.textContent = notifTotal;
     }
 
-    // Browser notification
     if (prepend && Notification.permission === 'granted') {
-      new Notification(notification.title, {
-        body: notification.message,
-        icon: '🤖',
-      });
+      new Notification(notification.title, { body: notification.message });
     }
   }
 
   // ========================================
-  // REQUEST NOTIFICATION PERMISSION
+  // BROWSER NOTIFICATION PERMISSION
   // ========================================
   if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
@@ -648,7 +724,7 @@
   // ========================================
   let engineStartTime = 0;
   setInterval(() => {
-    if (engineStartTime > 0) {
+    if (engineStartTime > 0 && els.uptime) {
       els.uptime.textContent = formatUptime(Date.now() - engineStartTime);
     }
   }, 1000);
@@ -657,7 +733,7 @@
   // HELPERS
   // ========================================
   function formatMoney(val) {
-    return '$' + Math.abs(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return '$' + Math.abs(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
   function formatNumber(val) {
@@ -677,14 +753,19 @@
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
     const s = secs % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
   }
 
   function escapeHtml(text) {
     if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+  }
+
+  function escapeAttr(text) {
+    if (!text) return '';
+    return String(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function flashElement(el) {
