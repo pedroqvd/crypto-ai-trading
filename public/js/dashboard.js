@@ -1086,7 +1086,7 @@
      if (bd && els.pnl) {
        const profitStr = els.pnl.textContent;
        if (profitStr !== '—' && profitStr !== '$0.00' && profitStr !== '+$0.00') {
-         $('brief-text').textContent = \`Bot operando. Hoje: \${profitStr}\`;
+         $('brief-text').textContent = `Bot operando. Hoje: ${profitStr}`;
          bd.classList.remove('hidden');
        }
      }
