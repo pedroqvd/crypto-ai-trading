@@ -5,6 +5,7 @@
 
 import { ParsedMarket } from '../services/GammaApiClient';
 import { NewsResult } from '../services/NewsApiClient';
+import { ConsensusEstimate } from '../services/ConsensusClient';
 import { logger } from '../utils/Logger';
 
 export interface ProbabilityEstimate {
@@ -52,7 +53,8 @@ export class ProbabilityEstimator {
     allMarkets?: ParsedMarket[],
     medianVolume?: number,
     newsResult?: NewsResult,
-    learnedWeights?: Record<string, number>
+    learnedWeights?: Record<string, number>,
+    consensusEstimates?: ConsensusEstimate[]
   ): ProbabilityEstimate {
     const signals: SignalResult[] = [];
     const marketPrice = market.yesPrice;
@@ -66,6 +68,11 @@ export class ProbabilityEstimator {
     signals.push(this.liquidityMeanReversionSignal(market));
     signals.push(this.marketCalibrationSignal(market));
     signals.push(this.marketAgeSignal(market));
+
+    // Signal 9: External consensus (Metaculus + Manifold)
+    if (consensusEstimates && consensusEstimates.length > 0) {
+      signals.push(this.consensusSignal(market, consensusEstimates));
+    }
 
     // Apply learned weight multipliers when available (Phase 4 ensemble)
     if (learnedWeights) {
@@ -125,11 +132,13 @@ export class ProbabilityEstimator {
     // ── CONFIDENCE (with optional news boost) ───────────────────────────
     const confidence = this.calculateConfidence(signals, market, consensusRatio, estimatedTrueProb, newsResult);
 
+    const hasConsensus = consensusEstimates && consensusEstimates.length > 0;
     logger.debug('ProbEst',
       `"${market.question.substring(0, 40)}..." → Mkt: ${(marketPrice * 100).toFixed(0)}%, ` +
       `Est: ${(estimatedTrueProb * 100).toFixed(0)}%, Adj: ${(finalAdjustment * 100).toFixed(1)}%, ` +
       `Consensus: ${(consensusRatio * 100).toFixed(0)}%, Conf: ${(confidence * 100).toFixed(0)}%` +
-      (newsResult?.hasRecentNews ? ` 📰 news:${newsResult.sentiment ?? 'mixed'}` : '')
+      (newsResult?.hasRecentNews ? ` 📰 news:${newsResult.sentiment ?? 'mixed'}` : '') +
+      (hasConsensus ? ` 🌐 consensus:${consensusEstimates!.map(c => `${c.source}@${(c.probability * 100).toFixed(0)}%`).join(',')}` : '')
     );
 
     return {
@@ -398,6 +407,42 @@ export class ProbabilityEstimator {
       adjustment: 0.0,
       reasoning: `Mercado com ${Math.round(ageDays)} dias. Sem sinal de idade relevante.`,
     };
+  }
+
+  // ========================================
+  // SIGNAL 9: External Consensus (Metaculus + Manifold)
+  // When crowd forecasters on other platforms have a
+  // significantly different probability, we nudge our
+  // estimate toward theirs — weighted by their confidence.
+  // ========================================
+  private consensusSignal(market: ParsedMarket, estimates: ConsensusEstimate[]): SignalResult {
+    if (estimates.length === 0) {
+      return { name: 'External Consensus', weight: 0, adjustment: 0, reasoning: 'No consensus data.' };
+    }
+
+    // Weighted average of consensus probabilities
+    let totalWeight = 0;
+    let weightedProb = 0;
+    for (const est of estimates) {
+      totalWeight += est.confidence;
+      weightedProb += est.probability * est.confidence;
+    }
+    const avgConsensusProb = totalWeight > 0 ? weightedProb / totalWeight : market.yesPrice;
+    const avgConfidence = totalWeight / estimates.length;
+
+    const diff = avgConsensusProb - market.yesPrice;
+
+    // Cap the adjustment at ±4% — consensus can disagree with market but
+    // we don't fully override our own signals.
+    const adjustment = Math.max(-0.04, Math.min(0.04, diff * 0.5));
+
+    const sources = estimates.map(e => `${e.source}@${(e.probability * 100).toFixed(0)}%`).join(', ');
+    const reasoning = `Consenso externo: ${sources}. Média: ${(avgConsensusProb * 100).toFixed(0)}% vs mercado ${(market.yesPrice * 100).toFixed(0)}%. Ajuste: ${(adjustment * 100).toFixed(1)}%.`;
+
+    // Weight scales with confidence and number of sources
+    const weight = Math.min(2.5, avgConfidence * 2.0 * estimates.length);
+
+    return { name: 'External Consensus', weight, adjustment, reasoning };
   }
 
   // ========================================

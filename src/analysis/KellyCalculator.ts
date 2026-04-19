@@ -28,11 +28,17 @@ export class KellyCalculator {
    *
    * Where p = P_true, q = P_implied (market price)
    */
+  /**
+   * @param correlationDiscount 0–1 multiplier applied to finalStake when we already
+   *   hold positions in the same market category (reduces Kelly to avoid over-concentration).
+   *   1.0 = no discount, 0.5 = half-Kelly when category is saturated.
+   */
   calculate(
     pTrue: number,
     pImplied: number,
     currentBankroll: number,
-    marketLiquidity: number
+    marketLiquidity: number,
+    correlationDiscount = 1.0
   ): KellyResult {
     const p = Math.max(0.01, Math.min(0.99, pTrue));
     const q = Math.max(0.01, Math.min(0.99, pImplied));
@@ -73,15 +79,13 @@ export class KellyCalculator {
     const maxByLiquidity = marketLiquidity * 0.10;
     const maxStake = Math.min(maxByPosition, maxByLiquidity);
 
-    let finalStake = Math.min(recommended, maxStake);
-
-    if (finalStake > currentBankroll * 0.5) {
-      finalStake = currentBankroll * 0.5;
-    }
+    // Apply correlation discount to reduce concentration in same-category positions
+    const discount = Math.max(0.1, Math.min(1.0, correlationDiscount));
+    const finalStake = Math.min(recommended, maxStake) * discount;
 
     const justification = this.buildJustification(
       fullKelly, fractional, recommended, maxStake, finalStake,
-      p, q, currentBankroll, marketLiquidity
+      p, q, currentBankroll, marketLiquidity, discount
     );
 
     logger.debug('Kelly', `p=${p.toFixed(3)} q=${q.toFixed(3)} bNet=${bNet.toFixed(3)} f*=${fullKelly.toFixed(4)} → $${finalStake.toFixed(2)}`);
@@ -105,20 +109,24 @@ export class KellyCalculator {
     p: number,
     q: number,
     bankroll: number,
-    liquidity: number
+    liquidity: number,
+    discount: number
   ): string {
     let reason = `Kelly (c/taxa): f*=${(fullKelly * 100).toFixed(2)}%, `;
     reason += `fração=${(fractional * 100).toFixed(2)}%, `;
     reason += `recomendado=$${recommended.toFixed(2)}. `;
 
-    if (finalStake < recommended) {
-      if (recommended > maxStake) {
-        if (maxStake === bankroll * config.maxPositionPct) {
-          reason += `Limitado pelo cap de posição (${(config.maxPositionPct * 100).toFixed(0)}% do bankroll). `;
-        } else {
-          reason += `Limitado pela liquidez do mercado ($${liquidity.toFixed(0)}). `;
-        }
+    const cappedStake = Math.min(recommended, maxStake);
+    if (cappedStake < recommended) {
+      if (maxStake === bankroll * config.maxPositionPct) {
+        reason += `Limitado pelo cap de posição (${(config.maxPositionPct * 100).toFixed(0)}% do bankroll). `;
+      } else {
+        reason += `Limitado pela liquidez do mercado ($${liquidity.toFixed(0)}). `;
       }
+    }
+
+    if (discount < 0.99) {
+      reason += `Desconto de correlação: ${(discount * 100).toFixed(0)}% (posição na mesma categoria). `;
     }
 
     reason += `Stake final: $${finalStake.toFixed(2)} (${((finalStake / bankroll) * 100).toFixed(1)}% do bankroll).`;

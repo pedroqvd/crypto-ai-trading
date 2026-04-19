@@ -222,4 +222,43 @@ export class TradeJournal {
       worstTrade: pnls.length > 0 ? Math.min(...pnls) : 0,
     };
   }
+
+  // Export all trades as CSV string
+  toCSV(): string {
+    const header = [
+      'id', 'timestamp', 'marketId', 'question', 'side',
+      'entryPrice', 'size', 'stake', 'edge', 'ev',
+      'kellyFraction', 'confidence', 'status',
+      'exitPrice', 'pnl', 'resolvedAt', 'dryRun',
+    ].join(',');
+
+    const rows = this.trades.map(t => [
+      csvEscape(t.id),
+      csvEscape(t.timestamp),
+      csvEscape(t.marketId),
+      csvEscape(t.question),
+      t.side,
+      t.entryPrice.toFixed(6),
+      t.size.toFixed(4),
+      t.stake.toFixed(4),
+      t.edge.toFixed(6),
+      t.ev.toFixed(6),
+      t.kellyFraction.toFixed(6),
+      t.confidence.toFixed(4),
+      t.status,
+      t.exitPrice !== undefined ? t.exitPrice.toFixed(6) : '',
+      t.pnl !== undefined ? t.pnl.toFixed(4) : '',
+      csvEscape(t.resolvedAt ?? ''),
+      t.dryRun ? 'true' : 'false',
+    ].join(','));
+
+    return [header, ...rows].join('\n');
+  }
+}
+
+function csvEscape(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
 }

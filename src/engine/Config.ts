@@ -78,3 +78,10 @@ export function loadConfig(): TradingConfig {
 }
 
 export const config = loadConfig();
+
+// Startup safety check: block live trading without a wallet key
+if (!config.dryRun && !config.privateKey) {
+  console.error('\n❌ ERRO FATAL: DRY_RUN=false mas PRIVATE_KEY não está configurada.');
+  console.error('   Configure PRIVATE_KEY ou defina DRY_RUN=true para simulação.\n');
+  process.exit(1);
+}

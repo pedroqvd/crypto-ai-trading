@@ -24,10 +24,10 @@ export class DashboardServer {
     this.app = express();
     this.server = createServer(this.app);
 
-    // Allow any explicitly configured origins; fall back to wildcard
+    // Allow explicitly configured origins; default to localhost only (never wildcard)
     const allowedOrigins = config.allowedOrigins.length > 0
       ? config.allowedOrigins
-      : '*';
+      : [`http://localhost:${config.dashboardPort}`, 'http://localhost:3000'];
 
     this.io = new SocketIOServer(this.server, {
       cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
@@ -47,7 +47,7 @@ export class DashboardServer {
   private setupMiddleware(): void {
     const allowedOriginsValue = config.allowedOrigins.length > 0
       ? config.allowedOrigins
-      : '*';
+      : [`http://localhost:${config.dashboardPort}`, 'http://localhost:3000'];
 
     this.app.use(cors({ origin: allowedOriginsValue }));
     this.app.use(express.json());
@@ -205,6 +205,55 @@ export class DashboardServer {
     // Ensemble signal weights
     this.app.get('/api/ensemble', (req, res) => {
       res.json(this.engine.getEnsembleStats());
+    });
+
+    // Learning data export (calibration + ensemble) — backup before redeploy
+    this.app.get('/api/learning/export', (req, res) => {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        calibration: this.engine.exportCalibrationData(),
+        ensemble: this.engine.exportEnsembleData(),
+      };
+      res.setHeader('Content-Disposition', 'attachment; filename="polymarket-learning.json"');
+      res.setHeader('Content-Type', 'application/json');
+      res.json(payload);
+    });
+
+    // Performance metrics (Sharpe, Calmar, equity curve, category breakdown)
+    this.app.get('/api/performance', (req, res) => {
+      res.json(this.engine.getPerformanceReport());
+    });
+
+    // Trade CSV export
+    this.app.get('/api/trades/export', (req, res) => {
+      const csv = this.engine.getJournal().toCSV();
+      res.setHeader('Content-Disposition', 'attachment; filename="trades.csv"');
+      res.setHeader('Content-Type', 'text/csv');
+      res.send(csv);
+    });
+
+    // Learning data import — restore after redeploy
+    this.app.post('/api/learning/import', (req, res) => {
+      const body = req.body as { calibration?: unknown; ensemble?: unknown };
+      if (!body || (!body.calibration && !body.ensemble)) {
+        res.status(400).json({ error: 'Body deve conter "calibration" e/ou "ensemble".' });
+        return;
+      }
+      const errors: string[] = [];
+      if (body.calibration) {
+        try { this.engine.importCalibrationData(body.calibration); }
+        catch (e) { errors.push('calibration: ' + (e instanceof Error ? e.message : e)); }
+      }
+      if (body.ensemble) {
+        try { this.engine.importEnsembleData(body.ensemble); }
+        catch (e) { errors.push('ensemble: ' + (e instanceof Error ? e.message : e)); }
+      }
+      if (errors.length > 0) {
+        res.status(422).json({ error: errors.join('; ') });
+        return;
+      }
+      logger.info('Dashboard', '📥 Dados de aprendizado importados via dashboard');
+      res.json({ success: true });
     });
 
     // Bot control — stop

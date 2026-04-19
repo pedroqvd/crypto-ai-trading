@@ -223,6 +223,36 @@ export class BayesianCalibrator {
     }));
   }
 
+  exportData(): object {
+    return {
+      categoryBuckets: this.categoryBuckets,
+      recentPredictions: this.recentPredictions,
+    };
+  }
+
+  importData(data: unknown): void {
+    try {
+      const raw = data as Record<string, unknown>;
+      if (!raw || typeof raw !== 'object') throw new Error('Invalid format');
+      if (raw.categoryBuckets) {
+        for (const cat of CATEGORIES) {
+          const buckets = (raw.categoryBuckets as Record<string, CalibrationBucket[]>)[cat];
+          if (Array.isArray(buckets) && buckets.length === 10) {
+            this.categoryBuckets[cat] = buckets.map(b => ({ ...b, outcomes: b.outcomes || [] }));
+          }
+        }
+      }
+      if (Array.isArray(raw.recentPredictions)) {
+        this.recentPredictions = raw.recentPredictions as TimedOutcome[];
+      }
+      this.save();
+      const total = CATEGORIES.reduce((s, c) => s + this.categoryBuckets[c].reduce((ss, b) => ss + b.n, 0), 0);
+      logger.info('Calibrator', `✅ Import: ${total} predições carregadas`);
+    } catch (err) {
+      throw new Error(`Calibration import failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   private save(): void {
     try {
       const dir = path.dirname(this.dataPath);

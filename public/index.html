@@ -350,7 +350,11 @@
             <span class="indicator emerald"></span>
             Calibração IA
           </div>
-          <a class="panel-link" id="refresh-cal" title="Atualizar">↻</a>
+          <div style="display:flex;gap:6px;align-items:center">
+            <a class="panel-link" id="export-learning" title="Exportar dados de aprendizado">⬇</a>
+            <label class="panel-link" title="Importar dados de aprendizado" style="cursor:pointer">⬆<input type="file" id="import-learning" accept=".json" style="display:none"></label>
+            <a class="panel-link" id="refresh-cal" title="Atualizar">↻</a>
+          </div>
         </div>
         <div class="panel-body">
           <div class="cal-grid">
@@ -447,6 +451,85 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       PERFORMANCE METRICS
+  ═══════════════════════════════════════════ -->
+  <section class="journal-section">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <span class="indicator cyan"></span>
+          Performance Analytics
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <a class="panel-link" id="export-trades-csv" title="Exportar trades CSV">⬇ CSV</a>
+          <a class="panel-link" id="refresh-performance" title="Atualizar">↻</a>
+        </div>
+      </div>
+      <div class="panel-body">
+
+        <!-- Core ratios -->
+        <div class="perf-ratios">
+          <div class="perf-stat">
+            <span class="perf-label">Sharpe</span>
+            <span class="perf-val" id="perf-sharpe">—</span>
+          </div>
+          <div class="perf-stat">
+            <span class="perf-label">Sortino</span>
+            <span class="perf-val" id="perf-sortino">—</span>
+          </div>
+          <div class="perf-stat">
+            <span class="perf-label">Calmar</span>
+            <span class="perf-val" id="perf-calmar">—</span>
+          </div>
+          <div class="perf-stat">
+            <span class="perf-label">Profit Factor</span>
+            <span class="perf-val" id="perf-pf">—</span>
+          </div>
+          <div class="perf-stat">
+            <span class="perf-label">Max Drawdown</span>
+            <span class="perf-val danger" id="perf-maxdd">—</span>
+          </div>
+          <div class="perf-stat">
+            <span class="perf-label">Win Rate</span>
+            <span class="perf-val" id="perf-winrate">—</span>
+          </div>
+          <div class="perf-stat">
+            <span class="perf-label">Expectancy</span>
+            <span class="perf-val" id="perf-expectancy">—</span>
+          </div>
+          <div class="perf-stat">
+            <span class="perf-label">Avg Win</span>
+            <span class="perf-val success" id="perf-avgwin">—</span>
+          </div>
+          <div class="perf-stat">
+            <span class="perf-label">Avg Loss</span>
+            <span class="perf-val danger" id="perf-avgloss">—</span>
+          </div>
+          <div class="perf-stat">
+            <span class="perf-label">Trading Days</span>
+            <span class="perf-val" id="perf-days">—</span>
+          </div>
+        </div>
+
+        <!-- Equity curve (simple SVG sparkline) -->
+        <div class="perf-equity-wrap">
+          <div class="perf-equity-label">Equity Curve</div>
+          <svg id="equity-curve-svg" class="equity-curve" viewBox="0 0 600 80" preserveAspectRatio="none">
+            <text x="300" y="45" text-anchor="middle" class="equity-empty">Aguardando trades fechados…</text>
+          </svg>
+        </div>
+
+        <!-- Category breakdown -->
+        <div class="perf-categories" id="perf-categories">
+          <div class="perf-cat-title">P&amp;L por Categoria</div>
+          <div class="perf-cat-empty">Sem dados</div>
+        </div>
+
       </div>
     </div>
   </section>
