@@ -38,21 +38,50 @@ const NO_NEWS_RESULT: NewsResult = {
 };
 
 // Words that suggest the YES outcome is more likely (bullish)
-const BULLISH_KEYWORDS = [
-  'confirms', 'confirmed', 'wins', 'won', 'victory', 'elected', 'approved',
-  'passes', 'passed', 'signed', 'agrees', 'agreement', 'deal', 'achieves',
-  'launches', 'succeeds', 'announces', 'breakthrough', 'rises', 'surges',
-  'increases', 'gains', 'record', 'high', 'beats', 'exceeds', 'positive',
-  'yes', 'will', 'likely', 'probable',
+const BULLISH_KEYWORDS: Array<{ word: string; weight: number }> = [
+  { word: 'confirms', weight: 2 }, { word: 'confirmed', weight: 2 },
+  { word: 'wins', weight: 2 },     { word: 'won', weight: 2 },
+  { word: 'victory', weight: 2 },  { word: 'elected', weight: 3 },
+  { word: 'approved', weight: 2 }, { word: 'passes', weight: 2 },
+  { word: 'passed', weight: 2 },   { word: 'signed', weight: 2 },
+  { word: 'agreement', weight: 2 }, { word: 'deal', weight: 1 },
+  { word: 'achieves', weight: 2 }, { word: 'launches', weight: 1 },
+  { word: 'succeeds', weight: 2 }, { word: 'breakthrough', weight: 2 },
+  { word: 'rises', weight: 1 },    { word: 'surges', weight: 2 },
+  { word: 'increases', weight: 1 }, { word: 'gains', weight: 1 },
+  { word: 'record high', weight: 2 }, { word: 'beats', weight: 1 },
+  { word: 'exceeds', weight: 1 },  { word: 'likely', weight: 1 },
+  { word: 'probable', weight: 1 }, { word: 'expected', weight: 1 },
 ];
 
 // Words that suggest the YES outcome is less likely (bearish)
-const BEARISH_KEYWORDS = [
-  'fails', 'failed', 'loses', 'lost', 'defeat', 'rejected', 'blocked',
-  'vetoed', 'cancels', 'cancelled', 'withdraws', 'collapse', 'crisis',
-  'delays', 'postponed', 'falls', 'drops', 'declines', 'decreases',
-  'misses', 'below', 'no', 'unlikely', 'improbable', 'doubt',
+const BEARISH_KEYWORDS: Array<{ word: string; weight: number }> = [
+  { word: 'fails', weight: 2 },    { word: 'failed', weight: 2 },
+  { word: 'loses', weight: 2 },    { word: 'lost', weight: 2 },
+  { word: 'defeat', weight: 2 },   { word: 'rejected', weight: 2 },
+  { word: 'blocked', weight: 2 },  { word: 'vetoed', weight: 3 },
+  { word: 'cancels', weight: 2 },  { word: 'cancelled', weight: 2 },
+  { word: 'withdraws', weight: 2 }, { word: 'collapse', weight: 2 },
+  { word: 'crisis', weight: 1 },   { word: 'delays', weight: 1 },
+  { word: 'postponed', weight: 2 }, { word: 'falls', weight: 1 },
+  { word: 'drops', weight: 1 },    { word: 'declines', weight: 1 },
+  { word: 'misses', weight: 2 },   { word: 'unlikely', weight: 2 },
+  { word: 'improbable', weight: 2 }, { word: 'doubt', weight: 1 },
+  { word: 'suspended', weight: 2 }, { word: 'halted', weight: 2 },
 ];
+
+// High-credibility source domains (3x weight multiplier)
+const HIGH_CREDIBILITY_SOURCES = new Set([
+  'reuters', 'associated press', 'ap news', 'bloomberg', 'financial times',
+  'the economist', 'bbc', 'npr', 'new york times', 'washington post',
+  'wall street journal', 'wsj', 'apnews',
+]);
+
+// Negation words that flip the sentiment of the following keyword
+const NEGATION_WORDS = new Set([
+  'not', "n't", 'never', 'no', 'fails to', 'failed to', 'unable to',
+  'won\'t', 'doesn\'t', 'didn\'t', 'cannot', 'can\'t',
+]);
 
 export class NewsApiClient {
   private client: AxiosInstance | null = null;
@@ -182,21 +211,51 @@ export class NewsApiClient {
 
   /**
    * Analyze the sentiment of articles relative to the YES outcome.
-   * Returns 'bullish' if articles suggest YES is more likely,
-   * 'bearish' if they suggest NO, null if ambiguous.
+   *
+   * Improvements over naive keyword counting:
+   *   1. Negation detection: "not approved" → bearish, not bullish
+   *   2. Source credibility: Reuters/Bloomberg articles count 3× more
+   *   3. Recency weighting: articles in past 24h count 2×, past 72h count 1.5×
+   *   4. Weighted keywords: strong signals (elected, vetoed) count more
    */
-  private analyzeSentiment(articles: NewsArticle[], question: string): 'bullish' | 'bearish' | null {
+  private analyzeSentiment(articles: NewsArticle[], _question: string): 'bullish' | 'bearish' | null {
     let bullishScore = 0;
     let bearishScore = 0;
+    const now = Date.now();
 
     for (const article of articles) {
-      const text = `${article.title} ${article.description}`.toLowerCase();
+      const credibilityMultiplier = this.sourceCredibility(article.source);
 
-      for (const kw of BULLISH_KEYWORDS) {
-        if (text.includes(kw)) bullishScore++;
-      }
-      for (const kw of BEARISH_KEYWORDS) {
-        if (text.includes(kw)) bearishScore++;
+      // Recency multiplier: fresher = more relevant
+      const publishedMs = article.publishedAt ? new Date(article.publishedAt).getTime() : 0;
+      const ageHours = publishedMs > 0 ? (now - publishedMs) / 3_600_000 : 48;
+      const recencyMultiplier = ageHours <= 24 ? 2.0 : ageHours <= 72 ? 1.5 : 1.0;
+
+      const articleMultiplier = credibilityMultiplier * recencyMultiplier;
+      const text = `${article.title} ${article.description}`.toLowerCase();
+      const tokens = text.split(/\s+/);
+
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+
+        // Check for 2-gram (bigram) first
+        const bigram = i + 1 < tokens.length ? `${token} ${tokens[i + 1]}` : '';
+
+        for (const kw of BULLISH_KEYWORDS) {
+          if (token === kw.word || bigram === kw.word) {
+            const negated = this.isNegated(tokens, i);
+            if (negated) bearishScore += kw.weight * articleMultiplier;
+            else          bullishScore += kw.weight * articleMultiplier;
+          }
+        }
+
+        for (const kw of BEARISH_KEYWORDS) {
+          if (token === kw.word || bigram === kw.word) {
+            const negated = this.isNegated(tokens, i);
+            if (negated) bullishScore += kw.weight * articleMultiplier;
+            else          bearishScore += kw.weight * articleMultiplier;
+          }
+        }
       }
     }
 
@@ -205,10 +264,27 @@ export class NewsApiClient {
     const total = bullishScore + bearishScore;
     const bullishRatio = bullishScore / total;
 
-    // Only signal strong sentiment — avoid noise
-    if (bullishRatio > 0.65) return 'bullish';
-    if (bullishRatio < 0.35) return 'bearish';
+    // Require stronger signal threshold to avoid noise
+    if (bullishRatio > 0.68) return 'bullish';
+    if (bullishRatio < 0.32) return 'bearish';
 
-    return null; // Too ambiguous
+    return null;
+  }
+
+  private sourceCredibility(sourceName: string): number {
+    const lower = sourceName.toLowerCase();
+    for (const credible of HIGH_CREDIBILITY_SOURCES) {
+      if (lower.includes(credible)) return 3.0;
+    }
+    return 1.0;
+  }
+
+  // Returns true when any of the 3 tokens before position i is a negation word
+  private isNegated(tokens: string[], i: number): boolean {
+    const lookback = 3;
+    for (let j = Math.max(0, i - lookback); j < i; j++) {
+      if (NEGATION_WORDS.has(tokens[j])) return true;
+    }
+    return false;
   }
 }

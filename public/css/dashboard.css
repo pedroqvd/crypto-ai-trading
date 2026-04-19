@@ -836,6 +836,91 @@ tbody tr.dryrun-row td { opacity: 0.75; }
 td.empty-state { display: table-cell; text-align: center; padding: 32px; }
 
 /* ════════════════════════════════════════
+   PERFORMANCE METRICS
+════════════════════════════════════════ */
+.perf-ratios {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.perf-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.perf-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.perf-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.perf-val.danger  { color: var(--rose); }
+.perf-val.success { color: var(--emerald); }
+.perf-equity-wrap { margin-bottom: 20px; }
+.perf-equity-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+.equity-curve {
+  width: 100%;
+  height: 80px;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.equity-empty { font-size: 12px; fill: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+.equity-line  { fill: none; stroke: var(--cyan); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.equity-area  { fill: var(--cyan); opacity: 0.1; }
+.perf-categories { margin-top: 4px; }
+.perf-cat-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+.perf-cat-empty { font-size: 12px; color: var(--text-muted); font-style: italic; }
+.perf-cat-head, .perf-cat-row {
+  display: grid;
+  grid-template-columns: 150px 55px 55px 70px 70px 70px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 12px;
+}
+.perf-cat-head {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+}
+.perf-cat-row { border-bottom: 1px solid rgba(255,255,255,0.04); }
+.perf-cat-row:last-child { border-bottom: none; }
+.perf-cat-name { color: var(--text); font-weight: 500; }
+.perf-cat-num  { color: var(--text-muted); text-align: right; font-family: 'JetBrains Mono', monospace; }
+.perf-cat-pnl  { font-family: 'JetBrains Mono', monospace; text-align: right; font-weight: 600; }
+.perf-cat-pnl.pos { color: var(--emerald); }
+.perf-cat-pnl.neg { color: var(--rose); }
+
+/* ════════════════════════════════════════
    ANIMATIONS
 ════════════════════════════════════════ */
 @keyframes slideDown {

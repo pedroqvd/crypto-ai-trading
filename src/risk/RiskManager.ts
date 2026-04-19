@@ -14,6 +14,25 @@ export interface RiskCheck {
   drawdownPct: number;
 }
 
+// Maximum positions per category to prevent over-concentration
+const MAX_POSITIONS_PER_CATEGORY = 3;
+// When category count hits this, apply Kelly discount
+const CATEGORY_DISCOUNT_THRESHOLD = 2;
+
+// Infer category from question text (mirrors PerformanceMetrics)
+function detectCategory(question: string): string {
+  const q = question.toLowerCase();
+  if (/\b(bitcoin|btc|ethereum|eth|crypto|defi|nft|blockchain|solana|sol)\b/.test(q)) return 'Crypto';
+  if (/\b(election|president|vote|senator|congress|governor|parliament|prime minister)\b/.test(q)) return 'Politics';
+  if (/\b(fed|interest rate|inflation|gdp|recession|economy|employment|cpi)\b/.test(q)) return 'Economics';
+  if (/\b(nba|nfl|nhl|mlb|soccer|football|basketball|tennis|golf|olympic)\b/.test(q)) return 'Sports';
+  if (/\b(ai|artificial intelligence|chatgpt|openai|google|microsoft|apple|meta|amazon)\b/.test(q)) return 'Tech / AI';
+  if (/\b(war|conflict|military|nato|russia|ukraine|china|taiwan|iran|north korea)\b/.test(q)) return 'Geopolitics';
+  if (/\b(climate|carbon|temperature|hurricane|earthquake|weather|environment)\b/.test(q)) return 'Science / Climate';
+  if (/\b(covid|vaccine|fda|drug|clinical trial|cancer|disease|pandemic)\b/.test(q)) return 'Health / Bio';
+  return 'Other';
+}
+
 export class RiskManager {
   private peakBankroll: number;
   private currentBankroll: number;
@@ -22,6 +41,10 @@ export class RiskManager {
   private dailyLoss: number = 0;
   private lastDayReset: string = '';
   private circuitBreakerActive: boolean = false;
+  // category → stake exposure
+  private categoryExposure = new Map<string, number>();
+  // tradeId → category (to deregister correctly on close)
+  private tradeCategories = new Map<string, string>();
 
   constructor(private journal: TradeJournal) {
     this.currentBankroll = config.bankroll;
@@ -29,7 +52,25 @@ export class RiskManager {
     this.resetDailyIfNeeded();
   }
 
-  checkTrade(stakeAmount: number, marketId: string): RiskCheck {
+  /**
+   * Returns a 0–1 Kelly discount based on how many open positions we
+   * already have in the same category as `question`.
+   *   0 positions in category → 1.0 (no discount)
+   *   1 position             → 0.75
+   *   2 positions            → 0.55
+   *   3+ positions           → 0.40
+   */
+  getCategoryKellyDiscount(question: string): number {
+    const cat = detectCategory(question);
+    const positionsInCat = [...this.tradeCategories.values()].filter(c => c === cat).length;
+
+    if (positionsInCat === 0) return 1.0;
+    if (positionsInCat === 1) return 0.75;
+    if (positionsInCat === 2) return 0.55;
+    return 0.40;
+  }
+
+  checkTrade(stakeAmount: number, marketId: string, question?: string): RiskCheck {
     this.resetDailyIfNeeded();
 
     if (this.circuitBreakerActive) {
@@ -88,6 +129,21 @@ export class RiskManager {
       };
     }
 
+    // Category concentration check
+    if (question) {
+      const cat = detectCategory(question);
+      const positionsInCat = [...this.tradeCategories.values()].filter(c => c === cat).length;
+      if (positionsInCat >= MAX_POSITIONS_PER_CATEGORY) {
+        return {
+          allowed: false,
+          reason: `Máximo de ${MAX_POSITIONS_PER_CATEGORY} posições na categoria "${cat}" atingido.`,
+          currentExposure: this.totalExposure,
+          maxExposure,
+          drawdownPct: drawdown,
+        };
+      }
+    }
+
     return {
       allowed: true,
       reason: 'Trade dentro dos limites de risco.',
@@ -97,15 +153,28 @@ export class RiskManager {
     };
   }
 
-  registerPosition(stake: number): void {
+  registerPosition(stake: number, tradeId?: string, question?: string): void {
     this.totalExposure += stake;
     this.positionCount++;
+    if (tradeId && question) {
+      const cat = detectCategory(question);
+      this.tradeCategories.set(tradeId, cat);
+      this.categoryExposure.set(cat, (this.categoryExposure.get(cat) ?? 0) + stake);
+    }
     logger.debug('RiskMgr', `Posição registrada: +$${stake.toFixed(2)}. Exposição total: $${this.totalExposure.toFixed(2)}`);
   }
 
-  closePosition(stake: number, pnl: number): void {
+  closePosition(stake: number, pnl: number, tradeId?: string): void {
     this.totalExposure = Math.max(0, this.totalExposure - stake);
     this.positionCount = Math.max(0, this.positionCount - 1);
+    if (tradeId) {
+      const cat = this.tradeCategories.get(tradeId);
+      if (cat) {
+        const prev = this.categoryExposure.get(cat) ?? 0;
+        this.categoryExposure.set(cat, Math.max(0, prev - stake));
+        this.tradeCategories.delete(tradeId);
+      }
+    }
     this.currentBankroll += pnl;
 
     if (pnl < 0) {
@@ -144,6 +213,7 @@ export class RiskManager {
     dailyLoss: number;
     circuitBreaker: boolean;
     maxExposure: number;
+    categoryExposure: Record<string, number>;
   } {
     return {
       bankroll: this.currentBankroll,
@@ -154,6 +224,7 @@ export class RiskManager {
       dailyLoss: this.dailyLoss,
       circuitBreaker: this.circuitBreakerActive,
       maxExposure: this.currentBankroll * config.maxTotalExposurePct,
+      categoryExposure: Object.fromEntries(this.categoryExposure),
     };
   }
 

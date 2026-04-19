@@ -19,6 +19,9 @@ import { CorrelationAnalyzer } from '../analysis/CorrelationAnalyzer';
 import { ClaudeAnalyzer } from '../services/ClaudeAnalyzer';
 import { BayesianCalibrator } from '../analysis/BayesianCalibrator';
 import { EnsembleWeightTracker } from '../analysis/EnsembleWeightTracker';
+import { ConsensusClient } from '../services/ConsensusClient';
+import { MarketQualityAnalyzer } from '../analysis/MarketQualityAnalyzer';
+import { PerformanceMetrics } from '../utils/PerformanceMetrics';
 
 export interface EngineStatus {
   running: boolean;
@@ -58,6 +61,9 @@ export class TradingEngine extends EventEmitter {
   private claudeAnalyzer: ClaudeAnalyzer | null = null;
   private calibrator: BayesianCalibrator;
   private ensembleTracker: EnsembleWeightTracker;
+  private consensusClient: ConsensusClient;
+  private qualityAnalyzer: MarketQualityAnalyzer;
+  private performanceMetrics: PerformanceMetrics;
   // In-memory signal snapshots for ensemble learning (tradeId → signals)
   private tradeSignals = new Map<string, Array<{ name: string; adjustment: number; weight: number }>>();
 
@@ -95,6 +101,9 @@ export class TradingEngine extends EventEmitter {
     this.correlationAnalyzer = new CorrelationAnalyzer();
     this.calibrator = new BayesianCalibrator();
     this.ensembleTracker = new EnsembleWeightTracker();
+    this.consensusClient = new ConsensusClient();
+    this.qualityAnalyzer = new MarketQualityAnalyzer();
+    this.performanceMetrics = new PerformanceMetrics();
     if (config.claudeEnabled && config.claudeApiKey) {
       this.claudeAnalyzer = new ClaudeAnalyzer(config.claudeApiKey, config.claudeMaxCallsPerCycle);
       logger.info('Engine', '🤖 Claude AI analysis enabled');
@@ -253,6 +262,13 @@ export class TradingEngine extends EventEmitter {
     this.ensembleTracker.importData(data);
   }
 
+  getPerformanceReport() {
+    return this.performanceMetrics.compute(
+      this.journal.getAllTrades(),
+      this.sessionStartBankroll || config.bankroll
+    );
+  }
+
   stop(): void {
     this.running = false;
     logger.info('Engine', '🛑 Engine stopped');
@@ -293,6 +309,7 @@ export class TradingEngine extends EventEmitter {
     this.cycleCount++;
     this.lastScanAt = new Date().toISOString();
     this.claudeAnalyzer?.resetCycleCounter();
+    this.consensusClient.resetCycleCounter();
     logger.info('Engine', `\n--- Ciclo #${this.cycleCount} ---`);
 
     // Step 1: Scan markets (flat list + events for correlation)
@@ -372,6 +389,10 @@ export class TradingEngine extends EventEmitter {
       if (m.volume < config.minVolume) return false;
       if (!m.acceptingOrders) return false;
       if (m.yesPrice > 0.97 || m.yesPrice < 0.03) return false;
+
+      // Market quality gate — reject low-quality markets before analysis
+      if (!this.qualityAnalyzer.passes(m)) return false;
+
       return true;
     });
 
@@ -395,7 +416,15 @@ export class TradingEngine extends EventEmitter {
       : undefined;
 
     for (const market of filtered) {
-      const probEstimate = this.probEstimator.estimate(market, allMarkets, medianVolume, undefined, learnedWeights);
+      // Pre-estimate to see if consensus lookup is worthwhile (edge proxy)
+      const roughEdge = Math.abs(market.yesPrice - 0.5) > 0;
+      let consensusEstimates = undefined;
+      if (roughEdge) {
+        consensusEstimates = await this.consensusClient.getConsensus(market.question);
+        if (consensusEstimates.length === 0) consensusEstimates = undefined;
+      }
+
+      const probEstimate = this.probEstimator.estimate(market, allMarkets, medianVolume, undefined, learnedWeights, consensusEstimates);
 
       // Store signal snapshot for ensemble learning at resolution
       this.pendingSignals.set(market.id, probEstimate.signals.map(s => ({
@@ -505,11 +534,13 @@ export class TradingEngine extends EventEmitter {
     for (const opp of toExecute) {
       const currentBankroll = this.riskManager.getStatus().bankroll;
 
+      const kellyDiscount = this.riskManager.getCategoryKellyDiscount(opp.question);
       const kelly = this.kellyCalc.calculate(
         opp.estimatedTrueProb,
         opp.marketPrice,
         currentBankroll,
-        opp.liquidity
+        opp.liquidity,
+        kellyDiscount
       );
 
       if (kelly.finalStake < 1) {
@@ -607,7 +638,7 @@ export class TradingEngine extends EventEmitter {
       // ── RISK CHECK ───────────────────────────────────────────────────
       const stakeAfterSizeAdjust = size * price;
       const circuitBreakerWasActive = this.riskManager.getStatus().circuitBreaker;
-      const riskCheck = this.riskManager.checkTrade(stakeAfterSizeAdjust, opp.marketId);
+      const riskCheck = this.riskManager.checkTrade(stakeAfterSizeAdjust, opp.marketId, opp.question);
 
       if (!riskCheck.allowed) {
         this.logDecision('risk', riskCheck.reason);
@@ -643,7 +674,7 @@ export class TradingEngine extends EventEmitter {
         };
 
         this.journal.recordTrade(tradeRecord);
-        this.riskManager.registerPosition(finalStake);
+        this.riskManager.registerPosition(finalStake, tradeRecord.id, opp.question);
         this.activeMarketIds.add(opp.marketId);
         // Store signal snapshot for ensemble learning at resolution
         const signals = this.pendingSignals.get(opp.marketId);
@@ -700,7 +731,7 @@ export class TradingEngine extends EventEmitter {
           const cancelled = await this.clobApi.cancelOrder(trade.id);
           if (cancelled) {
             this.journal.cancelTrade(trade.id);
-            this.riskManager.closePosition(trade.stake, 0);
+            this.riskManager.closePosition(trade.stake, 0, trade.id);
             this.activeMarketIds.delete(trade.marketId);
             this.positionState.delete(trade.id);
             this.logDecision('monitor', `🚫 Ordem stale cancelada: "${trade.question.substring(0, 50)}..." (>24h)`);
@@ -732,7 +763,7 @@ export class TradingEngine extends EventEmitter {
             const hours = Math.round(closedSinceMs / 3_600_000);
 
             this.journal.exitTrade(trade.id, exitPrice, pnl);
-            this.riskManager.closePosition(trade.stake, pnl);
+            this.riskManager.closePosition(trade.stake, pnl, trade.id);
             this.activeMarketIds.delete(trade.marketId);
             this.positionState.delete(trade.id);
             this.logDecision('monitor',
@@ -757,7 +788,7 @@ export class TradingEngine extends EventEmitter {
         const pnl = won ? (trade.size * 1) - trade.stake : -trade.stake;
 
         this.journal.resolveTrade(trade.id, won, exitPrice);
-        this.riskManager.closePosition(trade.stake, pnl);
+        this.riskManager.closePosition(trade.stake, pnl, trade.id);
         this.activeMarketIds.delete(trade.marketId);
         this.positionState.delete(trade.id);
         if (config.calibrationEnabled) {
@@ -876,7 +907,7 @@ export class TradingEngine extends EventEmitter {
           : currentSidePrice * trade.size;
         const pnl = exitProceeds - trade.stake;
         this.journal.exitTrade(trade.id, currentSidePrice, pnl);
-        this.riskManager.closePosition(trade.stake, pnl);
+        this.riskManager.closePosition(trade.stake, pnl, trade.id);
         this.activeMarketIds.delete(trade.marketId);
         this.positionState.delete(trade.id);
         if (config.calibrationEnabled) {

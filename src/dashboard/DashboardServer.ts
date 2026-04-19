@@ -219,6 +219,19 @@ export class DashboardServer {
       res.json(payload);
     });
 
+    // Performance metrics (Sharpe, Calmar, equity curve, category breakdown)
+    this.app.get('/api/performance', (req, res) => {
+      res.json(this.engine.getPerformanceReport());
+    });
+
+    // Trade CSV export
+    this.app.get('/api/trades/export', (req, res) => {
+      const csv = this.engine.getJournal().toCSV();
+      res.setHeader('Content-Disposition', 'attachment; filename="trades.csv"');
+      res.setHeader('Content-Type', 'text/csv');
+      res.send(csv);
+    });
+
     // Learning data import — restore after redeploy
     this.app.post('/api/learning/import', (req, res) => {
       const body = req.body as { calibration?: unknown; ensemble?: unknown };

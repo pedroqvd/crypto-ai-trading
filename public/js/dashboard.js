@@ -117,6 +117,7 @@
       if (data.risk)          updateRisk(data.risk);
       if (data.notifications) renderNotifications(data.notifications);
       fetchCalibration(authFetch);
+      fetchPerformance(authFetch);
     });
 
     socket.on('statusUpdate',   (status) => updateStatus(status));
@@ -391,6 +392,47 @@
     }
 
     // ========================================
+    // PERFORMANCE REFRESH BUTTON
+    // ========================================
+    const refreshPerf = $('refresh-performance');
+    if (refreshPerf) {
+      refreshPerf.addEventListener('click', (e) => {
+        e.preventDefault();
+        fetchPerformance(authFetch);
+      });
+    }
+
+    // ========================================
+    // TRADES CSV EXPORT
+    // ========================================
+    const exportCsvBtn = $('export-trades-csv');
+    if (exportCsvBtn) {
+      exportCsvBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          const res = await authFetch('/api/trades/export');
+          if (!res.ok) { alert('Erro ao exportar CSV.'); return; }
+          const text = await res.text();
+          const blob = new Blob([text], { type: 'text/csv' });
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement('a');
+          a.href     = url;
+          a.download = `trades-${new Date().toISOString().slice(0, 10)}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          alert('Erro ao exportar CSV.');
+        }
+      });
+    }
+
+    // Load performance on init
+    fetchPerformance(authFetch);
+
+    // Reload on trade resolution
+    socket.on('tradeResolved', () => fetchPerformance(authFetch));
+
+    // ========================================
     // LEARNING DATA IMPORT
     // ========================================
     const importInput = $('import-learning');
@@ -419,6 +461,132 @@
         importInput.value = '';
       });
     }
+  }
+
+  // ========================================
+  // PERFORMANCE METRICS
+  // ========================================
+  async function fetchPerformance(authFetch) {
+    try {
+      const res = await authFetch('/api/performance');
+      if (!res.ok) return;
+      const data = await res.json();
+      renderPerformance(data);
+    } catch (_) {}
+  }
+
+  function renderPerformance(p) {
+    if (!p) return;
+
+    const fmt = (v, dec = 2) => (v === null || v === undefined || isNaN(v)) ? '—' : v.toFixed(dec);
+    const fmtMoney = (v) => (v === null || v === undefined) ? '—' : (v >= 0 ? '+' : '') + '$' + Math.abs(v).toFixed(2);
+    const fmtPct   = (v) => (v === null || v === undefined) ? '—' : v.toFixed(1) + '%';
+
+    // Ratios
+    const sharpeEl = $('perf-sharpe');
+    if (sharpeEl) {
+      sharpeEl.textContent = fmt(p.sharpeRatio);
+      sharpeEl.className = 'perf-val' + (p.sharpeRatio > 1 ? ' success' : p.sharpeRatio < 0 ? ' danger' : '');
+    }
+    const sortinoEl = $('perf-sortino');
+    if (sortinoEl) {
+      sortinoEl.textContent = fmt(p.sortinoRatio);
+      sortinoEl.className = 'perf-val' + (p.sortinoRatio > 1 ? ' success' : p.sortinoRatio < 0 ? ' danger' : '');
+    }
+    const calmarEl = $('perf-calmar');
+    if (calmarEl) {
+      calmarEl.textContent = fmt(p.calmarRatio);
+      calmarEl.className = 'perf-val' + (p.calmarRatio > 1 ? ' success' : p.calmarRatio < 0 ? ' danger' : '');
+    }
+    const pfEl = $('perf-pf');
+    if (pfEl) {
+      pfEl.textContent = fmt(p.profitFactor);
+      pfEl.className = 'perf-val' + (p.profitFactor > 1.5 ? ' success' : p.profitFactor < 1 ? ' danger' : '');
+    }
+    const maxddEl = $('perf-maxdd');
+    if (maxddEl) maxddEl.textContent = fmtPct(p.maxDrawdownPct);
+    const wrEl = $('perf-winrate');
+    if (wrEl) wrEl.textContent = fmtPct((p.winRate || 0) * 100);
+    const expEl = $('perf-expectancy');
+    if (expEl) {
+      expEl.textContent = fmtMoney(p.expectancy);
+      expEl.className = 'perf-val' + (p.expectancy > 0 ? ' success' : p.expectancy < 0 ? ' danger' : '');
+    }
+    const awEl = $('perf-avgwin');
+    if (awEl) awEl.textContent = '$' + (p.avgWin || 0).toFixed(2);
+    const alEl = $('perf-avgloss');
+    if (alEl) alEl.textContent = '$' + (p.avgLoss || 0).toFixed(2);
+    const daysEl = $('perf-days');
+    if (daysEl) daysEl.textContent = (p.tradingDays || 0) + 'd';
+
+    // Equity curve
+    if (p.equityCurve && p.equityCurve.length > 1) {
+      renderEquityCurve(p.equityCurve);
+    }
+
+    // Category breakdown
+    if (p.byCategory && p.byCategory.length > 0) {
+      renderCategoryBreakdown(p.byCategory);
+    }
+  }
+
+  function renderEquityCurve(curve) {
+    const svg = $('equity-curve-svg');
+    if (!svg) return;
+
+    const W = 600, H = 80, pad = 6;
+    const values = curve.map(p => p.bankroll);
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const range = maxV - minV || 1;
+
+    const points = curve.map((p, i) => {
+      const x = pad + (i / (curve.length - 1)) * (W - pad * 2);
+      const y = H - pad - ((p.bankroll - minV) / range) * (H - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    const polyline = points.join(' ');
+    const areaPath = `M${points[0]} L${points.join(' L')} L${(W - pad)},${H - pad} L${pad},${H - pad} Z`;
+    const isProfit = values[values.length - 1] >= values[0];
+    const lineColor = isProfit ? 'var(--emerald)' : 'var(--rose)';
+
+    svg.innerHTML = `
+      <defs>
+        <linearGradient id="equity-gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${isProfit ? 'var(--emerald)' : 'var(--rose)'}" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="${isProfit ? 'var(--emerald)' : 'var(--rose)'}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${areaPath}" fill="url(#equity-gradient)"/>
+      <polyline points="${polyline}" fill="none" stroke="${lineColor}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+    `;
+  }
+
+  function renderCategoryBreakdown(cats) {
+    const container = $('perf-categories');
+    if (!container) return;
+
+    let html = '<div class="perf-cat-title">P&L por Categoria</div>';
+    html += '<div class="perf-cat-head">';
+    html += '<span>Categoria</span><span style="text-align:right">Trades</span><span style="text-align:right">Wins</span>';
+    html += '<span style="text-align:right">Win Rate</span><span style="text-align:right">P&L Total</span><span style="text-align:right">Avg Edge</span>';
+    html += '</div>';
+
+    for (const cat of cats) {
+      const pnlClass = cat.totalPnl >= 0 ? 'pos' : 'neg';
+      const pnlText  = (cat.totalPnl >= 0 ? '+' : '') + '$' + Math.abs(cat.totalPnl).toFixed(2);
+      html += `<div class="perf-cat-row">
+        <span class="perf-cat-name">${escapeHtml(cat.category)}</span>
+        <span class="perf-cat-num">${cat.trades}</span>
+        <span class="perf-cat-num">${cat.wins}</span>
+        <span class="perf-cat-num">${((cat.winRate || 0) * 100).toFixed(0)}%</span>
+        <span class="perf-cat-pnl ${pnlClass}">${pnlText}</span>
+        <span class="perf-cat-num">${((cat.avgEdge || 0) * 100).toFixed(1)}%</span>
+      </div>`;
+    }
+
+    container.innerHTML = html;
   }
 
   // ========================================
