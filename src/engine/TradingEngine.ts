@@ -24,6 +24,7 @@ export interface EngineStatus {
   running: boolean;
   dryRun: boolean;
   uptime: number;
+  startTime: number;
   cycleCount: number;
   marketsScanned: number;
   opportunitiesFound: number;
@@ -345,8 +346,13 @@ export class TradingEngine extends EventEmitter {
     const edgeAnalyses: EdgeAnalysis[] = [];
     const learnedWeights = this.ensembleTracker.getLearnedWeights();
 
+    // Pre-compute median volume once to avoid O(n²) recalculation inside the loop
+    const medianVolume = allMarkets.length > 0
+      ? [...allMarkets].sort((a, b) => a.volume - b.volume)[Math.floor(allMarkets.length / 2)].volume
+      : undefined;
+
     for (const market of filtered) {
-      const probEstimate = this.probEstimator.estimate(market, allMarkets, undefined, undefined, learnedWeights);
+      const probEstimate = this.probEstimator.estimate(market, allMarkets, medianVolume, undefined, learnedWeights);
 
       // Store signal snapshot for ensemble learning at resolution
       this.pendingSignals.set(market.id, probEstimate.signals.map(s => ({
@@ -738,9 +744,12 @@ export class TradingEngine extends EventEmitter {
 
       // 4. EDGE REVERSAL — thesis invalidated
       if (!exitReason && config.edgeReversalEnabled) {
+        // Reconstruct original estimated true YES probability:
+        // BUY_YES: trueYesProb = entryPrice + edge
+        // BUY_NO:  trueNoProb  = entryPrice + edge → trueYesProb = 1 - trueNoProb
         const originalProb = trade.side === 'BUY_YES'
           ? trade.entryPrice + trade.edge
-          : (1 - trade.entryPrice) + trade.edge;
+          : 1 - trade.entryPrice - trade.edge;
         const currentEdgeAnalysis = this.edgeCalc.calculateEdge(
           trade.marketId, trade.question, market.yesPrice,
           originalProb, trade.confidence ?? 0.5,
@@ -855,6 +864,7 @@ export class TradingEngine extends EventEmitter {
       running: this.running,
       dryRun: config.dryRun,
       uptime: Date.now() - this.startTime,
+      startTime: this.startTime,
       cycleCount: this.cycleCount,
       marketsScanned: this.marketsScanned,
       opportunitiesFound: this.opportunitiesFound,

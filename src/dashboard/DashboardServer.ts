@@ -24,10 +24,10 @@ export class DashboardServer {
     this.app = express();
     this.server = createServer(this.app);
 
-    // Allow any explicitly configured origins; fall back to wildcard
+    // Allow explicitly configured origins; default to localhost only (never wildcard)
     const allowedOrigins = config.allowedOrigins.length > 0
       ? config.allowedOrigins
-      : '*';
+      : [`http://localhost:${config.dashboardPort}`, 'http://localhost:3000'];
 
     this.io = new SocketIOServer(this.server, {
       cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
@@ -47,7 +47,7 @@ export class DashboardServer {
   private setupMiddleware(): void {
     const allowedOriginsValue = config.allowedOrigins.length > 0
       ? config.allowedOrigins
-      : '*';
+      : [`http://localhost:${config.dashboardPort}`, 'http://localhost:3000'];
 
     this.app.use(cors({ origin: allowedOriginsValue }));
     this.app.use(express.json());

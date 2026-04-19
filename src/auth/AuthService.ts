@@ -5,6 +5,8 @@
 
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import * as fs from 'fs';
+import * as path from 'path';
 import { logger } from '../utils/Logger';
 
 const SALT_ROUNDS = 12;
@@ -42,7 +44,7 @@ export class AuthService {
     this.config = {
       email: email || '',
       passwordHash: passwordHash || '',
-      jwtSecret: jwtSecret || 'CHANGE_ME_' + Math.random().toString(36).slice(2),
+      jwtSecret: jwtSecret || AuthService.loadOrCreateSecret(),
     };
   }
 
@@ -117,6 +119,28 @@ export class AuthService {
    */
   static async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, SALT_ROUNDS);
+  }
+
+  /**
+   * Load persisted JWT secret from disk, or generate and save a new one.
+   * Ensures sessions survive restarts when JWT_SECRET is not set in env.
+   */
+  private static loadOrCreateSecret(): string {
+    const secretPath = path.join(process.cwd(), 'data', '.jwt-secret');
+    try {
+      if (fs.existsSync(secretPath)) {
+        return fs.readFileSync(secretPath, 'utf-8').trim();
+      }
+      const dir = path.dirname(secretPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const secret = require('crypto').randomBytes(48).toString('hex');
+      fs.writeFileSync(secretPath, secret, { mode: 0o600 });
+      logger.info('Auth', '🔑 JWT secret gerado e salvo em data/.jwt-secret');
+      return secret;
+    } catch {
+      // Fallback — in-memory only (sessions reset on restart)
+      return require('crypto').randomBytes(48).toString('hex');
+    }
   }
 
   // ========================================

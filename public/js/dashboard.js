@@ -458,9 +458,8 @@
     els.pnl.textContent = (pnlVal >= 0 ? '+' : '') + formatMoney(pnlVal);
     els.pnl.className = 'tm-value ' + (pnlVal > 0 ? 'pnl-positive' : pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
 
-    if (status.startTime && status.startTime > 0) {
-      engineStartTime = status.startTime;
-    }
+    // Sync local uptime counter with server's reported start time
+    if (status.startTime > 0) engineStartTime = status.startTime;
 
     els.statMarkets.textContent       = formatNumber(status.marketsScanned);
     els.statOpportunities.textContent = formatNumber(status.opportunitiesFound);
