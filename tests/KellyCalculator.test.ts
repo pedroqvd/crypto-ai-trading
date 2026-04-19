@@ -20,25 +20,25 @@ describe('KellyCalculator', () => {
   });
 
   // ----------------------------------------
-  // Kelly formula: f* = (p - q) / (1 - q)
+  // Kelly formula with taker fee (2%)
   // ----------------------------------------
   describe('Kelly formula', () => {
     it('calculates correct full Kelly fraction', () => {
-      // p=0.6, q=0.5 → f* = (0.6-0.5)/(1-0.5) = 0.2
+      // p=0.6, q=0.5 → bNet = 1.0 * 0.98 = 0.98 → f* = (0.98*0.6 - 0.4) / 0.98 ≈ 0.1918
       const result = calc.calculate(0.6, 0.5, 1000, 100000);
-      expect(result.fullKellyFraction).toBeCloseTo(0.2, 4);
+      expect(result.fullKellyFraction).toBeCloseTo(0.1918, 3);
     });
 
     it('calculates correct fractional Kelly (quarter-Kelly)', () => {
-      // f* = 0.2, fractional = 0.2 * 0.25 = 0.05
+      // f* ≈ 0.1918, fractional = 0.1918 * 0.25 ≈ 0.0479
       const result = calc.calculate(0.6, 0.5, 1000, 100000);
-      expect(result.fractionalKelly).toBeCloseTo(0.05, 4);
+      expect(result.fractionalKelly).toBeCloseTo(0.0480, 3);
     });
 
     it('calculates correct recommended stake', () => {
-      // fractional=0.05, bankroll=1000 → recommended=$50
+      // fractional ≈ 0.0479, bankroll=1000 → recommended ≈ $48
       const result = calc.calculate(0.6, 0.5, 1000, 100000);
-      expect(result.recommendedStake).toBeCloseTo(50, 1);
+      expect(result.recommendedStake).toBeCloseTo(48, 0);
     });
 
     it('handles zero Kelly when p <= q', () => {
@@ -87,22 +87,23 @@ describe('KellyCalculator', () => {
       expect(result.finalStake).toBeLessThanOrEqual(10 + 1); // liquidity cap wins
     });
 
-    it('never bets more than 50% of bankroll', () => {
+    it('never bets more than maxPositionPct of bankroll', () => {
+      // p=0.99, q=0.01 has huge edge → but capped at maxPositionPct (5%)
       const result = calc.calculate(0.99, 0.01, 1000, 1_000_000);
-      expect(result.finalStake).toBeLessThanOrEqual(500);
+      expect(result.finalStake).toBeLessThanOrEqual(50); // 5% of $1000
     });
 
-    it('enforces minimum bet of $1 when bankroll allows', () => {
-      // bankroll=$20, maxByPosition=20*0.05=$1, so cap=$1
-      // tiny edge → recommended is tiny, max(tiny, 1) = $1, 1 <= 20*0.5=$10 ✓
-      const result = calc.calculate(0.501, 0.5, 20, 1_000_000);
-      expect(result.finalStake).toBeGreaterThanOrEqual(1);
+    it('returns 0 finalStake when Kelly recommendation is below MIN_BET_SIZE', () => {
+      // p=0.51, q=0.5 → tiny edge, recommended < $1 → finalStake = 0
+      const result = calc.calculate(0.51, 0.5, 20, 1_000_000);
+      expect(result.finalStake).toBe(0);
+      expect(result.justification).toMatch(/mínimo/);
     });
 
-    it('50% bankroll cap takes precedence over MIN_BET_SIZE on tiny bankroll', () => {
-      // bankroll=$1 → 50% = $0.50, MIN_BET_SIZE=$1 would exceed 50% cap → capped at $0.50
-      const result = calc.calculate(0.501, 0.5, 1, 1_000_000);
-      expect(result.finalStake).toBe(0.5);
+    it('applies liquidity cap to position size', () => {
+      // p=0.7, q=0.3 → good edge, but liquidity cap = 10% of $500 = $50
+      const result = calc.calculate(0.7, 0.3, 1000, 500);
+      expect(result.finalStake).toBeLessThanOrEqual(50);
     });
   });
 

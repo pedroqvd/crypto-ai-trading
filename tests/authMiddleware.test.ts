@@ -102,15 +102,14 @@ describe('createAuthMiddleware', () => {
   // Missing token
   // ----------------------------------------
   describe('missing token', () => {
-    it('redirects to /login for page requests', () => {
+    it('allows GET / (public path — auth done client-side)', () => {
       const req = mockRequest({ path: '/' });
       const res = mockResponse();
       middleware(req, res, next);
-      expect(res.redirect).toHaveBeenCalledWith('/login');
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalled();
     });
 
-    it('returns 401 JSON for API requests', () => {
+    it('returns 401 JSON for protected API requests without token', () => {
       const req = mockRequest({ path: '/api/status' });
       const res = mockResponse();
       middleware(req, res, next);
@@ -162,15 +161,14 @@ describe('createAuthMiddleware', () => {
   // Invalid token
   // ----------------------------------------
   describe('invalid token', () => {
-    it('redirects to login for invalid Bearer token on page request', () => {
+    it('allows GET / even with invalid token (public path)', () => {
       const req = mockRequest({
         path: '/',
         headers: { authorization: 'Bearer totally.invalid.token' },
       });
       const res = mockResponse();
       middleware(req, res, next);
-      expect(res.redirect).toHaveBeenCalledWith('/login');
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalled();
     });
 
     it('returns 401 for invalid Bearer token on API request', () => {
