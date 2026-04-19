@@ -14,6 +14,7 @@ export interface TradingConfig {
   minVolume: number;
   maxPositionPct: number;
   maxTotalExposurePct: number;
+  tradeMode: 'DIRECTIONAL' | 'MARKET_MAKER';
   // Exit strategy
   exitPriceTarget: number;
   stopLossPct: number;
@@ -26,6 +27,8 @@ export interface TradingConfig {
   minOrderBookShares: number;
   scanIntervalMs: number;
   dashboardPort: number;
+  telegramBotToken?: string;
+  telegramChatId?: string;
   discordWebhookUrl?: string;
   newsApiKey: string;
   newsRelevanceHours: number;
@@ -50,6 +53,7 @@ export function loadConfig(): TradingConfig {
     minVolume: parseFloat(process.env.MIN_VOLUME || '10000'),
     maxPositionPct: parseFloat(process.env.MAX_POSITION_PCT || '0.05'),
     maxTotalExposurePct: parseFloat(process.env.MAX_TOTAL_EXPOSURE_PCT || '0.50'),
+    tradeMode: 'DIRECTIONAL',
     exitPriceTarget: parseFloat(process.env.EXIT_PRICE_TARGET || '0.85'),
     stopLossPct: parseFloat(process.env.STOP_LOSS_PCT || '0.40'),
     trailingStopActivation: parseFloat(process.env.TRAILING_STOP_ACTIVATION || '0.20'),
@@ -57,10 +61,12 @@ export function loadConfig(): TradingConfig {
     timeDecayHours: parseFloat(process.env.TIME_DECAY_HOURS || '6'),
     edgeReversalEnabled: process.env.EDGE_REVERSAL_ENABLED !== 'false',
     momentumExitCycles: parseInt(process.env.MOMENTUM_EXIT_CYCLES || '3'),
-    maxOrderSpreadPct: parseFloat(process.env.MAX_ORDER_SPREAD_PCT || '0.03'),
+    maxOrderSpreadPct: parseFloat(process.env.MAX_ORDER_SPREAD_PCT || '0.08'),
     minOrderBookShares: parseFloat(process.env.MIN_ORDER_BOOK_SHARES || '5'),
     scanIntervalMs: parseInt(process.env.SCAN_INTERVAL_MS || '60000'),
     dashboardPort: parseInt(process.env.DASHBOARD_PORT || '3000'),
+    telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || undefined,
+    telegramChatId: process.env.TELEGRAM_CHAT_ID || undefined,
     discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL || undefined,
     newsApiKey: process.env.NEWS_API_KEY || '',
     newsRelevanceHours: parseInt(process.env.NEWS_RELEVANCE_HOURS || '6'),

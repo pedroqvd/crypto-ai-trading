@@ -171,6 +171,18 @@ export class DashboardServer {
       res.json(this.engine.getRiskManager().getStatus());
     });
 
+    // Toggle market maker mode
+    this.app.post('/api/settings/mode', (req, res) => {
+      const mode = req.body.mode;
+      if (mode === 'MARKET_MAKER' || mode === 'DIRECTIONAL') {
+        config.tradeMode = mode;
+        logger.info('Engine', `🚀 Config: tradeMode alterado para ${mode} via Dashboard.`);
+        res.json({ success: true, mode });
+      } else {
+        res.status(400).json({ error: 'Modo inválido.' });
+      }
+    });
+
     // Reset circuit breaker (manual override — auth protected)
     this.app.post('/api/risk/reset', (req, res) => {
       const riskManager = this.engine.getRiskManager();

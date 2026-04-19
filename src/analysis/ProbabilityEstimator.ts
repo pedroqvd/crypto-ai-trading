@@ -82,12 +82,14 @@ export class ProbabilityEstimator {
       }
     }
 
-    // Weighted average of all adjustments
+    // Weighted average of all active adjustments (Fix: Do not dilute with neutral 0-adjustment signals)
     let totalWeight = 0;
     let weightedAdjustment = 0;
     for (const signal of signals) {
-      totalWeight += signal.weight;
-      weightedAdjustment += signal.adjustment * signal.weight;
+      if (Math.abs(signal.adjustment) > 0.001) { // Only count active signals toward the denominator
+        totalWeight += signal.weight;
+        weightedAdjustment += signal.adjustment * signal.weight;
+      }
     }
     const avgAdjustment = totalWeight > 0 ? weightedAdjustment / totalWeight : 0;
 
@@ -105,12 +107,12 @@ export class ProbabilityEstimator {
     const dominantWeight = Math.max(positiveWeight, negativeWeight);
     const consensusRatio = totalSigWeight > 0 ? dominantWeight / totalSigWeight : 0;
 
-    // Multiplier: full weight only when ≥70% of signal weight agrees
+    // Multiplier: Loosened to prevent suffocating executions when signals are slightly mixed
     const consensusMultiplier =
       consensusRatio >= 0.70 ? 1.00 :
-      consensusRatio >= 0.55 ? 0.50 :
+      consensusRatio >= 0.55 ? 0.80 :
       totalSigWeight === 0   ? 0.00 :
-                               0.15; // Signals conflict → nearly no adjustment
+                               0.40; // Even if conflicting, we don't completely squash the adjustment
 
     // ── LIQUIDITY DAMPENING ─────────────────────────────────────────────
     // High-liquidity markets have more participants → prices are more efficient.
@@ -121,8 +123,8 @@ export class ProbabilityEstimator {
                                     1.00;
 
     // ── FINAL ADJUSTMENT ────────────────────────────────────────────────
-    // Combine and cap at ±5% to prevent large false-positive edges.
-    const finalAdjustment = Math.max(-0.05, Math.min(0.05,
+    // Combine and cap at ±10% to prevent large false-positive edges while still giving room for >= 1% edge.
+    const finalAdjustment = Math.max(-0.10, Math.min(0.10,
       avgAdjustment * consensusMultiplier * liquidityDampening
     ));
 

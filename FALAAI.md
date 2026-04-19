@@ -5,7 +5,64 @@
 
 ---
 
-## Sessão Atual — 2026-04-16
+## Sessão Atual — 2026-04-19 (Fase 2 Institucional & Market Maker)
+
+**Branch:** `main` (ou branch de feature atual)
+**Status:** Expansões Fase 2 concluídas. Aba Market Maker operante via Dashboard. Telegram ativo. CSS Responsivo.
+
+### Expansão Arquitetural de 5 Camadas (Fase 2)
+
+**1. Motor de *Dynamic Kelly*** (`src/risk/RiskManager.ts`)
+- Novo multiplicador matemático lê o `Drawdown`.
+- Se perda >5%, o `KellyFraction` sofre desconto de 50%. Se perda >10%, o desconto é de 75%. Isso estanca perdas contínuas drasticamente, transformando apostas de 1% em 0.25% para forçar a sobrevivência do capital em tempos sombrios, liberando gradualmente no momento de lucros.
+
+**2. Bot do Telegram** (`src/services/NotificationService.ts`)
+- Pipeline autônomo e informativo plugado via Axios para a API `api.telegram.org`.
+- Permite uso de `.env` `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` para entregar reports formatados sem depender do Discord. Nenhuma aprovação requerida por lá. Apenas Data Mining puro caindo na sua tela.
+
+**3. Integração Claude+News** (`src/engine/TradingEngine.ts`)
+- O motor não apenas consulta Breaking News via `NewsApiClient`, como agora mapeia `newsHeadlines` para dentro da memória em tempo real do Claude LLM. Isso previne mortes por desastres onde a heurística detecta preço em queda como *'Value Edge'*, mas na verdade retrata um atentado ou desistência confirmada de candidato político.
+
+**4. Design Responsivo do App** (`public/css/dashboard.css`)
+- A UI no formato V2 era quebrada no Safari/Mobile. Adicionada regra `@media (max-width: 768px)` com uma transposição brilhante de CSS Grids para "Bottom Navigation Tab Menu" idêntico a um aplicativo nativo.
+
+**5. Aba de Market Making (BETA)** (`src/engine/TradingEngine.ts` / Dashboard)
+- A infraestrutura parou de forçar execuções na linha de frente (`Directional`) e agora suporta um regime em que a aba lateral (`/api/settings/mode`) muda a base do script para `MARKET_MAKER`.
+- Quando ativo, o bot recua e oferta provisão de liquidez (+2% *Spread Advantage*) nos cantos do livro. É menos agressivo e paga o spread natural invertido para sua conta.
+
+---
+
+## Sessão Anterior — 2026-04-19 (Auditoria Geral e Correção do Algoritmo)
+
+**Status:** Correções de Edge Calculator implementadas. Auditoria de Backend concluída.
+
+### O que foi feito
+
+#### Auditoria de Backend & Comunicações
+Realizou-se uma auditoria profunda do código que controla o `TradingEngine`, conexões com a `GammaApiClient`, `ClobApiClient`, e Segurança do dashboard. O diagnóstico validou que:
+- **Proteções de Capital:** Circuit Breakers rígidos (Interrupção em 15% de Drawdown, teto diário de perdas em 10% do bankroll limitam exposição catastrófica).
+- **Proteção de Execução:** O CLOB client simula o impacto do trade baseado na profundidade da `liquidity` atual do OrderBook (`availableShares`), barrando compras acima de 40% da liquidez imediata para evitar *Slippage*.
+- **Conformidade em Autenticação:** A separação com JWT nos Sockets e endpoints bloqueados blinda contra ataques remotos sem chave secreta.
+
+#### A Descoberta: O Sufocamento Matemático de Trades 🚨
+Apesar de um código majestoso e impecavelmente seguro, o bot **nunca executava compras.** 
+- **Razão Fundamental:** A heurística de `ProbabilityEstimator.ts` operava de forma prejudicial. Se o bot encontrava uma anomalia em de volume (ajuste de +4%), mas 6 outras métricas retornavam "Neutro (Ajuste 0%)", o cálculo do "Média Ponderada" adicionava o peso dos 6 zeros e dividia o Edge pela somatória irreal, afundando o lucro para <0.5%.
+- Com `MIN_EDGE` barrando qualquer coisa menor que 1%, nada operava.
+- Ademais, o *Consensus Multiplier* (que avalia se os heurísticos convergem) também taxava a oportunidade excessivamente caso as lógicas discordassem, zerando o *Edge*.
+- Spread da Polygon era barrado no hardcode limite de `3%`, mesmo existindo lucros massivos em spreads maiores típicos da Polymarket.
+
+### Ações Corretivas Executadas (Hotfix)
+
+1. `src/analysis/ProbabilityEstimator.ts` (19 Abr 2026, 16:51 GMT-3)
+   - **Correção da Média:** O *loop* só considera adicionar `signal.weight` ao divisor caso o sinal apresente ativamente `signal.adjustment > 0.001` (abandono dos Zeros Neutros).
+   - **Afrouxamento de Consenso:** Diminuído o taxamento cruel (se houvesse leve discordância o multiplicador caía pra 0.50 e pra 0.15). Foram alteradas as quebras de teto para manter `0.80`, e base `0.40`. O limite rígido final (*Cap*) pulou de 5% para poder capturar até `10%` (`0.10`) de assimetrias brutas no mercado.
+
+2. `src/engine/Config.ts` (19 Abr 2026, 16:51 GMT-3)
+   - **Tolerância de Spread Ampliada:** `maxOrderSpreadPct` escalonado de forma nativa de `0.03` para `0.08` (8%). Isso permite execuções em *orderbooks* voláteis onde a oportunidade de Edge é maior que as taxas brutas.
+
+---
+
+## Sessão Anterior — 2026-04-16
 
 **Branch:** `claude/oracle-site-integration-ZXHoe`
 **Status:** Implementação concluída, aguardando push e testes
@@ -140,93 +197,15 @@ JWT_SECRET=<mesmo valor do Vercel>
 ### Variáveis de Ambiente Novas
 ```env
 EXIT_PRICE_TARGET=0.85        # Sai quando YES atinge 85%
-MAX_ORDER_SPREAD_PCT=0.03     # Spread máximo bid-ask aceito
+MAX_ORDER_SPREAD_PCT=0.03     # Spread máximo bid-ask aceito ---> Hotfix: Agora 0.08
 MIN_ORDER_BOOK_SHARES=5       # Profundidade mínima no book
 NEWS_API_KEY=                 # newsapi.org (opcional)
 NEWS_RELEVANCE_HOURS=6        # Janela de relevância das notícias
 CORRELATION_ENABLED=true      # Detectar inconsistências entre mercados
 ```
 
-### Arquivos Criados
-- `vercel.json`
-- `src/services/NewsApiClient.ts`
-- `src/analysis/CorrelationAnalyzer.ts`
-
-### Arquivos Modificados
-- `src/index.ts` — export default + guard VERCEL
-- `src/dashboard/DashboardServer.ts` — getExpressApp()
-- `src/engine/TradingEngine.ts` — exit strategy, order book check, news, correlation
-- `src/engine/Config.ts` — 6 novos parâmetros
-- `src/analysis/ProbabilityEstimator.ts` — Signal #8 + news boost
-- `src/utils/TradeJournal.ts` — status 'exited' + exitTrade()
-- `src/services/GammaApiClient.ts` — ParsedEvent, createdAt, getActiveEventsWithMarkets()
-- `public/js/dashboard.js` — label 'exited'
-- `.env.example` — novos campos documentados
-- `tests/ProbabilityEstimator.test.ts` — makeMarket() + signal count 8
-
-### Estado dos Testes
-```
-148 testes passando (8 suites)
-tsc --noEmit: zero erros
-```
-
-### Pendências
-- [ ] Aguardar Vercel re-deploy do PR #8 (fix do `vercel.json`)
-- [ ] Mesclar PR #8 quando CI passar
-- [ ] Configurar variáveis de ambiente no Vercel (painel do projeto)
-- [ ] Socket.IO não funciona no Vercel (limitação arquitetural) — para bot completo usar Railway/Render/Fly.io
-
----
-
-## Sessão Anterior — 2026-04-14
-
-**Branch:** `claude/review-incomplete-code-8qT6W`
-**PR:** [#7](https://github.com/pedroqvd/crypto-ai-trading/pull/7) — MERGED (com falha de CI no Vercel)
-**Commit:** `1e705b6`
-
-### O que foi feito
-
-8 melhorias de qualidade implementadas:
-
-1. **Safety — Dry-run guard duplo:** verificação explícita de `config.dryRun` antes de qualquer chamada ao CLOB
-2. **Signal accuracy — Calibration signal:** novo sinal comparando preço de mercado com histórico de calibração do Polymarket
-3. **UX — Banner de startup melhorado:** exibe configuração completa ao iniciar (Kelly, edge mínimo, bankroll, etc.)
-4. **Risk — Circuit breaker de drawdown:** para o engine se o drawdown ultrapassar threshold configurável
-5. **Data — Persistência de decisões:** `recentDecisions` salvo em disco junto com posições abertas
-6. **Signal — Volume ponderado por tempo:** sinal de volume considera janela temporal recente vs. total
-7. **UX — Notificações granulares:** Discord/log distingue entre oportunidade encontrada, trade executado e trade resolvido
-8. **Test — 148 testes unitários:** cobertura dos módulos principais
-
----
-
 ## Contexto do Projeto
-
 **Repositório:** `pedroqvd/crypto-ai-trading`
 **Stack:** TypeScript + Node.js, Express, Socket.IO, Polymarket CLOB SDK, ethers v5
 **Deploy dashboard:** Vercel (somente dashboard, sem engine)
 **Deploy bot completo:** Railway / Render / Fly.io / VPS (necessita processo persistente)
-
-**Arquitetura:**
-```
-src/
-  engine/          TradingEngine (loop autônomo), Config
-  analysis/        ProbabilityEstimator (8 sinais), EdgeCalculator, KellyCalculator, CorrelationAnalyzer
-  services/        GammaApiClient (market data), ClobApiClient (trading), NewsApiClient, NotificationService
-  risk/            RiskManager (circuit breakers, position limits)
-  dashboard/       DashboardServer (Express + Socket.IO)
-  utils/           TradeJournal, Logger
-  auth/            AuthService, authMiddleware
-public/            Dashboard UI (read-only)
-data/              Persistência: positions.json, trade_history.json, decisions.json
-tests/             148 testes unitários
-```
-
-**Limitação conhecida — Vercel:**
-- Funções stateless → `engine.start()` (loop contínuo) não roda no Vercel
-- Socket.IO WebSocket não funciona (sem conexão persistente)
-- Filesystem efêmero → `data/*.json` não persiste entre invocações
-- Solução: dashboard estático no Vercel; bot + engine em host persistente
-
----
-
-*Atualizado em: 2026-04-15 | Sessão: claude-sonnet-4-6*

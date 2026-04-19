@@ -535,12 +535,14 @@ export class TradingEngine extends EventEmitter {
       const currentBankroll = this.riskManager.getStatus().bankroll;
 
       const kellyDiscount = this.riskManager.getCategoryKellyDiscount(opp.question);
+      const dynamicMulti = this.riskManager.getDynamicKellyMultiplier();
       const kelly = this.kellyCalc.calculate(
         opp.estimatedTrueProb,
         opp.marketPrice,
         currentBankroll,
         opp.liquidity,
-        kellyDiscount
+        kellyDiscount,
+        dynamicMulti
       );
 
       if (kelly.finalStake < 1) {
@@ -552,10 +554,14 @@ export class TradingEngine extends EventEmitter {
       // Fetch news for this specific market before committing capital.
       // If news is present and aligned, confidence and stake get boosted
       // through re-estimation; if contradicted, skip.
+      let newsHeadlines: string[] | undefined = undefined;
+      
       if (config.newsApiKey) {
         const newsResult = await this.newsApi.searchRelevantNews(opp.question);
-
+        
         if (newsResult.hasRecentNews) {
+          newsHeadlines = newsResult.articles?.map(a => a.title).slice(0, 3);
+          
           // If sentiment contradicts our edge direction, skip
           const edgeBullish = opp.side === 'BUY_YES';
           if (
@@ -580,7 +586,7 @@ export class TradingEngine extends EventEmitter {
       if (this.claudeAnalyzer && config.claudeEnabled) {
         const market = await this.gammaApi.getMarketById(opp.marketId);
         if (market) {
-          const claudeEst = await this.claudeAnalyzer.estimateProbability(market);
+          const claudeEst = await this.claudeAnalyzer.estimateProbability(market, newsHeadlines);
           if (claudeEst && claudeEst.confidence >= 0.5) {
             const claudeBullish = claudeEst.probability > market.yesPrice;
             const ourBullish    = opp.side === 'BUY_YES';
@@ -649,7 +655,17 @@ export class TradingEngine extends EventEmitter {
       }
 
       // ── EXECUTE ──────────────────────────────────────────────────────
-      const result = await this.clobApi.placeLimitOrder(tokenId, 'BUY', price, size, opp.negRisk);
+      let executionPrice = price;
+      let modeTag = '';
+
+      if (config.tradeMode === 'MARKET_MAKER') {
+        const spreadAdvantage = 0.02; // Capturar 2% de spread em cima do preço justo
+        executionPrice = Math.max(0.01, Math.min(0.99, opp.estimatedTrueProb - spreadAdvantage));
+        modeTag = '[MM] ';
+        this.logDecision('trade', `[MARKET MAKER] Provisão restrita de Liquidez: ordem Limit postada @ $${executionPrice.toFixed(4)}`);
+      }
+
+      const result = await this.clobApi.placeLimitOrder(tokenId, 'BUY', executionPrice, size, opp.negRisk);
 
       if (result.success) {
         this.tradesExecuted++;
@@ -681,7 +697,7 @@ export class TradingEngine extends EventEmitter {
         if (signals) this.tradeSignals.set(tradeRecord.id, signals);
 
         this.logDecision('trade',
-          `✅ ${opp.side} "${opp.question.substring(0, 50)}..." @ $${price.toFixed(4)}, ` +
+          `✅ ${modeTag}${opp.side} "${opp.question.substring(0, 50)}..." @ $${executionPrice.toFixed(4)}, ` +
           `stake $${finalStake.toFixed(2)}, edge +${(opp.edgePercent).toFixed(1)}%`
         );
 

@@ -132,6 +132,32 @@ export class NotificationService {
     if (config.discordWebhookUrl) {
       await this.sendDiscord(notification);
     }
+
+    // Send to Telegram if configured
+    if (config.telegramBotToken && config.telegramChatId) {
+      await this.sendTelegram(notification);
+    }
+  }
+
+  // ========================================
+  // TELEGRAM INTEGRATION
+  // ========================================
+  private async sendTelegram(notification: Notification): Promise<void> {
+    if (!config.telegramBotToken || !config.telegramChatId) return;
+
+    try {
+      const url = `https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`;
+      const text = `*${notification.title}*\n${notification.message}`;
+      
+      await axios.post(url, {
+        chat_id: config.telegramChatId,
+        text,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      });
+    } catch (err) {
+      logger.warn('Notifications', `Telegram send falhou: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   // ========================================

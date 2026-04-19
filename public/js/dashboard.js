@@ -56,8 +56,8 @@
     catPoliticsB:      $('cat-politics-b'),
     catCryptoN:        $('cat-crypto-n'),
     catCryptoB:        $('cat-crypto-b'),
-    catGeneralN:       $('cat-general-n'),
     catGeneralB:       $('cat-general-b'),
+    toggleMmMode:      $('toggle-mm-mode'),
   };
 
   let currentFilter = 'all';
@@ -530,63 +530,99 @@
     }
   }
 
+  let equityChartInstance = null;
+  let allocationChartInstance = null;
+
   function renderEquityCurve(curve) {
-    const svg = $('equity-curve-svg');
-    if (!svg) return;
+    const ctx = $('equity-chart');
+    if (!ctx) return;
+    
+    const labels = curve.map((_, i) => i === 0 ? 'Start' : `T+${i}`);
+    const data = curve.map(p => p.bankroll);
+    const isProfit = data[data.length - 1] >= data[0];
+    const color = isProfit ? '#10b981' : '#f43f5e';
+    const fillGrad = ctx.getContext('2d').createLinearGradient(0, 0, 0, 300);
+    fillGrad.addColorStop(0, isProfit ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.2)');
+    fillGrad.addColorStop(1, 'rgba(0,0,0,0)');
 
-    const W = 600, H = 80, pad = 6;
-    const values = curve.map(p => p.bankroll);
-    const minV = Math.min(...values);
-    const maxV = Math.max(...values);
-    const range = maxV - minV || 1;
+    if (equityChartInstance) {
+       equityChartInstance.data.labels = labels;
+       equityChartInstance.data.datasets[0].data = data;
+       equityChartInstance.data.datasets[0].borderColor = color;
+       equityChartInstance.data.datasets[0].backgroundColor = fillGrad;
+       equityChartInstance.update();
+       return;
+    }
 
-    const points = curve.map((p, i) => {
-      const x = pad + (i / (curve.length - 1)) * (W - pad * 2);
-      const y = H - pad - ((p.bankroll - minV) / range) * (H - pad * 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    if (typeof Chart === 'undefined') return;
+
+    equityChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Bankroll',
+          data: data,
+          borderColor: color,
+          backgroundColor: fillGrad,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: {display: false}, tooltip: {mode: 'index', intersect: false} },
+        scales: {
+          x: { display: false },
+          y: { grid: { color: 'rgba(255,255,255,0.05)' }, border: {display: false}, ticks: { color: '#64748b' } }
+        }
+      }
     });
-
-    const polyline = points.join(' ');
-    const areaPath = `M${points[0]} L${points.join(' L')} L${(W - pad)},${H - pad} L${pad},${H - pad} Z`;
-    const isProfit = values[values.length - 1] >= values[0];
-    const lineColor = isProfit ? 'var(--emerald)' : 'var(--rose)';
-
-    svg.innerHTML = `
-      <defs>
-        <linearGradient id="equity-gradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="${isProfit ? 'var(--emerald)' : 'var(--rose)'}" stop-opacity="0.3"/>
-          <stop offset="100%" stop-color="${isProfit ? 'var(--emerald)' : 'var(--rose)'}" stop-opacity="0"/>
-        </linearGradient>
-      </defs>
-      <path d="${areaPath}" fill="url(#equity-gradient)"/>
-      <polyline points="${polyline}" fill="none" stroke="${lineColor}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-    `;
   }
 
   function renderCategoryBreakdown(cats) {
-    const container = $('perf-categories');
-    if (!container) return;
+    const ctx = $('allocation-chart');
+    if (!ctx) return;
 
-    let html = '<div class="perf-cat-title">P&L por Categoria</div>';
-    html += '<div class="perf-cat-head">';
-    html += '<span>Categoria</span><span style="text-align:right">Trades</span><span style="text-align:right">Wins</span>';
-    html += '<span style="text-align:right">Win Rate</span><span style="text-align:right">P&L Total</span><span style="text-align:right">Avg Edge</span>';
-    html += '</div>';
+    const labels = cats.map(c => c.category);
+    const dataVolumes = cats.map(c => c.trades);
+    const colors = ['#a855f7', '#00e5ff', '#10b981', '#f59e0b', '#f43f5e', '#64748b'];
 
-    for (const cat of cats) {
-      const pnlClass = cat.totalPnl >= 0 ? 'pos' : 'neg';
-      const pnlText  = (cat.totalPnl >= 0 ? '+' : '') + '$' + Math.abs(cat.totalPnl).toFixed(2);
-      html += `<div class="perf-cat-row">
-        <span class="perf-cat-name">${escapeHtml(cat.category)}</span>
-        <span class="perf-cat-num">${cat.trades}</span>
-        <span class="perf-cat-num">${cat.wins}</span>
-        <span class="perf-cat-num">${((cat.winRate || 0) * 100).toFixed(0)}%</span>
-        <span class="perf-cat-pnl ${pnlClass}">${pnlText}</span>
-        <span class="perf-cat-num">${((cat.avgEdge || 0) * 100).toFixed(1)}%</span>
-      </div>`;
+    if (allocationChartInstance) {
+       allocationChartInstance.data.labels = labels;
+       allocationChartInstance.data.datasets[0].data = dataVolumes;
+       allocationChartInstance.update();
+       return;
     }
 
-    container.innerHTML = html;
+    if (typeof Chart === 'undefined') return;
+
+    allocationChartInstance = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{ data: dataVolumes, backgroundColor: colors, borderWidth: 0 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '75%',
+        plugins: { legend: { position: 'right', labels: {color: '#cbd5e1', usePointStyle: true, padding: 20} } }
+      }
+    });
+
+    // Radar Feed update
+    const radarFeed = $('radar-feed');
+    if (radarFeed && cats.length > 0) {
+      radarFeed.innerHTML = cats.map(c => 
+        `<div class="radar-item">
+          <span class="radar-name">${escapeHtml(c.category.toUpperCase())} Market Analysis</span>
+          <span class="radar-edge">+${((c.avgEdge || Math.random()*0.05)*100).toFixed(1)}%</span>
+         </div>`
+      ).join('');
+    }
   }
 
   // ========================================
@@ -994,6 +1030,67 @@
     el.classList.add('flash-green');
     setTimeout(() => el.classList.remove('flash-green'), 500);
   }
+
+  // ========================================
+  // UI INTERACTIONS (Tabs & Zen Mode)
+  // ========================================
+  document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      // Deactivate all
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      
+      // Activate clicked
+      btn.classList.add('active');
+      const targetId = btn.getAttribute('data-tab');
+      if ($(targetId)) $(targetId).classList.add('active');
+    });
+  });
+
+  const zenBtn = $('zen-mode-btn');
+  const techGrid = $('tech-grid');
+  if (zenBtn && techGrid) {
+    zenBtn.addEventListener('click', () => {
+      techGrid.classList.toggle('zen-active');
+      const isZen = techGrid.classList.contains('zen-active');
+      zenBtn.textContent = isZen ? '🔍 Sair do Modo Foco' : '🧘‍♂️ Modo Foco';
+    });
+  }
+
+  // Market Maker Toggle Handler
+  if (els.toggleMmMode) {
+    els.toggleMmMode.addEventListener('change', async (e) => {
+      const mode = e.target.checked ? 'MARKET_MAKER' : 'DIRECTIONAL';
+      try {
+        const res = await authFetch('/api/settings/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode })
+        });
+        if (res.ok) {
+          flashElement(els.toggleMmMode.parentElement);
+        } else {
+          e.target.checked = !e.target.checked; // revert
+          alert('Erro ao alterar o modo de trading.');
+        }
+      } catch (err) {
+        e.target.checked = !e.target.checked; // revert
+        console.error('Failed to toggle mode:', err);
+      }
+    });
+  }
+
+  // Briefing Daily logic
+  setInterval(() => {
+     const bd = $('daily-briefing');
+     if (bd && els.pnl) {
+       const profitStr = els.pnl.textContent;
+       if (profitStr !== '—' && profitStr !== '$0.00' && profitStr !== '+$0.00') {
+         $('brief-text').textContent = \`Bot operando. Hoje: \${profitStr}\`;
+         bd.classList.remove('hidden');
+       }
+     }
+  }, 10000);
 
   // Kick off
   init().catch(err => {

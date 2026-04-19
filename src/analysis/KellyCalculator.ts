@@ -38,7 +38,8 @@ export class KellyCalculator {
     pImplied: number,
     currentBankroll: number,
     marketLiquidity: number,
-    correlationDiscount = 1.0
+    correlationDiscount = 1.0,
+    dynamicMultiplier = 1.0
   ): KellyResult {
     const p = Math.max(0.01, Math.min(0.99, pTrue));
     const q = Math.max(0.01, Math.min(0.99, pImplied));
@@ -60,7 +61,7 @@ export class KellyCalculator {
       };
     }
 
-    const fractional = fullKelly * config.kellyFraction;
+    const fractional = fullKelly * config.kellyFraction * dynamicMultiplier;
     const recommended = currentBankroll * fractional;
 
     // Skip trade if Kelly recommendation is below minimum bet — don't force small bets

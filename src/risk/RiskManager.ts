@@ -70,6 +70,18 @@ export class RiskManager {
     return 0.40;
   }
 
+  /**
+   * Returns a 0-1 multiplier for the Kelly fraction based on current drawdown.
+   * Compresses bets aggressively during bad streaks.
+   */
+  getDynamicKellyMultiplier(): number {
+    const drawdown = this.getDrawdownPct();
+    if (drawdown > 10) return 0.25; // 1/4 Kelly under severe stress
+    if (drawdown > 5)  return 0.50; // 1/2 Kelly under moderate stress
+    if (drawdown > 2)  return 0.75; // 3/4 Kelly
+    return 1.0;                     // Full Kelly
+  }
+
   checkTrade(stakeAmount: number, marketId: string, question?: string): RiskCheck {
     this.resetDailyIfNeeded();
 
