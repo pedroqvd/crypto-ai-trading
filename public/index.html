@@ -350,7 +350,11 @@
             <span class="indicator emerald"></span>
             Calibração IA
           </div>
-          <a class="panel-link" id="refresh-cal" title="Atualizar">↻</a>
+          <div style="display:flex;gap:6px;align-items:center">
+            <a class="panel-link" id="export-learning" title="Exportar dados de aprendizado">⬇</a>
+            <label class="panel-link" title="Importar dados de aprendizado" style="cursor:pointer">⬆<input type="file" id="import-learning" accept=".json" style="display:none"></label>
+            <a class="panel-link" id="refresh-cal" title="Atualizar">↻</a>
+          </div>
         </div>
         <div class="panel-body">
           <div class="cal-grid">

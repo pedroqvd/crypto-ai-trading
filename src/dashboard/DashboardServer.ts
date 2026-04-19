@@ -207,6 +207,42 @@ export class DashboardServer {
       res.json(this.engine.getEnsembleStats());
     });
 
+    // Learning data export (calibration + ensemble) — backup before redeploy
+    this.app.get('/api/learning/export', (req, res) => {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        calibration: this.engine.exportCalibrationData(),
+        ensemble: this.engine.exportEnsembleData(),
+      };
+      res.setHeader('Content-Disposition', 'attachment; filename="polymarket-learning.json"');
+      res.setHeader('Content-Type', 'application/json');
+      res.json(payload);
+    });
+
+    // Learning data import — restore after redeploy
+    this.app.post('/api/learning/import', (req, res) => {
+      const body = req.body as { calibration?: unknown; ensemble?: unknown };
+      if (!body || (!body.calibration && !body.ensemble)) {
+        res.status(400).json({ error: 'Body deve conter "calibration" e/ou "ensemble".' });
+        return;
+      }
+      const errors: string[] = [];
+      if (body.calibration) {
+        try { this.engine.importCalibrationData(body.calibration); }
+        catch (e) { errors.push('calibration: ' + (e instanceof Error ? e.message : e)); }
+      }
+      if (body.ensemble) {
+        try { this.engine.importEnsembleData(body.ensemble); }
+        catch (e) { errors.push('ensemble: ' + (e instanceof Error ? e.message : e)); }
+      }
+      if (errors.length > 0) {
+        res.status(422).json({ error: errors.join('; ') });
+        return;
+      }
+      logger.info('Dashboard', '📥 Dados de aprendizado importados via dashboard');
+      res.json({ success: true });
+    });
+
     // Bot control — stop
     this.app.post('/api/bot/stop', (req, res) => {
       if (!this.engine.isRunning()) {

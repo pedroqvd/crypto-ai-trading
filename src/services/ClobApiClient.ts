@@ -84,13 +84,31 @@ export class ClobApiClient {
     }
   }
 
-  async getOrderBook(tokenId: string): Promise<OrderBook | null> {
+  async getOrderBook(
+    tokenId: string,
+    marketPrice = 0.50,
+    marketLiquidity = 10_000
+  ): Promise<OrderBook | null> {
     if (config.dryRun || !this.client) {
+      // Synthetic order book that reflects actual market characteristics.
+      // Spread shrinks with liquidity; depth scales with available capital.
+      const mid = Math.max(0.02, Math.min(0.98, marketPrice));
+      const spread = Math.max(0.01, Math.min(0.08, 3_000 / marketLiquidity));
+      const half   = spread / 2;
+      const depth  = Math.min(2_000, marketLiquidity / 10);
       return {
-        bids: [{ price: 0.49, size: 100 }, { price: 0.48, size: 200 }],
-        asks: [{ price: 0.51, size: 100 }, { price: 0.52, size: 150 }],
-        midpoint: 0.50,
-        spread: 0.02,
+        bids: [
+          { price: +(mid - half).toFixed(4),       size: +(depth).toFixed(0) },
+          { price: +(mid - half * 2.5).toFixed(4), size: +(depth * 1.6).toFixed(0) },
+          { price: +(mid - half * 4).toFixed(4),   size: +(depth * 2.4).toFixed(0) },
+        ],
+        asks: [
+          { price: +(mid + half).toFixed(4),       size: +(depth).toFixed(0) },
+          { price: +(mid + half * 2.5).toFixed(4), size: +(depth * 1.6).toFixed(0) },
+          { price: +(mid + half * 4).toFixed(4),   size: +(depth * 2.4).toFixed(0) },
+        ],
+        midpoint: mid,
+        spread,
       };
     }
     try {

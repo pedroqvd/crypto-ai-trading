@@ -233,8 +233,24 @@ export class TradingEngine extends EventEmitter {
     return this.calibrator.getCalibrationReport();
   }
 
+  exportCalibrationData(): object {
+    return this.calibrator.exportData();
+  }
+
+  importCalibrationData(data: unknown): void {
+    this.calibrator.importData(data);
+  }
+
   getEnsembleStats() {
     return this.ensembleTracker.getStats();
+  }
+
+  exportEnsembleData(): object {
+    return this.ensembleTracker.exportData();
+  }
+
+  importEnsembleData(data: unknown): void {
+    this.ensembleTracker.importData(data);
   }
 
   stop(): void {
@@ -556,7 +572,7 @@ export class TradingEngine extends EventEmitter {
       const price   = opp.side === 'BUY_YES' ? opp.marketPrice : (1 - opp.marketPrice);
       let   size    = kelly.finalStake / price;
 
-      const orderBook = await this.clobApi.getOrderBook(tokenId);
+      const orderBook = await this.clobApi.getOrderBook(tokenId, price, opp.liquidity);
       if (orderBook) {
         // Skip if spread is too wide (expensive to trade)
         if (orderBook.spread > config.maxOrderSpreadPct) {
@@ -702,7 +718,37 @@ export class TradingEngine extends EventEmitter {
         const resolvedNo  = market.noPrice  >= 0.99;
 
         if (!resolvedYes && !resolvedNo) {
-          this.logDecision('monitor', `⚠️ Resultado ambíguo: "${trade.question.substring(0, 50)}..." — aguardando`);
+          // If the market has been closed for >48h without Polymarket settling it,
+          // force-exit at current price rather than holding an unresolvable position.
+          const FORCED_EXIT_AFTER_MS = 48 * 60 * 60 * 1000;
+          const closedSinceMs = market.endDate
+            ? now - new Date(market.endDate).getTime()
+            : 0;
+
+          if (closedSinceMs > FORCED_EXIT_AFTER_MS) {
+            const exitPrice = trade.side === 'BUY_YES' ? market.yesPrice : market.noPrice;
+            const TAKER_FEE = 0.02;
+            const pnl = exitPrice * trade.size * (1 - TAKER_FEE) - trade.stake;
+            const hours = Math.round(closedSinceMs / 3_600_000);
+
+            this.journal.exitTrade(trade.id, exitPrice, pnl);
+            this.riskManager.closePosition(trade.stake, pnl);
+            this.activeMarketIds.delete(trade.marketId);
+            this.positionState.delete(trade.id);
+            this.logDecision('monitor',
+              `⏰ SAÍDA FORÇADA: "${trade.question.substring(0, 50)}..." fechado há ${hours}h sem resolução Polymarket. ` +
+              `P&L ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`
+            );
+            await this.notifications.notifyRiskAlert(
+              `Saída forçada após ${hours}h: "${trade.question.substring(0, 60)}" não foi resolvido pela Polymarket.`
+            );
+            this.emit('tradeResolved', { trade, won: pnl >= 0, pnl });
+          } else {
+            const hours = (closedSinceMs / 3_600_000).toFixed(1);
+            this.logDecision('monitor',
+              `⚠️ Resultado ambíguo: "${trade.question.substring(0, 50)}..." — aguardando resolução (${hours}h fechado)`
+            );
+          }
           continue;
         }
 

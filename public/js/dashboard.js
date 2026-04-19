@@ -365,6 +365,60 @@
         fetchCalibration(authFetch);
       });
     }
+
+    // ========================================
+    // LEARNING DATA EXPORT
+    // ========================================
+    const exportBtn = $('export-learning');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          const res = await authFetch('/api/learning/export');
+          const data = await res.json();
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `polymarket-learning-${new Date().toISOString().slice(0, 10)}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          addNotification({ type: 'system', title: '⬇ Export concluído', message: 'Dados de aprendizado exportados com sucesso.', timestamp: new Date().toISOString() });
+        } catch (err) {
+          alert('Erro ao exportar dados de aprendizado.');
+        }
+      });
+    }
+
+    // ========================================
+    // LEARNING DATA IMPORT
+    // ========================================
+    const importInput = $('import-learning');
+    if (importInput) {
+      importInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          const res = await authFetch('/api/learning/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          if (res.ok) {
+            addNotification({ type: 'system', title: '⬆ Import concluído', message: 'Dados de aprendizado restaurados com sucesso.', timestamp: new Date().toISOString() });
+            fetchCalibration(authFetch);
+          } else {
+            const d = await res.json().catch(() => ({}));
+            alert('Erro ao importar: ' + (d.error || res.statusText));
+          }
+        } catch (err) {
+          alert('Arquivo inválido. Use um export gerado pelo bot.');
+        }
+        importInput.value = '';
+      });
+    }
   }
 
   // ========================================

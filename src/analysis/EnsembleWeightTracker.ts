@@ -90,6 +90,21 @@ export class EnsembleWeightTracker {
     }).sort((a, b) => b.n - a.n);
   }
 
+  exportData(): object {
+    return this.history;
+  }
+
+  importData(data: unknown): void {
+    try {
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid format');
+      this.history = data as Record<string, SignalRecord[]>;
+      this.save();
+      logger.info('Ensemble', `✅ Import: ${Object.keys(this.history).length} signals carregados`);
+    } catch (err) {
+      throw new Error(`Ensemble import failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   private save(): void {
     try {
       const dir = path.dirname(this.dataPath);
