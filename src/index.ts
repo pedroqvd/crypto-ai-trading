@@ -16,14 +16,21 @@ console.log(`
   ╚══════════════════════════════════════════════╝
 `);
 
-function shutdown(signal: string): void {
+let isShuttingDown = false;
+async function shutdown(signal: string): Promise<void> {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   console.log(`\n🛑 ${signal} received, shutting down gracefully...`);
-  engine.stop();
+  await engine.gracefulShutdown();
   process.exit(0);
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => { shutdown('SIGINT').catch(() => process.exit(1)); });
+process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
+process.on('uncaughtException', (err) => {
+  console.error('💀 Uncaught exception:', err);
+  shutdown('uncaughtException').catch(() => process.exit(1));
+});
 
 (async () => {
   dashboard.start();

@@ -73,11 +73,7 @@ export class KellyCalculator {
     const maxByLiquidity = marketLiquidity * 0.10;
     const maxStake = Math.min(maxByPosition, maxByLiquidity);
 
-    let finalStake = Math.min(recommended, maxStake);
-
-    if (finalStake > currentBankroll * 0.5) {
-      finalStake = currentBankroll * 0.5;
-    }
+    const finalStake = Math.min(recommended, maxStake);
 
     const justification = this.buildJustification(
       fullKelly, fractional, recommended, maxStake, finalStake,

@@ -243,6 +243,33 @@ export class TradingEngine extends EventEmitter {
     this.logDecision('system', 'Engine parado');
   }
 
+  async gracefulShutdown(): Promise<void> {
+    this.running = false;
+    logger.info('Engine', '🛑 Graceful shutdown iniciado...');
+
+    if (!config.dryRun) {
+      const openTrades = this.journal.getOpenTrades();
+      if (openTrades.length > 0) {
+        logger.warn('Engine', `⚠️ ${openTrades.length} posição(ões) abertas no shutdown. Tentando cancelar ordens CLOB...`);
+        for (const trade of openTrades) {
+          try {
+            const cancelled = await this.clobApi.cancelOrder(trade.id);
+            if (cancelled) {
+              logger.info('Engine', `   ✅ Ordem ${trade.id.slice(0, 12)} cancelada`);
+            } else {
+              logger.warn('Engine', `   ⚠️ Falha ao cancelar ordem ${trade.id.slice(0, 12)}`);
+            }
+          } catch (err) {
+            logger.error('Engine', `   ❌ Erro ao cancelar ${trade.id}: ${err instanceof Error ? err.message : err}`);
+          }
+        }
+      }
+    }
+
+    await this.notifications.notifySystemEvent('Bot encerrado graciosamente.');
+    logger.info('Engine', '✅ Shutdown completo.');
+  }
+
   // ========================================
   // SINGLE CYCLE
   // ========================================
@@ -796,7 +823,12 @@ export class TradingEngine extends EventEmitter {
       }
 
       if (exitSuccess) {
-        const pnl = (currentSidePrice - trade.entryPrice) * trade.size;
+        // Deduct Polymarket taker fee (~2%) from exit proceeds to simulate real P&L
+        const TAKER_FEE = 0.02;
+        const exitProceeds = config.dryRun
+          ? currentSidePrice * trade.size * (1 - TAKER_FEE)
+          : currentSidePrice * trade.size;
+        const pnl = exitProceeds - trade.stake;
         this.journal.exitTrade(trade.id, currentSidePrice, pnl);
         this.riskManager.closePosition(trade.stake, pnl);
         this.activeMarketIds.delete(trade.marketId);
