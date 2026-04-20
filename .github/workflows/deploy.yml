@@ -11,22 +11,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Destroy existing machines to clear stale volume config
+      - name: Deploy to Fly.io (single machine, no HA)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          set -e
-          IDS=$(flyctl machines list --app crypto-ai-trading --json | jq -r '.[].id' || echo "")
-          if [ -n "$IDS" ]; then
-            for id in $IDS; do
-              echo "Destroying machine $id"
-              flyctl machine destroy "$id" --app crypto-ai-trading --force || true
-            done
-          else
-            echo "No existing machines found"
-          fi
+          flyctl deploy --remote-only --app crypto-ai-trading --yes --strategy immediate --ha=false
 
-      - name: Deploy fresh
+      - name: Ensure exactly 1 machine is running
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --remote-only --app crypto-ai-trading --yes --strategy immediate
+        run: |
+          flyctl scale count 1 --app crypto-ai-trading --yes

@@ -4,6 +4,8 @@
 // ================================================
 
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
+import * as path from 'path';
 import { config } from './Config';
 import { logger } from '../utils/Logger';
 import { TradeJournal, TradeRecord } from '../utils/TradeJournal';
@@ -22,6 +24,50 @@ import { EnsembleWeightTracker } from '../analysis/EnsembleWeightTracker';
 import { ConsensusClient } from '../services/ConsensusClient';
 import { MarketQualityAnalyzer } from '../analysis/MarketQualityAnalyzer';
 import { PerformanceMetrics } from '../utils/PerformanceMetrics';
+
+// File used to persist settings changes between process restarts within the same machine.
+const SETTINGS_FILE = '/tmp/bot-settings.json';
+
+function loadPersistedSettings(): void {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
+      const saved = JSON.parse(raw);
+      Object.assign(config, saved);
+      logger.info('Engine', `💾 Settings restauradas do disco: ${SETTINGS_FILE}`);
+    }
+  } catch (e) {
+    logger.warn('Engine', `⚠️ Falha ao carregar settings do disco: ${e}`);
+  }
+}
+
+function saveSettingsToDisk(): void {
+  try {
+    // Save only the mutable settings (not secrets handled via env vars)
+    const toSave = {
+      dryRun: config.dryRun,
+      bankroll: config.bankroll,
+      kellyFraction: config.kellyFraction,
+      minEdge: config.minEdge,
+      maxPositionPct: config.maxPositionPct,
+      maxTotalExposurePct: config.maxTotalExposurePct,
+      scanIntervalMs: config.scanIntervalMs,
+      exitPriceTarget: config.exitPriceTarget,
+      stopLossPct: config.stopLossPct,
+      trailingStopActivation: config.trailingStopActivation,
+      trailingStopDistance: config.trailingStopDistance,
+      timeDecayHours: config.timeDecayHours,
+      edgeReversalEnabled: config.edgeReversalEnabled,
+      momentumExitCycles: config.momentumExitCycles,
+      correlationEnabled: config.correlationEnabled,
+      claudeEnabled: config.claudeEnabled,
+      discordWebhookUrl: config.discordWebhookUrl,
+    };
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
+  } catch (e) {
+    logger.warn('Engine', `⚠️ Falha ao salvar settings no disco: ${e}`);
+  }
+}
 
 export interface EngineStatus {
   running: boolean;
@@ -89,6 +135,8 @@ export class TradingEngine extends EventEmitter {
 
   constructor() {
     super();
+    // Restore settings saved from a previous session (survives process restart within same machine)
+    loadPersistedSettings();
     this.gammaApi = new GammaApiClient();
     this.clobApi = new ClobApiClient();
     this.notifications = new NotificationService();
@@ -196,6 +244,7 @@ export class TradingEngine extends EventEmitter {
     newsApiKey: string;
   }>): void {
     Object.assign(config, updates);
+    saveSettingsToDisk();
     if (updates.bankroll !== undefined) {
       this.riskManager.updateBankroll(updates.bankroll);
     }
