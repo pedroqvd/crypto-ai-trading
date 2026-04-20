@@ -171,24 +171,8 @@
       });
     }
 
-    // Second statusUpdate listener — update bot toggle button
-    socket.on('statusUpdate', (status) => {
-      if (botToggleBtn) {
-        if (status.running) {
-          botToggleBtn.innerHTML = `
-            <svg class="power-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg>
-            <span class="btn-text">Desligar IA</span>
-          `;
-          botToggleBtn.className = 'toggle-power-btn bot-stop';
-        } else {
-          botToggleBtn.innerHTML = `
-            <svg class="power-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg>
-            <span class="btn-text">Ligar IA</span>
-          `;
-          botToggleBtn.className = 'toggle-power-btn bot-start';
-        }
-      }
-    });
+      // Removido o listener duplicado para 'statusUpdate' que atualizava o botão.
+      // O botão agora é atualizado através do updateStatus principal para funcionar com o init também.
 
     // ========================================
     // SETTINGS DRAWER
@@ -729,6 +713,23 @@
     els.statOpportunities.textContent = formatNumber(status.opportunitiesFound);
     els.statTrades.textContent        = formatNumber(status.tradesExecuted);
     els.statCycle.textContent         = '#' + (status.cycleCount || 0);
+
+    const botToggleBtn = $('bot-toggle-btn');
+    if (botToggleBtn) {
+      if (status.running) {
+        botToggleBtn.innerHTML = `
+          <svg class="power-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg>
+          <span class="btn-text">Desligar IA</span>
+        `;
+        botToggleBtn.className = 'toggle-power-btn bot-stop';
+      } else {
+        botToggleBtn.innerHTML = `
+          <svg class="power-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg>
+          <span class="btn-text">Ligar IA</span>
+        `;
+        botToggleBtn.className = 'toggle-power-btn bot-start';
+      }
+    }
   }
 
   function setStatus(type, text) {
