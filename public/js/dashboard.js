@@ -179,72 +179,66 @@
       // O botão agora é atualizado através do updateStatus principal para funcionar com o init também.
 
     // ========================================
-    // SETTINGS DRAWER
+    // SETTINGS — inline panel (no drawer/modal)
     // ========================================
-    const settingsBtn     = $('settings-btn');
-    const settingsDrawer  = $('settings-drawer');
-    const settingsOverlay = $('settings-overlay');
-    const settingsClose   = $('settings-close');
-    const settingsCancel  = $('settings-cancel');
-    const settingsSave    = $('settings-save');
+    const settingsSave = $('settings-save');
 
-    function openSettings() {
-      settingsDrawer.classList.remove('hidden');
-      settingsOverlay.classList.remove('hidden');
-      loadSettingsValues();
-    }
-    function closeSettings() {
-      settingsDrawer.classList.add('hidden');
-      settingsOverlay.classList.add('hidden');
-    }
+    // No drawer in this layout — settings are inline in the tab.
+    // We load values whenever the Settings tab becomes visible.
+    function closeSettings() { /* no-op — inline layout */ }
 
     async function loadSettingsValues() {
       try {
         const res = await authFetch('/api/settings');
+        if (!res.ok) return;
         const cfg = await res.json();
-        $('s-dry-run').checked              = cfg.dryRun;
-        $('dry-run-label').textContent      = cfg.dryRun ? 'Simulação' : 'Real';
-        $('s-bankroll').value               = cfg.bankroll;
-        $('s-scan-interval').value          = cfg.scanIntervalMs / 1000;
-        $('s-min-edge').value               = +(cfg.minEdge * 100).toFixed(1);
-        $('s-kelly').value                  = +(cfg.kellyFraction * 100).toFixed(0);
-        $('s-max-pos').value                = +(cfg.maxPositionPct * 100).toFixed(1);
-        $('s-exit-target').value            = +(cfg.exitPriceTarget * 100).toFixed(0);
-        $('s-stop-loss').value              = +(cfg.stopLossPct * 100).toFixed(0);
-        $('s-trailing-activation').value    = +(cfg.trailingStopActivation * 100).toFixed(0);
-        $('s-trailing-distance').value      = +(cfg.trailingStopDistance * 100).toFixed(0);
-        $('s-time-decay').value             = cfg.timeDecayHours;
-        $('s-edge-reversal').checked        = cfg.edgeReversalEnabled;
-        $('s-momentum-cycles').value        = cfg.momentumExitCycles;
-        $('s-max-exposure').value           = +(cfg.maxTotalExposurePct * 100).toFixed(0);
-        $('s-correlation').checked          = cfg.correlationEnabled;
-        $('s-claude-enabled').checked       = cfg.claudeEnabled;
-        $('claude-enabled-label').textContent = cfg.claudeEnabled ? 'Ativado' : 'Desativado';
-        $('s-discord').value                = cfg.discordWebhookUrl || '';
-        $('pk-status').textContent          = cfg.hasPrivateKey   ? '✅ Configurada' : '❌ Não configurada';
-        $('claude-key-status').textContent  = cfg.hasClaudeApiKey ? '✅ Configurada' : '❌ Não configurada';
-        $('news-key-status').textContent    = cfg.hasNewsApiKey   ? '✅ Configurada' : '❌ Não configurada';
+        const set = (id, val) => { const el = $(id); if (el) el.value = val; };
+        const chk = (id, val) => { const el = $(id); if (el) el.checked = val; };
+        const txt = (id, val) => { const el = $(id); if (el) el.textContent = val; };
+
+        chk('s-dry-run', cfg.dryRun);
+        txt('dry-run-label', cfg.dryRun ? 'Modo Simulação Ativo' : 'Modo Real Ativo');
+        set('s-bankroll',             cfg.bankroll);
+        set('s-scan-interval',        cfg.scanIntervalMs / 1000);
+        set('s-min-edge',             +(cfg.minEdge * 100).toFixed(1));
+        set('s-kelly',                +(cfg.kellyFraction * 100).toFixed(0));
+        set('s-max-pos',              +(cfg.maxPositionPct * 100).toFixed(1));
+        set('s-exit-target',          +(cfg.exitPriceTarget * 100).toFixed(0));
+        set('s-stop-loss',            +(cfg.stopLossPct * 100).toFixed(0));
+        set('s-trailing-activation',  +(cfg.trailingStopActivation * 100).toFixed(0));
+        set('s-trailing-distance',    +(cfg.trailingStopDistance * 100).toFixed(0));
+        set('s-time-decay',           cfg.timeDecayHours);
+        chk('s-edge-reversal',        cfg.edgeReversalEnabled);
+        set('s-momentum-cycles',      cfg.momentumExitCycles);
+        set('s-max-exposure',         +(cfg.maxTotalExposurePct * 100).toFixed(0));
+        chk('s-correlation',          cfg.correlationEnabled);
+        chk('s-claude-enabled',       cfg.claudeEnabled);
+        set('s-discord',              cfg.discordWebhookUrl || '');
+        // Optional status labels (may not exist in current HTML)
+        txt('pk-status',         cfg.hasPrivateKey   ? '✅ Configurada' : '❌ Não configurada');
+        txt('claude-key-status', cfg.hasClaudeApiKey ? '✅ Configurada' : '❌ Não configurada');
+        txt('news-key-status',   cfg.hasNewsApiKey   ? '✅ Configurada' : '❌ Não configurada');
       } catch (e) {
         console.error('Erro ao carregar settings:', e);
       }
     }
 
-    if (settingsBtn)     settingsBtn.addEventListener('click', openSettings);
-    if (settingsOverlay) settingsOverlay.addEventListener('click', closeSettings);
-    if (settingsClose)   settingsClose.addEventListener('click', closeSettings);
-    if (settingsCancel)  settingsCancel.addEventListener('click', closeSettings);
+    // Load settings when switching to the Settings tab
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.tab === 'settings') loadSettingsValues();
+      });
+    });
+    // Also load immediately if already on settings tab
+    if (document.getElementById('tab-settings')?.classList.contains('active')) {
+      loadSettingsValues();
+    }
 
     const dryRunToggle = $('s-dry-run');
     if (dryRunToggle) {
       dryRunToggle.addEventListener('change', () => {
-        $('dry-run-label').textContent = dryRunToggle.checked ? 'Simulação' : 'Real';
-      });
-    }
-
-    const claudeToggle = $('s-claude-enabled');
-    if (claudeToggle) {
-      claudeToggle.addEventListener('change', () => {
-        $('claude-enabled-label').textContent = claudeToggle.checked ? 'Ativado' : 'Desativado';
+        const label = $('dry-run-label');
+        if (label) label.textContent = dryRunToggle.checked ? 'Modo Simulação Ativo' : 'Modo Real Ativo';
       });
     }
 
