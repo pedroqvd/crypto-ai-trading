@@ -223,16 +223,14 @@
       }
     }
 
-    // Load settings when switching to the Settings tab
+    // Load settings when switching to the Settings tab (data-tab="tab-settings" in HTML)
     document.querySelectorAll('.nav-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (btn.dataset.tab === 'settings') loadSettingsValues();
+        if (btn.dataset.tab === 'tab-settings') loadSettingsValues();
       });
     });
-    // Also load immediately if already on settings tab
-    if (document.getElementById('tab-settings')?.classList.contains('active')) {
-      loadSettingsValues();
-    }
+    // Always load settings on startup so they are ready
+    loadSettingsValues();
 
     const dryRunToggle = $('s-dry-run');
     if (dryRunToggle) {
@@ -279,17 +277,26 @@
             body: JSON.stringify(body),
           });
           if (res.ok) {
-            closeSettings();
+            console.log('[Settings] ✅ Salvo com sucesso!');
+            settingsSave.textContent = '✅ Salvo!';
+            settingsSave.style.background = 'linear-gradient(135deg, #00c853, #00e676)';
             addNotification({
               type: 'system',
               title: '⚙️ Configurações salvas',
               message: 'Aplicadas imediatamente.',
               timestamp: new Date().toISOString(),
             });
+            // Re-read from server to confirm persistence
+            setTimeout(() => loadSettingsValues(), 500);
+            // Reset button after 2s
+            setTimeout(() => {
+              settingsSave.textContent = 'Salvar Parâmetros';
+              settingsSave.style.background = '';
+            }, 2000);
           } else {
             const d = await res.json().catch(() => ({}));
             const errMsg = d.error || res.statusText || `HTTP ${res.status}`;
-            console.error('[Dashboard] Erro ao salvar settings:', res.status, d);
+            console.error('[Settings] ❌ Erro ao salvar:', res.status, d);
             alert('⚠️ Erro ao salvar: ' + errMsg);
           }
         } catch (e) {
