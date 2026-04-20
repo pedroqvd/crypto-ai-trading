@@ -19,6 +19,31 @@
   // ========================================
   const $ = (id) => document.getElementById(id);
 
+  // ========================================
+  // HELPERS
+  // ========================================
+  const formatMoney = (v) => {
+    if (v === null || v === undefined) return '$0.00';
+    return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatNumber = (v) => {
+    if (v === null || v === undefined) return '0';
+    return Number(v).toLocaleString('en-US');
+  };
+
+  const escapeHtml = (str) => {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  };
+
+  const escapeAttr = (str) => {
+    if (!str) return '';
+    return str.replace(/"/g, '&quot;');
+  };
+
   const els = {
     botStatus:         $('bot-status'),
     bankroll:          $('header-bankroll'),
