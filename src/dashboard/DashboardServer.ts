@@ -49,7 +49,17 @@ export class DashboardServer {
       ? config.allowedOrigins
       : '*';
 
-    this.app.use(cors({ origin: allowedOriginsValue }));
+    const corsOptions = {
+      origin: allowedOriginsValue,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: false,
+      optionsSuccessStatus: 204,
+    };
+
+    // Handle preflight requests for all routes
+    this.app.options('*', cors(corsOptions));
+    this.app.use(cors(corsOptions));
     this.app.use(express.json());
 
     // Security headers
