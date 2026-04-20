@@ -72,13 +72,17 @@
       const res = await fetch('/api/config');
       const cfg = await res.json();
       backendUrl = (cfg.backendUrl || '').replace(/\/$/, '');
-    } catch (_) {}
+      console.info('[Dashboard] backendUrl resolvido:', backendUrl || '(mesmo origin)');
+    } catch (e) {
+      console.warn('[Dashboard] Falha ao buscar /api/config, usando mesmo origin.', e);
+    }
 
     function authFetch(path, options = {}) {
       const headers = Object.assign({}, options.headers, {
         'Authorization': 'Bearer ' + authToken,
       });
       const url = backendUrl ? backendUrl + path : path;
+      console.debug('[authFetch]', options.method || 'GET', url);
       return fetch(url, Object.assign({}, options, { headers }));
     }
 
@@ -290,13 +294,17 @@
             });
           } else {
             const d = await res.json().catch(() => ({}));
-            alert('Erro ao salvar: ' + (d.error || res.statusText));
+            const errMsg = d.error || res.statusText || `HTTP ${res.status}`;
+            console.error('[Dashboard] Erro ao salvar settings:', res.status, d);
+            alert('⚠️ Erro ao salvar: ' + errMsg);
           }
         } catch (e) {
-          alert('Erro de conexão ao salvar configurações.');
+          console.error('[Dashboard] Erro de conexão ao salvar settings:', e);
+          const target = backendUrl || window.location.origin;
+          alert(`⚠️ Falha de conexão ao tentar salvar.\n\nDestino: ${target}/api/settings\nTipo: ${e.name}\nDetalhe: ${e.message}\n\nVerifique se o servidor está no ar.`);
         } finally {
           settingsSave.disabled = false;
-          settingsSave.textContent = 'Salvar Configurações';
+          settingsSave.textContent = 'Salvar Parâmetros';
         }
       });
     }
