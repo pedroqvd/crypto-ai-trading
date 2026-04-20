@@ -32,18 +32,6 @@
     return Number(v).toLocaleString('en-US');
   };
 
-  const escapeHtml = (str) => {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  };
-
-  const escapeAttr = (str) => {
-    if (!str) return '';
-    return str.replace(/"/g, '&quot;');
-  };
-
   const els = {
     botStatus:         $('bot-status'),
     bankroll:          $('header-bankroll'),
