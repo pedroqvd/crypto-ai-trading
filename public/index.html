@@ -297,15 +297,22 @@
                           <div class="cfg-field"><label>Alvo Lucro (%)</label><input type="number" id="s-exit-target"></div>
                           <div class="cfg-field"><label>Stop-Loss (%)</label><input type="number" id="s-stop-loss"></div>
                           <div class="cfg-field"><label>Decay (horas)</label><input type="number" id="s-time-decay"></div>
+                          <div class="cfg-field"><label>Trail Ativar (%)</label><input type="number" id="s-trailing-activation"></div>
+                          <div class="cfg-field"><label>Trail Recuo (%)</label><input type="number" id="s-trailing-distance"></div>
+                          <div class="cfg-field"><label>Momentum</label><input type="number" id="s-momentum-cycles"></div>
                        </div>
-                       <div class="cfg-grid-2" style="margin-top:15px">
+                       <div class="cfg-grid-3" style="margin-top:15px">
                            <div class="cfg-field">
-                            <label>Exposição Máx Total (%)</label>
+                            <label>Exposição Total (%)</label>
                             <input type="number" id="s-max-exposure" step="5">
                           </div>
-                          <div class="cfg-field">
-                            <label>Reversão de Edge</label>
+                          <div class="cfg-field" style="display:flex; justify-content:space-between; align-items:center;">
+                            <label>Reversão</label>
                             <label class="switch-modern"><input type="checkbox" id="s-edge-reversal"><span class="slider"></span></label>
+                          </div>
+                          <div class="cfg-field" style="display:flex; justify-content:space-between; align-items:center;">
+                            <label>Correlação</label>
+                            <label class="switch-modern"><input type="checkbox" id="s-correlation"><span class="slider"></span></label>
                           </div>
                        </div>
                     </div>
