@@ -19,18 +19,6 @@
   // ========================================
   const $ = (id) => document.getElementById(id);
 
-  // ========================================
-  // HELPERS
-  // ========================================
-  const formatMoney = (v) => {
-    if (v === null || v === undefined) return '$0.00';
-    return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const formatNumber = (v) => {
-    if (v === null || v === undefined) return '0';
-    return Number(v).toLocaleString('en-US');
-  };
 
   const els = {
     botStatus:         $('bot-status'),
@@ -1060,68 +1048,70 @@
     setTimeout(() => el.classList.remove('flash-green'), 500);
   }
 
-  // ========================================
-  // UI INTERACTIONS (Tabs & Zen Mode)
-  // ========================================
-  document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      // Deactivate all
-      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-      
-      // Activate clicked
-      btn.classList.add('active');
-      const targetId = btn.getAttribute('data-tab');
-      if ($(targetId)) $(targetId).classList.add('active');
+    // ========================================
+    // UI INTERACTIONS (Tabs & Zen Mode)
+    // Move inside init() so authFetch is in scope
+    // ========================================
+    document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const targetId = btn.getAttribute('data-tab');
+        if ($(targetId)) $(targetId).classList.add('active');
+      });
     });
-  });
 
-  const zenBtn = $('zen-mode-btn');
-  const techGrid = $('tech-grid');
-  if (zenBtn && techGrid) {
-    zenBtn.addEventListener('click', () => {
-      techGrid.classList.toggle('zen-active');
-      const isZen = techGrid.classList.contains('zen-active');
-      zenBtn.textContent = isZen ? '🔍 Sair do Modo Foco' : '🧘‍♂️ Modo Foco';
-    });
-  }
+    const zenBtn = $('zen-mode-btn');
+    const techGrid = $('tech-grid');
+    if (zenBtn && techGrid) {
+      zenBtn.addEventListener('click', () => {
+        techGrid.classList.toggle('zen-active');
+        const isZen = techGrid.classList.contains('zen-active');
+        zenBtn.textContent = isZen ? '🔍 Sair do Modo Foco' : '🧘‍♂️ Modo Foco';
+      });
+    }
 
-  // Market Maker Toggle Handler
-  if (els.toggleMmMode) {
-    els.toggleMmMode.addEventListener('change', async (e) => {
-      const mode = e.target.checked ? 'MARKET_MAKER' : 'DIRECTIONAL';
-      try {
-        const res = await authFetch('/api/settings/mode', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode })
-        });
-        if (res.ok) {
-          flashElement(els.toggleMmMode.parentElement);
-        } else {
-          e.target.checked = !e.target.checked; // revert
-          alert('Erro ao alterar o modo de trading.');
+    // Market Maker Toggle Handler — needs authFetch, must be inside init()
+    if (els.toggleMmMode) {
+      els.toggleMmMode.addEventListener('change', async (e) => {
+        const mode = e.target.checked ? 'MARKET_MAKER' : 'DIRECTIONAL';
+        try {
+          const res = await authFetch('/api/settings/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+          });
+          if (res.ok) {
+            flashElement(els.toggleMmMode.parentElement);
+          } else {
+            e.target.checked = !e.target.checked;
+            alert('Erro ao alterar o modo de trading.');
+          }
+        } catch (err) {
+          e.target.checked = !e.target.checked;
+          console.error('Failed to toggle mode:', err);
         }
-      } catch (err) {
-        e.target.checked = !e.target.checked; // revert
-        console.error('Failed to toggle mode:', err);
-      }
-    });
-  }
+      });
+    }
 
-  // Briefing Daily logic
-  setInterval(() => {
-     const bd = $('daily-briefing');
-     if (bd && els.pnl) {
-       const profitStr = els.pnl.textContent;
-       if (profitStr !== '—' && profitStr !== '$0.00' && profitStr !== '+$0.00') {
-         $('brief-text').textContent = `Bot operando. Hoje: ${profitStr}`;
-         bd.classList.remove('hidden');
+    // Briefing Daily logic
+    setInterval(() => {
+       const bd = $('daily-briefing');
+       if (bd && els.pnl) {
+         const profitStr = els.pnl.textContent;
+         if (profitStr !== '—' && profitStr !== '$0.00' && profitStr !== '+$0.00') {
+           const briefText = $('brief-text');
+           if (briefText) briefText.textContent = `Bot operando. Hoje: ${profitStr}`;
+           bd.classList.remove('hidden');
+         }
        }
-     }
-  }, 10000);
+    }, 10000);
 
+
+  // ========================================
   // Kick off
+  // ========================================
   init().catch(err => {
     console.error('Dashboard init error:', err);
     setStatus('stopped', 'Erro');
