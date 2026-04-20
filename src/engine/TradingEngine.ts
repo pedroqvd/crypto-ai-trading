@@ -123,7 +123,7 @@ export class TradingEngine extends EventEmitter {
   private lastScanAt = '';
   private sessionStartBankroll = 0;
   private decisionLog: DecisionLog[] = [];
-  private maxDecisionLog = 200;
+  private maxDecisionLog = 100;
   private activeMarketIds: Set<string> = new Set();
   private lastDailyReportDate = '';
   // Per-position tracking for trailing stop and momentum exit

@@ -9,8 +9,10 @@ primary_region = "gru"
 [build]
 
 [env]
-  NODE_ENV = "production"
-  PORT     = "3000"
+  NODE_ENV     = "production"
+  PORT         = "3000"
+  # Limit Node.js heap to 200MB to avoid OOM on the 256MB Fly.io free tier machine
+  NODE_OPTIONS = "--max-old-space-size=200"
 
 [http_service]
   internal_port       = 3000
