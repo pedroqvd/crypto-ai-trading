@@ -62,7 +62,7 @@ export class DashboardServer {
     this.app.use(cors(corsOptions));
     this.app.use(express.json());
 
-    // Security headers
+    // Security and cache headers
     this.app.use((req, res, next) => {
       // Build connect-src: allow self + ws/wss + backend URL when running split (Vercel + Fly.io)
       const extraConnect = config.backendUrl
@@ -75,6 +75,13 @@ export class DashboardServer {
       res.setHeader('Referrer-Policy', 'no-referrer');
       res.setHeader('Content-Security-Policy',
         `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:${extraConnect}; img-src 'self' data:`);
+        
+      // Ensure APIs are never cached by the browser
+      if (req.path.startsWith('/api/')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
       next();
     });
 
