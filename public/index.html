@@ -79,11 +79,14 @@
             </div>
             <div class="tm-div"></div>
             <div class="tm">
-              <span class="tm-label">BANKROLL</span>
+              <span class="tm-label">CAPITAL TOTAL</span>
               <span id="header-bankroll" class="tm-value">$—</span>
             </div>
           </div>
-          <button id="bot-toggle-btn" class="btn-danger bot-stop">■ Parar IA</button>
+          <button id="bot-toggle-btn" class="toggle-power-btn bot-stop">
+             <svg class="power-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg>
+             <span class="btn-text">Desligar IA</span>
+          </button>
         </div>
       </header>
 
@@ -183,7 +186,7 @@
                    <span id="positions-count" class="chip-count cyan">0</span>
                 </div>
                 <div class="panel-body scrollable style-list" id="positions-list">
-                  <div class="empty-state">Nenhuma posição aberta no momento.</div>
+                  <div class="empty-state">Capital 100% líquido. Aguardando sinal de execução.</div>
                 </div>
               </div>
             </div>
@@ -207,7 +210,7 @@
                    <div class="live-indicator">LIVE</div>
                 </div>
                 <div class="terminal-body scrollable" id="decisions-feed">
-                   <div class="empty-state">Sistema em modo standby...</div>
+                   <div class="empty-state">Rede neural em Standby. Aguardando conexão.</div>
                 </div>
               </div>
 
@@ -270,11 +273,11 @@
                        <h3>Operação & Execução</h3>
                        <div class="cfg-grid-2">
                           <div class="cfg-field">
-                            <label>Modo Simulação (Dry Run)</label>
+                            <label id="dry-run-label">Modo Simulação Ativo</label>
                             <label class="switch-modern"><input type="checkbox" id="s-dry-run"><span class="slider"></span></label>
                           </div>
                           <div class="cfg-field">
-                            <label>Bankroll Inicial (USDC)</label>
+                            <label>Capital Total Inicial (USDC)</label>
                             <input type="number" id="s-bankroll" placeholder="1000">
                           </div>
                           <div class="cfg-field">

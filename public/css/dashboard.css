@@ -186,12 +186,12 @@ body::before {
 .chip-led { width: 8px; height: 8px; border-radius: 50%; }
 .chip-connecting { background: rgba(68,138,255,0.12); color: #448aff; }
 .chip-connecting .chip-led { background: #448aff; animation: blink 1s infinite; }
-.chip-running { background: var(--emerald-dim); color: var(--emerald); }
-.chip-running .chip-led { background: var(--emerald); animation: blink 2s infinite; }
-.chip-dryrun { background: var(--amber-dim); color: var(--amber); }
-.chip-dryrun .chip-led { background: var(--amber); animation: blink 2s infinite; }
-.chip-stopped { background: var(--rose-dim); color: var(--rose); }
-.chip-stopped .chip-led { background: var(--rose); }
+.chip-real { background: var(--violet-dim); color: var(--violet); border: 1px solid rgba(168,85,247,0.3); box-shadow: 0 0 15px var(--violet-glow); }
+.chip-real .chip-led { background: var(--violet); animation: blink 2s infinite; }
+.chip-simulacao { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0,229,255,0.3); box-shadow: 0 0 15px var(--cyan-glow); }
+.chip-simulacao .chip-led { background: var(--cyan); animation: blink 2s infinite; }
+.chip-stopped { background: var(--surface2); color: var(--text3); border: 1px solid var(--border-light); }
+.chip-stopped .chip-led { background: var(--text3); opacity: 0.5; }
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
@@ -217,7 +217,6 @@ body::before {
 .tm-div { width: 1px; height: 30px; background: var(--border-light); }
 
 
-/* Buttons */
 .btn-danger {
   padding: 8px 16px; border-radius: var(--radius-sm);
   font-size: 12px; font-weight: 700; cursor: pointer;
@@ -225,8 +224,22 @@ body::before {
   transition: 0.2s;
 }
 .btn-danger:hover { background: rgba(244,63,94,0.2); }
-.btn-danger.bot-start { background: var(--emerald-dim); border-color: rgba(16,185,129,0.3); color: var(--emerald); }
-.btn-danger.bot-start:hover { background: rgba(16,185,129,0.2); }
+
+.toggle-power-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: 0.3s; color: white;
+  border: 1px solid transparent; background: transparent;
+}
+.toggle-power-btn.bot-stop {
+  background: var(--rose-dim); border-color: rgba(244,63,94,0.3); color: var(--rose);
+}
+.toggle-power-btn.bot-stop:hover { background: rgba(244,63,94,0.2); box-shadow: 0 0 15px var(--rose-glow); }
+.toggle-power-btn.bot-start {
+  background: var(--emerald-dim); border-color: rgba(16,185,129,0.3); color: var(--emerald);
+}
+.toggle-power-btn.bot-start:hover { background: rgba(16,185,129,0.2); box-shadow: 0 0 15px var(--emerald-glow); }
 
 .btn-primary {
   background: linear-gradient(135deg, var(--violet), #7c3aed);

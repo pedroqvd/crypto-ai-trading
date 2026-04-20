@@ -175,11 +175,17 @@
     socket.on('statusUpdate', (status) => {
       if (botToggleBtn) {
         if (status.running) {
-          botToggleBtn.textContent = '■ Parar';
-          botToggleBtn.className = 'btn-danger bot-stop';
+          botToggleBtn.innerHTML = `
+            <svg class="power-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg>
+            <span class="btn-text">Desligar IA</span>
+          `;
+          botToggleBtn.className = 'toggle-power-btn bot-stop';
         } else {
-          botToggleBtn.textContent = '▶ Iniciar';
-          botToggleBtn.className = 'btn-danger bot-start';
+          botToggleBtn.innerHTML = `
+            <svg class="power-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg>
+            <span class="btn-text">Ligar IA</span>
+          `;
+          botToggleBtn.className = 'toggle-power-btn bot-start';
         }
       }
     });
@@ -690,22 +696,22 @@
   // STATUS UPDATES
   // ========================================
   function updateStatus(status) {
-    if (status.dryRun) {
-      setStatus('dryrun', 'Dry-Run');
+    if (status.dryRun && status.running) {
+      setStatus('simulacao', 'Modo Simulação');
       if (els.footerMode) {
-        els.footerMode.textContent = 'DRY-RUN';
+        els.footerMode.textContent = 'SIMULAÇÃO';
         els.footerMode.className = 'kpi-val mode-badge dryrun';
       }
     } else if (status.running) {
-      setStatus('running', 'Operando');
+      setStatus('real', 'Modo Real');
       if (els.footerMode) {
-        els.footerMode.textContent = 'LIVE';
+        els.footerMode.textContent = 'REAL';
         els.footerMode.className = 'kpi-val mode-badge live';
       }
     } else {
-      setStatus('stopped', 'Parado');
+      setStatus('stopped', 'Standby');
       if (els.footerMode) {
-        els.footerMode.textContent = 'PARADO';
+        els.footerMode.textContent = 'STANDBY';
         els.footerMode.className = 'kpi-val mode-badge';
       }
     }
@@ -786,7 +792,7 @@
       els.positionsCount.textContent = count;
       if (els.statOpenPositions) els.statOpenPositions.textContent = count;
       if (count === 0) {
-        els.positionsList.innerHTML = '<div class="empty-state"><span class="empty-icon">📊</span><span>Nenhuma posição aberta</span></div>';
+        els.positionsList.innerHTML = '<div class="empty-state"><span class="empty-icon">📊</span><span>Capital 100% líquido. Aguardando sinal de execução.</span></div>';
       }
     }, 350);
   }
