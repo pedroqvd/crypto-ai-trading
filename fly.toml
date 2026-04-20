@@ -34,3 +34,7 @@ primary_region = "gru"
   cpu_kind = "shared"
   cpus     = 1
 
+[mounts]
+  source      = "bot_data"
+  destination = "/data"
+

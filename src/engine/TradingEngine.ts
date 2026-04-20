@@ -25,25 +25,37 @@ import { ConsensusClient } from '../services/ConsensusClient';
 import { MarketQualityAnalyzer } from '../analysis/MarketQualityAnalyzer';
 import { PerformanceMetrics } from '../utils/PerformanceMetrics';
 
-// File used to persist settings changes between process restarts within the same machine.
-const SETTINGS_FILE = '/tmp/bot-settings.json';
+// File used to persist settings changes between process restarts.
+// Mounted via Fly Volumes on /data for real persistence.
+const SETTINGS_FILE = '/data/settings.json';
 
 function loadPersistedSettings(): void {
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
       const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
       const saved = JSON.parse(raw);
+      
+      // Audit log: list what is being restored
+      const restoredKeys = Object.keys(saved).join(', ');
       Object.assign(config, saved);
-      logger.info('Engine', `💾 Settings restauradas do disco: ${SETTINGS_FILE}`);
+      logger.info('Engine', `💾 [PERSISTÊNCIA] Settings restauradas com sucesso: ${SETTINGS_FILE}`);
+      logger.info('Engine', `📝 [PERSISTÊNCIA] Campos carregados do disco: ${restoredKeys}`);
+    } else {
+      logger.info('Engine', `ℹ️ [PERSISTÊNCIA] Nenhum arquivo de settings encontrado em ${SETTINGS_FILE}. Usando defaults.`);
     }
   } catch (e) {
-    logger.warn('Engine', `⚠️ Falha ao carregar settings do disco: ${e}`);
+    logger.error('Engine', `❌ [PERSISTÊNCIA] Erro crítico ao carregar settings: ${e instanceof Error ? e.message : e}`);
   }
 }
 
 function saveSettingsToDisk(): void {
   try {
-    // Save only the mutable settings (not secrets handled via env vars)
+    // Ensure directory exists (Fly usually handles mount points, but good for safety)
+    const dir = path.dirname(SETTINGS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
     const toSave = {
       dryRun: config.dryRun,
       bankroll: config.bankroll,
@@ -64,8 +76,9 @@ function saveSettingsToDisk(): void {
       discordWebhookUrl: config.discordWebhookUrl,
     };
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
+    logger.info('Engine', `✅ [PERSISTÊNCIA] Configurações salvas fisicamente no Volume.`);
   } catch (e) {
-    logger.warn('Engine', `⚠️ Falha ao salvar settings no disco: ${e}`);
+    logger.error('Engine', `❌ [PERSISTÊNCIA] Falha ao gravar no disco: ${e instanceof Error ? e.message : e}`);
   }
 }
 
