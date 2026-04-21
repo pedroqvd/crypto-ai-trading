@@ -37,6 +37,10 @@
           <span class="nav-icon">🧠</span>
           <span class="nav-label">IA & Monitor</span>
         </button>
+        <button class="nav-btn" data-tab="tab-history" title="Histórico completo de trades">
+          <span class="nav-icon">📜</span>
+          <span class="nav-label">Histórico</span>
+        </button>
         <button class="nav-btn" data-tab="tab-settings" title="Configurar parâmetros do bot">
           <span class="nav-icon">⚙️</span>
           <span class="nav-label">Ajustes</span>
@@ -199,7 +203,7 @@
           <div class="tech-header">
             <div>
               <h2>🧠 IA &amp; Monitor</h2>
-              <p class="tech-subtitle">Feed de decisões em tempo real, gestão de risco e precisão histórica da IA</p>
+              <p class="tech-subtitle">Feed de decisões em tempo real e monitoramento de risco</p>
             </div>
             <button id="zen-mode-btn" class="btn-ghost" title="Expande o feed de decisões para tela cheia">
               ⛶ Tela Cheia
@@ -207,39 +211,20 @@
           </div>
 
           <div class="tech-grid" id="tech-grid">
-
-            <!-- Esquerda: Trade Journal -->
-            <div class="journal-wrapper glass-panel">
-              <div class="panel-header-premium">
-                <span>📚 Trade Journal</span>
-                <div class="jtabs">
-                  <button class="jtab active" data-filter="all">Todos</button>
-                  <button class="jtab" data-filter="open">Abertos</button>
-                  <button class="jtab" data-filter="won">Ganhos</button>
-                  <button class="jtab" data-filter="lost">Perdas</button>
-                </div>
-                <button id="journal-info-btn" class="icon-btn" title="O que significa cada coluna?">ℹ️</button>
+            <!-- Esquerda: Posições Ativas (Compacto) -->
+            <div class="active-pos-wrapper glass-panel">
+              <div class="panel-header-premium glow-cyan">
+                <span>⚡ Posições Ativas</span>
+                <span id="active-pos-count" class="chip-count cyan">0</span>
               </div>
-              <div class="panel-body full-table-body scrollable">
-                <table class="premium-table" id="journal-table">
-                  <thead>
-                    <tr>
-                      <th>DATA</th>
-                      <th>MERCADO</th>
-                      <th>LADO</th>
-                      <th title="Preço de entrada no momento da compra">PREÇO</th>
-                      <th title="Dinheiro arriscado nessa aposta">STAKE</th>
-                      <th title="Vantagem estimada sobre o mercado na entrada">EDGE</th>
-                      <th title="Retorno esperado por dólar">EV</th>
-                      <th title="Variação do preço desde a entrada (dado real da Polymarket, atualizado a cada 60s)">VARIAÇÃO</th>
-                      <th title="Situação da aposta">STATUS</th>
-                      <th title="Lucro ou Prejuízo quando encerrada">P&amp;L</th>
-                    </tr>
-                  </thead>
-                  <tbody id="journal-body">
-                    <tr><td colspan="10" class="empty-state">Nenhum trade registrado ainda.</td></tr>
-                  </tbody>
-                </table>
+              <div class="panel-body scrollable mini-journal">
+                <div id="active-positions-list" class="mini-pos-grid">
+                  <!-- Injected by JS: Active trades only -->
+                  <div class="empty-state">Nenhuma posição aberta agora.</div>
+                </div>
+              </div>
+              <div class="panel-footer-links">
+                <button class="link-btn" onclick="switchTab('tab-history')">Ver histórico completo →</button>
               </div>
             </div>
 
@@ -321,6 +306,103 @@
               </div>
 
             </div>
+          </div>
+        </section>
+
+        <!-- ─── TAB: HISTÓRICO COMPLETO ─── -->
+        <section id="tab-history" class="tab-pane">
+          <div class="history-header">
+            <div>
+              <h2>📜 Histórico de Trades</h2>
+              <p class="history-subtitle">Análise detalhada de performance e filtros avançados</p>
+            </div>
+            <div class="history-actions">
+              <button id="export-history-btn" class="btn-outline">📥 Exportar CSV</button>
+            </div>
+          </div>
+
+          <div class="history-filter-bar glass-panel shadow-sm">
+            <div class="filter-group">
+              <label>Modo</label>
+              <select id="f-mode">
+                <option value="false">🔴 Modo Real</option>
+                <option value="true">🧪 Simulação</option>
+                <option value="all">Todos</option>
+              </select>
+            </div>
+            
+            <div class="filter-group">
+              <label>Período</label>
+              <select id="f-days">
+                <option value="1">Últimas 24 horas</option>
+                <option value="7" selected>Últimos 7 dias</option>
+                <option value="30">Últimos 30 dias</option>
+                <option value="60">Últimos 60 dias</option>
+                <option value="90">Últimos 90 dias</option>
+                <option value="0">Toda a história</option>
+              </select>
+            </div>
+
+            <div class="filter-group">
+              <label>Status</label>
+              <select id="f-status">
+                <option value="all">Todos</option>
+                <option value="won">Ganhos</option>
+                <option value="lost">Perdas</option>
+                <option value="exited">Encerrados</option>
+                <option value="open">Abertos</option>
+              </select>
+            </div>
+
+            <div class="filter-group search-group">
+              <label>Pesquisar</label>
+              <div class="search-input-wrapper">
+                <input type="text" id="f-search" placeholder="Ex: Trump, BTC, ID do trade...">
+                <span class="search-icon">🔍</span>
+              </div>
+            </div>
+
+            <button id="apply-filters-btn" class="btn-primary-gradient">Filtrar</button>
+          </div>
+
+          <div class="history-stats-grid">
+            <div class="h-stat-card">
+              <span class="h-stat-lbl">Total Trades</span>
+              <span id="h-total-trades" class="h-stat-val">0</span>
+            </div>
+            <div class="h-stat-card">
+              <span class="h-stat-lbl">Win Rate</span>
+              <span id="h-win-rate" class="h-stat-val">0%</span>
+            </div>
+            <div class="h-stat-card">
+              <span class="h-stat-lbl">Total P&L</span>
+              <span id="h-total-pnl" class="h-stat-val">$0.00</span>
+            </div>
+            <div class="h-stat-card">
+              <span class="h-stat-lbl">Profit Factor</span>
+              <span id="h-profit-factor" class="h-stat-val">0.00</span>
+            </div>
+          </div>
+
+          <div class="history-table-wrapper glass-panel">
+            <table class="history-table" id="history-table">
+              <thead>
+                <tr>
+                  <th>DATA</th>
+                  <th>MERCADO</th>
+                  <th>LADO</th>
+                  <th>PREÇO</th>
+                  <th>STAKE</th>
+                  <th>EV / EDGE</th>
+                  <th>STATUS</th>
+                  <th>RESULTADO</th>
+                  <th>P&amp;L</th>
+                </tr>
+              </thead>
+              <tbody id="history-body">
+                <tr><td colspan="9" class="empty-state">Use os filtros para carregar o histórico.</td></tr>
+              </tbody>
+            </table>
           </div>
         </section>
 

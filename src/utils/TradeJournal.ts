@@ -191,6 +191,43 @@ export class TradeJournal {
     return [...this.trades];
   }
 
+  /**
+   * Advanced lookup with filters
+   */
+  getFilteredTrades(filters: {
+    search?: string;
+    dryRun?: boolean;
+    status?: string;
+    days?: number;
+  }): TradeRecord[] {
+    let result = [...this.trades];
+
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      result = result.filter(t => 
+        t.question.toLowerCase().includes(q) || 
+        t.marketId.toLowerCase().includes(q) ||
+        t.id.toLowerCase().includes(q)
+      );
+    }
+
+    if (filters.dryRun !== undefined) {
+      result = result.filter(t => t.dryRun === filters.dryRun);
+    }
+
+    if (filters.status && filters.status !== 'all') {
+      result = result.filter(t => t.status === filters.status);
+    }
+
+    if (filters.days && filters.days > 0) {
+      const cutoff = Date.now() - (filters.days * 24 * 60 * 60 * 1000);
+      result = result.filter(t => new Date(t.timestamp).getTime() >= cutoff);
+    }
+
+    // Sort by most recent first for history view
+    return result.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+
   getRecentTrades(count: number): TradeRecord[] {
     return this.trades.slice(-count);
   }

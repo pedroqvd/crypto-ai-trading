@@ -183,6 +183,25 @@ export class DashboardServer {
       });
     });
 
+    // Advanced Trade History (Search & Filter)
+    this.app.get('/api/trades/history', (req, res) => {
+      const { search, dryRun, status, days } = req.query;
+      const journal = this.engine.getJournal();
+      
+      const filters = {
+        search: search ? String(search) : undefined,
+        dryRun: dryRun !== undefined ? dryRun === 'true' : undefined,
+        status: status ? String(status) : undefined,
+        days: days ? parseInt(String(days)) : undefined,
+      };
+
+      const trades = journal.getFilteredTrades(filters);
+      res.json({
+        count: trades.length,
+        trades: trades,
+      });
+    });
+
     // Risk status
     this.app.get('/api/risk', (req, res) => {
       res.json(this.engine.getRiskManager().getStatus());

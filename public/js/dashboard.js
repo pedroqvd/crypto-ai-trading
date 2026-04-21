@@ -64,6 +64,14 @@
     modeBadge:         $('mode-badge'),
     lastScan:          $('header-last-scan'),
     liveWarningBox:    $('live-warning-box'),
+    // History
+    historyBody:       $('history-body'),
+    hTotalTrades:      $('h-total-trades'),
+    hWinRate:          $('h-win-rate'),
+    hTotalPnl:         $('h-total-pnl'),
+    hProfitFactor:     $('h-profit-factor'),
+    activePositionsList: $('active-positions-list'),
+    activePosCount:    $('active-pos-count'),
   };
 
   let currentFilter = 'all';
@@ -122,43 +130,130 @@
       if (data.trades) {
         updateTradeStats(data.trades.stats);
         renderPositions(data.trades.open);
-        renderJournal(data.trades.recent);
+        renderActivePositions(data.trades.open); // Replaces old journal
       }
       if (data.risk)          updateRisk(data.risk);
       if (data.notifications) renderNotifications(data.notifications);
       fetchCalibration(authFetch);
       fetchPerformance(authFetch);
+      loadHistory(); // Load initial history view
     });
 
     socket.on('statusUpdate',   (status) => updateStatus(status));
     socket.on('decision',       (decision) => addDecision(decision));
     socket.on('tradeExecuted',  (trade) => {
       addPosition(trade);
-      addJournalRow(trade);
+      renderActivePositions(); // Refresh mini-journal
       flashElement(els.statTrades);
     });
     socket.on('tradeResolved',  (data) => {
       removePosition(data.trade.marketId);
-      updateJournalRow(data.trade.id, data.won, data.pnl);
+      renderActivePositions(); 
       fetchCalibration(authFetch);
+      loadHistory(); // Refresh history if visible
     });
     socket.on('notification',   (n) => addNotification(n));
     socket.on('scanComplete',   () => flashElement(els.statMarkets));
-    socket.on('settingsUpdated', () => {});
+    socket.on('settingsUpdated', () => {})    // ========================================
+    // HISTORY FILTERS & ACTIONS
+    // ========================================
+    const applyFiltersBtn = $('apply-filters-btn');
+    if (applyFiltersBtn) {
+      applyFiltersBtn.addEventListener('click', () => loadHistory());
+    }
 
-    // ========================================
-    // JOURNAL FILTERS
-    // ========================================
-    document.querySelectorAll('.jtab').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.jtab').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentFilter = btn.dataset.filter;
-        authFetch('/api/trades')
-          .then(r => r.json())
-          .then(data => renderJournal(data.recent));
+    const exportBtn = $('export-history-btn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', async () => {
+        const res = await authFetch('/api/trades/export');
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `trades_export_${new Date().toISOString().split('T')[0]}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
       });
-    });
+    }
+
+    async function loadHistory() {
+      const filters = {
+        mode:   $('f-mode').value,
+        days:   $('f-days').value,
+        status: $('f-status').value,
+        search: $('f-search').value.trim()
+      };
+
+      try {
+        const query = new URLSearchParams();
+        if (filters.mode !== 'all') query.append('dryRun', filters.mode);
+        if (filters.status !== 'all') query.append('status', filters.status);
+        if (filters.days !== '0') query.append('days', filters.days);
+        if (filters.search) query.append('search', filters.search);
+
+        const res = await authFetch(`/api/trades/history?${query.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderHistoryTable(data.trades);
+        updateHistoryStats(data.trades);
+      } catch (err) {
+        console.error('Error loading history:', err);
+      }
+    }
+
+    function renderHistoryTable(trades) {
+      if (!trades || trades.length === 0) {
+        els.historyBody.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum trade encontrado para estes filtros.</td></tr>';
+        return;
+      }
+      
+      els.historyBody.innerHTML = trades.map(t => {
+        const pnl = t.pnl || 0;
+        const pnlClass = pnl > 0 ? 'text-emerald' : pnl < 0 ? 'text-rose' : '';
+        const outcome = t.status === 'won' ? '🎯 GANHOU' : t.status === 'lost' ? '💀 PERDEU' : t.status === 'open' ? '⏳ ABERTO' : '💰 ENCERRADO';
+        const outcomeClass = t.status === 'won' ? 'status-won' : t.status === 'lost' ? 'status-lost' : 'status-open';
+        
+        return `
+          <tr>
+            <td style="font-size:11px">${formatTime(t.timestamp)}<br><small class="text-dim">${t.dryRun ? '🧪 SIMULAÇÃO' : '🔴 REAL'}</small></td>
+            <td title="${escapeAttr(t.question)}"><strong>${escapeHtml(t.question.substring(0, 50))}...</strong></td>
+            <td><span class="position-side ${t.side === 'BUY_YES' ? 'side-yes' : 'side-no'}">${t.side === 'BUY_YES' ? 'YES' : 'NO'}</span></td>
+            <td class="mono">$${t.entryPrice.toFixed(3)}</td>
+            <td class="mono">$${t.stake.toFixed(2)}</td>
+            <td class="mono"><span class="text-emerald">+${(t.edge*100).toFixed(1)}%</span><br><small class="text-dim">ev:${(t.ev*100).toFixed(1)}%</small></td>
+            <td class="${outcomeClass}">${outcome}</td>
+            <td>${t.resolvedAt ? formatTime(t.resolvedAt) : '—'}</td>
+            <td class="m-pnl ${pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : ''}">$${pnl.toFixed(2)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function updateHistoryStats(trades) {
+      const closed = trades.filter(t => t.status !== 'open');
+      const wins = closed.filter(t => t.status === 'won').length;
+      const totalPnl = closed.reduce((sum, t) => sum + (t.pnl || 0), 0);
+      const grossWins = closed.filter(t=>t.pnl>0).reduce((sum, t)=>sum+t.pnl, 0);
+      const grossLosses = closed.filter(t=>t.pnl<0).reduce((sum, t)=>sum+Math.abs(t.pnl), 0);
+      
+      els.hTotalTrades.textContent = trades.length;
+      els.hWinRate.textContent = closed.length > 0 ? ((wins / closed.length) * 100).toFixed(1) + '%' : '0%';
+      els.hTotalPnl.textContent = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
+      els.hTotalPnl.className = 'h-stat-val ' + (totalPnl >= 0 ? 'text-emerald' : 'text-rose');
+      els.hProfitFactor.textContent = grossLosses > 0 ? (grossWins / grossLosses).toFixed(2) : (grossWins > 0 ? '∞' : '0.00');
+    }
+
+    // Expose switchTab to global window
+    window.switchTab = (tabId) => {
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        if (btn.dataset.tab === tabId) {
+          btn.click();
+        }
+      });
+    };  });
 
     // ========================================
     // BOT START / STOP
