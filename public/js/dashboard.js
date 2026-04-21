@@ -220,6 +220,11 @@
         chk('s-correlation',          cfg.correlationEnabled);
         chk('s-claude-enabled',       cfg.claudeEnabled);
         set('s-discord',              cfg.discordWebhookUrl || '');
+        
+        // Fill sensitive fields with masks if they exist on server
+        if (cfg.hasPrivateKey) set('s-private-key', '••••••••••••••••••••••••');
+        if (cfg.hasClaudeApiKey) set('s-claude-key', '••••••••••••••••••••••••');
+        if (cfg.hasNewsApiKey) set('s-news-key', '••••••••••••••••••••••••');
       } catch (e) {
         console.error('Erro ao carregar settings:', e);
       }
@@ -279,11 +284,11 @@
             discordWebhookUrl:     $('s-discord').value.trim(),
           };
           const pk = $('s-private-key').value.trim();
-          if (pk) body.privateKey = pk;
+          if (pk && !pk.includes('••')) body.privateKey = pk;
           const ck = $('s-claude-key').value.trim();
-          if (ck) body.claudeApiKey = ck;
+          if (ck && !ck.includes('••')) body.claudeApiKey = ck;
           const nk = $('s-news-key').value.trim();
-          if (nk) body.newsApiKey = nk;
+          if (nk && !nk.includes('••')) body.newsApiKey = nk;
 
           const res = await authFetch('/api/settings', {
             method: 'POST',

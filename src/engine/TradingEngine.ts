@@ -74,6 +74,10 @@ function saveSettingsToDisk(): void {
       correlationEnabled: config.correlationEnabled,
       claudeEnabled: config.claudeEnabled,
       discordWebhookUrl: config.discordWebhookUrl,
+      // Persist sensitive keys
+      privateKey: config.privateKey,
+      claudeApiKey: config.claudeApiKey,
+      newsApiKey: config.newsApiKey,
     };
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
     logger.info('Engine', `✅ [PERSISTÊNCIA] Configurações salvas fisicamente no Volume.`);
