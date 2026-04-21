@@ -710,19 +710,21 @@
       }
     }
 
-    els.bankroll.textContent = formatMoney(status.bankroll);
+    if (els.bankroll) els.bankroll.textContent = formatMoney(status.bankroll);
 
     const pnlVal = status.totalPnl || 0;
-    els.pnl.textContent = (pnlVal >= 0 ? '+' : '') + formatMoney(pnlVal);
-    els.pnl.className = 'tm-value ' + (pnlVal > 0 ? 'pnl-positive' : pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
+    if (els.pnl) {
+      els.pnl.textContent = (pnlVal >= 0 ? '+' : '') + formatMoney(pnlVal);
+      els.pnl.className = 'tm-value ' + (pnlVal > 0 ? 'pnl-positive' : pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
+    }
 
     // Sync local uptime counter with server's reported start time
     if (status.startTime > 0) engineStartTime = status.startTime;
 
-    els.statMarkets.textContent       = formatNumber(status.marketsScanned);
-    els.statOpportunities.textContent = formatNumber(status.opportunitiesFound);
-    els.statTrades.textContent        = formatNumber(status.tradesExecuted);
-    els.statCycle.textContent         = '#' + (status.cycleCount || 0);
+    if (els.statMarkets)       els.statMarkets.textContent       = formatNumber(status.marketsScanned);
+    if (els.statOpportunities) els.statOpportunities.textContent = formatNumber(status.opportunitiesFound);
+    if (els.statTrades)        els.statTrades.textContent        = formatNumber(status.tradesExecuted);
+    if (els.statCycle)         els.statCycle.textContent         = '#' + (status.cycleCount || 0);
 
     const botToggleBtn = $('bot-toggle-btn');
     if (botToggleBtn) {
@@ -755,8 +757,8 @@
   // ========================================
   function updateTradeStats(stats) {
     if (!stats) return;
-    els.statTrades.textContent   = formatNumber(stats.totalTrades);
-    els.statWinrate.textContent  = stats.winRate.toFixed(0) + '%';
+    if (els.statTrades)   els.statTrades.textContent  = formatNumber(stats.totalTrades);
+    if (els.statWinrate)  els.statWinrate.textContent = stats.winRate.toFixed(0) + '%';
     if (els.statOpenPositions) {
       els.statOpenPositions.textContent = formatNumber(stats.openTrades || 0);
     }
@@ -771,13 +773,14 @@
   // POSITIONS
   // ========================================
   function renderPositions(positions) {
+    if (!els.positionsList) return;
     if (!positions || positions.length === 0) {
       els.positionsList.innerHTML = '<div class="empty-state"><span class="empty-icon">📊</span><span>Nenhuma posição aberta</span></div>';
-      els.positionsCount.textContent = '0';
+      if (els.positionsCount) els.positionsCount.textContent = '0';
       if (els.statOpenPositions) els.statOpenPositions.textContent = '0';
       return;
     }
-    els.positionsCount.textContent = positions.length;
+    if (els.positionsCount) els.positionsCount.textContent = positions.length;
     if (els.statOpenPositions) els.statOpenPositions.textContent = positions.length;
     els.positionsList.innerHTML = positions.map(createPositionHTML).join('');
   }
@@ -825,29 +828,33 @@
   function updateRisk(risk) {
     if (!risk) return;
 
-    els.riskDrawdown.textContent = risk.drawdownPct.toFixed(1) + '%';
-    els.riskDrawdownBar.style.width = Math.min(risk.drawdownPct / 15 * 100, 100) + '%';
+    if (els.riskDrawdown)    els.riskDrawdown.textContent    = risk.drawdownPct.toFixed(1) + '%';
+    if (els.riskDrawdownBar) els.riskDrawdownBar.style.width = Math.min(risk.drawdownPct / 15 * 100, 100) + '%';
 
-    els.riskExposure.textContent = `$${formatNumber(risk.totalExposure)} / $${formatNumber(risk.maxExposure)}`;
+    if (els.riskExposure) els.riskExposure.textContent = `$${formatNumber(risk.totalExposure)} / $${formatNumber(risk.maxExposure)}`;
     const expPct = risk.maxExposure > 0 ? (risk.totalExposure / risk.maxExposure * 100) : 0;
-    els.riskExposureBar.style.width = Math.min(expPct, 100) + '%';
+    if (els.riskExposureBar) els.riskExposureBar.style.width = Math.min(expPct, 100) + '%';
 
-    els.riskPositions.textContent = risk.positionCount;
+    if (els.riskPositions) els.riskPositions.textContent = risk.positionCount;
     if (els.statOpenPositions && risk.positionCount !== undefined) {
       els.statOpenPositions.textContent = risk.positionCount;
     }
 
-    els.riskDailyLoss.textContent = '$' + formatNumber(risk.dailyLoss);
-    els.riskDailyLoss.className = 'risk-stat-val' + (risk.dailyLoss > 0 ? ' danger' : '');
+    if (els.riskDailyLoss) {
+      els.riskDailyLoss.textContent = '$' + formatNumber(risk.dailyLoss);
+      els.riskDailyLoss.className = 'risk-stat-val' + (risk.dailyLoss > 0 ? ' danger' : '');
+    }
 
-    if (risk.circuitBreaker) {
-      els.riskCircuit.textContent = '🚨 ATIVO';
-      els.riskCircuit.className = 'risk-stat-val danger';
-      if (els.resetCircuitBtn) els.resetCircuitBtn.classList.remove('hidden');
-    } else {
-      els.riskCircuit.textContent = '● OK';
-      els.riskCircuit.className = 'risk-stat-val ok';
-      if (els.resetCircuitBtn) els.resetCircuitBtn.classList.add('hidden');
+    if (els.riskCircuit) {
+      if (risk.circuitBreaker) {
+        els.riskCircuit.textContent = '🚨 ATIVO';
+        els.riskCircuit.className = 'risk-stat-val danger';
+        if (els.resetCircuitBtn) els.resetCircuitBtn.classList.remove('hidden');
+      } else {
+        els.riskCircuit.textContent = '● OK';
+        els.riskCircuit.className = 'risk-stat-val ok';
+        if (els.resetCircuitBtn) els.resetCircuitBtn.classList.add('hidden');
+      }
     }
   }
 
@@ -855,6 +862,7 @@
   // DECISIONS FEED
   // ========================================
   function renderDecisions(decisions) {
+    if (!els.decisionsFeed) return;
     if (!decisions || decisions.length === 0) {
       els.decisionsFeed.innerHTML = '<div class="empty-state"><span class="empty-icon">🧠</span><span>Aguardando primeiro ciclo...</span></div>';
       return;
