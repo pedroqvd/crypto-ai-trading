@@ -686,35 +686,42 @@ export class TradingEngine extends EventEmitter {
       const price   = opp.side === 'BUY_YES' ? opp.marketPrice : (1 - opp.marketPrice);
       let   size    = kelly.finalStake / price;
 
-      const orderBook = await this.clobApi.getOrderBook(tokenId, price, opp.liquidity);
-      if (orderBook) {
-        // Skip if spread is too wide (expensive to trade)
-        if (orderBook.spread > config.maxOrderSpreadPct) {
-          this.logDecision('reject',
-            `Spread muito alto (${(orderBook.spread * 100).toFixed(1)}% > ${(config.maxOrderSpreadPct * 100).toFixed(0)}%) ` +
-            `para "${opp.question.substring(0, 40)}..."`
-          );
-          continue;
-        }
+      // In DRY-RUN the order book is synthetic — depth checks are not meaningful.
+      // Only apply real order book checks in LIVE mode.
+      if (!config.dryRun) {
+        const orderBook = await this.clobApi.getOrderBook(tokenId, price, opp.liquidity);
+        if (orderBook) {
+          // Skip if spread is too wide (expensive to trade)
+          if (orderBook.spread > config.maxOrderSpreadPct) {
+            logger.info('Engine', `[REJECT] Spread alto (${(orderBook.spread * 100).toFixed(1)}% > ${(config.maxOrderSpreadPct * 100).toFixed(0)}%) "${opp.question.substring(0, 50)}"`);
+            this.logDecision('reject',
+              `Spread muito alto (${(orderBook.spread * 100).toFixed(1)}% > ${(config.maxOrderSpreadPct * 100).toFixed(0)}%) ` +
+              `para "${opp.question.substring(0, 40)}..."`
+            );
+            continue;
+          }
 
-        // Cap size to available depth at our target price (avoid moving the market)
-        const availableShares = orderBook.asks
-          .filter(a => a.price <= price * 1.02) // within 2% slippage
-          .reduce((sum, a) => sum + a.size, 0);
+          // Cap size to available depth (within maxOrderSpreadPct slippage, not 2%)
+          const slippageTolerance = 1 + config.maxOrderSpreadPct;
+          const availableShares = orderBook.asks
+            .filter(a => a.price <= price * slippageTolerance)
+            .reduce((sum, a) => sum + a.size, 0);
 
-        if (availableShares < config.minOrderBookShares) {
-          this.logDecision('reject',
-            `Profundidade insuficiente (${availableShares.toFixed(0)} shares < ${config.minOrderBookShares}) ` +
-            `para "${opp.question.substring(0, 40)}..."`
-          );
-          continue;
-        }
+          if (availableShares < config.minOrderBookShares) {
+            logger.info('Engine', `[REJECT] Profundidade insuficiente (${availableShares.toFixed(0)} shares < ${config.minOrderBookShares}) "${opp.question.substring(0, 50)}"`);
+            this.logDecision('reject',
+              `Profundidade insuficiente (${availableShares.toFixed(0)} shares < ${config.minOrderBookShares}) ` +
+              `para "${opp.question.substring(0, 40)}..."`
+            );
+            continue;
+          }
 
-        // Don't take more than 40% of available liquidity to avoid price impact
-        const maxSizeByDepth = availableShares * 0.4;
-        if (size > maxSizeByDepth) {
-          logger.debug('Engine', `Reduzindo size de ${size.toFixed(0)} → ${maxSizeByDepth.toFixed(0)} shares (liquidez disponível)`);
-          size = maxSizeByDepth;
+          // Don't take more than 40% of available liquidity to avoid price impact
+          const maxSizeByDepth = availableShares * 0.4;
+          if (size > maxSizeByDepth) {
+            logger.info('Engine', `Reduzindo size de ${size.toFixed(0)} → ${maxSizeByDepth.toFixed(0)} shares (liquidez disponível)`);
+            size = maxSizeByDepth;
+          }
         }
       }
 
