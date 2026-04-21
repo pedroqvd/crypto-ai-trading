@@ -208,6 +208,41 @@
 
           <div class="tech-grid" id="tech-grid">
 
+            <!-- Esquerda: Trade Journal -->
+            <div class="journal-wrapper glass-panel">
+              <div class="panel-header-premium">
+                <span>📚 Trade Journal</span>
+                <div class="jtabs">
+                  <button class="jtab active" data-filter="all">Todos</button>
+                  <button class="jtab" data-filter="open">Abertos</button>
+                  <button class="jtab" data-filter="won">Ganhos</button>
+                  <button class="jtab" data-filter="lost">Perdas</button>
+                </div>
+                <button id="journal-info-btn" class="icon-btn" title="O que significa cada coluna?">ℹ️</button>
+              </div>
+              <div class="panel-body full-table-body scrollable">
+                <table class="premium-table" id="journal-table">
+                  <thead>
+                    <tr>
+                      <th>DATA</th>
+                      <th>MERCADO</th>
+                      <th>LADO</th>
+                      <th title="Preço de entrada no momento da compra">PREÇO</th>
+                      <th title="Dinheiro arriscado nessa aposta">STAKE</th>
+                      <th title="Vantagem estimada sobre o mercado na entrada">EDGE</th>
+                      <th title="Retorno esperado por dólar">EV</th>
+                      <th title="Variação do preço desde a entrada (dado real da Polymarket, atualizado a cada 60s)">VARIAÇÃO</th>
+                      <th title="Situação da aposta">STATUS</th>
+                      <th title="Lucro ou Prejuízo quando encerrada">P&amp;L</th>
+                    </tr>
+                  </thead>
+                  <tbody id="journal-body">
+                    <tr><td colspan="10" class="empty-state">Nenhum trade registrado ainda.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             <!-- Feed Central -->
             <div class="terminal-panel glass-panel tech-main">
               <div class="panel-header-premium glow-violet">
@@ -476,41 +511,6 @@
                   <span class="cfg-save-hint">As configurações são aplicadas imediatamente ao próximo ciclo do bot.</span>
                 </div>
 
-              </div>
-            </div>
-
-            <!-- Direita: Trade Journal -->
-            <div class="journal-wrapper glass-panel">
-              <div class="panel-header-premium">
-                <span>📚 Trade Journal</span>
-                <div class="jtabs">
-                  <button class="jtab active" data-filter="all">Todos</button>
-                  <button class="jtab" data-filter="open">Abertos</button>
-                  <button class="jtab" data-filter="won">Ganhos</button>
-                  <button class="jtab" data-filter="lost">Perdas</button>
-                </div>
-                <button id="journal-info-btn" class="icon-btn" title="O que significa cada coluna?">ℹ️</button>
-              </div>
-              <div class="panel-body full-table-body scrollable">
-                <table class="premium-table" id="journal-table">
-                  <thead>
-                    <tr>
-                      <th>DATA</th>
-                      <th>MERCADO</th>
-                      <th>LADO</th>
-                      <th title="Preço de entrada no momento da compra">PREÇO</th>
-                      <th title="Dinheiro arriscado nessa aposta">STAKE</th>
-                      <th title="Vantagem estimada sobre o mercado na entrada">EDGE</th>
-                      <th title="Retorno esperado por dólar">EV</th>
-                      <th title="Variação do preço desde a entrada (dado real da Polymarket, atualizado a cada 60s)">VARIAÇÃO</th>
-                      <th title="Situação da aposta">STATUS</th>
-                      <th title="Lucro ou Prejuízo quando encerrada">P&amp;L</th>
-                    </tr>
-                  </thead>
-                  <tbody id="journal-body">
-                    <tr><td colspan="10" class="empty-state">Nenhum trade registrado ainda.</td></tr>
-                  </tbody>
-                </table>
               </div>
             </div>
 
