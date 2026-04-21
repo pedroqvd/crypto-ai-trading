@@ -558,3 +558,86 @@ body::before {
   .topbar-metrics { display: none; }
   .brand-text-mobile { display: block; margin-right: 10px; font-weight: 700; color: var(--cyan); }
 }
+
+/* ─── UTILITY ─────────────────────────────────────── */
+.text-dim { color: var(--text-dim); }
+
+/* ─── JOURNAL INFO MODAL ──────────────────────────── */
+.info-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.info-modal-box {
+  width: min(600px, 94vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  background: var(--surface);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  animation: modalIn .2s ease;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.info-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.info-modal-body {
+  padding: 1.5rem;
+}
+
+.info-glossary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.info-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  align-items: start;
+}
+
+.info-row dt {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--accent-cyan);
+  font-family: 'JetBrains Mono', monospace;
+  padding-top: 2px;
+}
+
+.info-row dd {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.info-row dd em { color: var(--text-primary); font-style: normal; }
+.info-row dd strong { color: var(--text-primary); }
+

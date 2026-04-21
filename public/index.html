@@ -361,16 +361,17 @@
                       <button class="jtab" data-filter="won">Ganhos</button>
                       <button class="jtab" data-filter="lost">Perdas</button>
                     </div>
+                    <button id="journal-info-btn" class="icon-btn" title="O que significa cada coluna?">ℹ️</button>
                  </div>
                  <div class="panel-body full-table-body scrollable">
                     <table class="premium-table" id="journal-table">
                        <thead>
                          <tr>
-                            <th>DATA</th><th>MERCADO</th><th>LADO</th><th>PREÇO</th><th>STAKE</th><th>EV</th><th>STATUS</th><th>P&L</th>
+                            <th>DATA</th><th>MERCADO</th><th>LADO</th><th title="Preço de entrada no momento da compra">PREÇO</th><th title="Quantidade de dinheiro arriscado nessa aposta">STAKE</th><th title="Edge no momento da entrada">EDGE</th><th title="Retorno esperado por dólar">EV</th><th title="Variação do preço desde a entrada">VARIAÇÃO</th><th title="Situação do trade">STATUS</th><th title="Lucro ou Prejuízo realizado">P&L</th>
                          </tr>
                        </thead>
                        <tbody id="journal-body">
-                          <tr><td colspan="8" class="empty-state">Sem trades registrados.</td></tr>
+                          <tr><td colspan="10" class="empty-state">Sem trades registrados.</td></tr>
                        </tbody>
                     </table>
                  </div>
@@ -383,6 +384,61 @@
 
     </main>
   </div> <!-- /app-layout -->
+
+  <!-- ═══ MODAL: GLOSSÁRIO DO TRADE JOURNAL ═══ -->
+  <div id="journal-info-modal" class="info-modal-overlay" style="display:none;">
+    <div class="info-modal-box glass-panel">
+      <div class="info-modal-header">
+        <span>📖 Guia Rápido — Trade Journal</span>
+        <button id="journal-info-close" class="icon-btn">✕</button>
+      </div>
+      <div class="info-modal-body">
+        <dl class="info-glossary">
+          <div class="info-row">
+            <dt>📅 DATA</dt>
+            <dd>Horário em que o bot decidiu fazer a aposta.</dd>
+          </div>
+          <div class="info-row">
+            <dt>🎯 MERCADO</dt>
+            <dd>A pergunta da Polymarket que o bot apostou. Ex: <em>"Trump vence a eleição?"</em></dd>
+          </div>
+          <div class="info-row">
+            <dt>📌 LADO</dt>
+            <dd><strong>YES</strong> = bot acha que vai acontecer. <strong>NO</strong> = acha que não vai.</dd>
+          </div>
+          <div class="info-row">
+            <dt>💰 PREÇO</dt>
+            <dd>Quanto valia o token quando comprado. Ex: <em>$0.07</em> = mercado dizia 7% de chance.</dd>
+          </div>
+          <div class="info-row">
+            <dt>🎲 STAKE</dt>
+            <dd>Quantos dólares o bot arriscou nessa aposta (calculado pelo Kelly).</dd>
+          </div>
+          <div class="info-row">
+            <dt>📐 EDGE</dt>
+            <dd>Diferença entre o que o bot estima como chance real e o que o mercado precifica. Ex: <em>+33%</em> = bot acha que a chance real é 33 pontos percentuais maior que o mercado.</dd>
+          </div>
+          <div class="info-row">
+            <dt>📈 EV (Expected Value)</dt>
+            <dd>Retorno esperado por dólar investido. <em>+1.8%</em> = a cada $1 apostado, espera-se ganhar $1.018 em média descontando a taxa da Polymarket.</dd>
+          </div>
+          <div class="info-row">
+            <dt>📊 VARIAÇÃO</dt>
+            <dd>Quanto o preço do mercado subiu ou caiu desde que o bot entrou. <span class="pnl-positive">+20%</span> = o token valorizado 20% desde a compra.</dd>
+          </div>
+          <div class="info-row">
+            <dt>🔖 STATUS</dt>
+            <dd><em>⏳ Aberto</em> = ainda na posição. <em>✅ Ganhou</em> = mercado resolveu a favor. <em>❌ Perdeu</em> = contra. <em>💰 Saída</em> = bot saiu antes da resolução.</dd>
+          </div>
+          <div class="info-row">
+            <dt>💵 P&amp;L</dt>
+            <dd>Lucro ou Prejuízo <strong>realizado</strong>, em dólares, quando o mercado foi resolvido ou o bot saiu da posição.</dd>
+          </div>
+        </dl>
+        <p style="margin-top:1rem; color:var(--text-dim); font-size:0.8rem;">Todos os preços e variações são dados reais da Polymarket, atualizados a cada ciclo (60s).</p>
+      </div>
+    </div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/dashboard.js"></script>

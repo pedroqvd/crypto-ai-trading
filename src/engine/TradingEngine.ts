@@ -914,6 +914,9 @@ export class TradingEngine extends EventEmitter {
       // ── ACTIVE POSITION — check exit rules ──────────────────────────
       const currentSidePrice = trade.side === 'BUY_YES' ? market.yesPrice : market.noPrice;
 
+      // Persist current price so dashboard can show real-time VARIAÇÃO column
+      this.journal.updateCurrentPrice(trade.id, currentSidePrice);
+
       // Update per-position state (for trailing stop + momentum)
       const state = this.positionState.get(trade.id) ?? {
         peakPrice: trade.entryPrice,

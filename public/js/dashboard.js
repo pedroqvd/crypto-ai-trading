@@ -920,6 +920,24 @@
     const pnlClass = trade.pnl > 0 ? 'pnl-positive' : trade.pnl < 0 ? 'pnl-negative' : '';
     const q = trade.question || '';
 
+    // VARIAÇÃO: currentPrice vs entryPrice (real Polymarket price, updated each cycle)
+    let variacaoHtml = '<td class="text-dim">—</td>';
+    if (trade.currentPrice != null && trade.entryPrice > 0 && trade.status === 'open') {
+      const varPct = ((trade.currentPrice / trade.entryPrice) - 1) * 100;
+      const varClass = varPct >= 0 ? 'pnl-positive' : 'pnl-negative';
+      const varSign  = varPct >= 0 ? '+' : '';
+      variacaoHtml = `<td class="${varClass}" title="Entrada: $${trade.entryPrice.toFixed(4)} → Atual: $${trade.currentPrice.toFixed(4)}">${varSign}${varPct.toFixed(1)}%</td>`;
+    } else if (trade.status !== 'open') {
+      // Resolved: show final exit price vs entry
+      const exitRef = trade.exitPrice ?? (trade.status === 'won' ? 1.0 : 0.0);
+      if (exitRef != null && trade.entryPrice > 0) {
+        const varPct = ((exitRef / trade.entryPrice) - 1) * 100;
+        const varClass = varPct >= 0 ? 'pnl-positive' : 'pnl-negative';
+        const varSign  = varPct >= 0 ? '+' : '';
+        variacaoHtml = `<td class="${varClass}">${varSign}${varPct.toFixed(1)}%</td>`;
+      }
+    }
+
     const html = `<tr data-trade-id="${escapeAttr(trade.id)}" class="${trade.dryRun ? 'dryrun-row' : ''}">
       <td>${formatTime(trade.timestamp)}</td>
       <td title="${escapeAttr(q)}">${escapeHtml(q.substring(0, 40))}${q.length > 40 ? '...' : ''}</td>
@@ -928,6 +946,7 @@
       <td>$${trade.stake.toFixed(2)}</td>
       <td class="pnl-positive">+${(trade.edge * 100).toFixed(1)}%</td>
       <td>+${(trade.ev * 100).toFixed(1)}%</td>
+      ${variacaoHtml}
       <td class="status-${trade.status}">${statusLabel[trade.status] || trade.status}</td>
       <td class="${pnlClass}">${pnlText}</td>
     </tr>`;
@@ -943,13 +962,14 @@
     const row = els.journalBody.querySelector(`[data-trade-id="${tradeId}"]`);
     if (!row) return;
     const cells = row.querySelectorAll('td');
-    if (cells[7]) {
-      cells[7].textContent = won ? '✅ Ganhou' : '❌ Perdeu';
-      cells[7].className = won ? 'status-won' : 'status-lost';
-    }
+    // Columns: 0=data 1=mercado 2=lado 3=preço 4=stake 5=edge 6=ev 7=variação 8=status 9=p&l
     if (cells[8]) {
-      cells[8].textContent = pnl != null ? (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2) : '—';
-      cells[8].className = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : '';
+      cells[8].textContent = won ? '✅ Ganhou' : '❌ Perdeu';
+      cells[8].className = won ? 'status-won' : 'status-lost';
+    }
+    if (cells[9]) {
+      cells[9].textContent = pnl != null ? (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2) : '—';
+      cells[9].className = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : '';
     }
     row.classList.add(won ? 'flash-green' : 'flash-red');
   }
@@ -1116,6 +1136,15 @@
        }
     }, 10000);
 
+    // ℹ️ Journal Info Modal
+    const infoBtn   = $('journal-info-btn');
+    const infoModal = $('journal-info-modal');
+    const infoClose = $('journal-info-close');
+    if (infoBtn && infoModal) {
+      infoBtn.addEventListener('click', () => { infoModal.style.display = 'flex'; });
+      infoClose && infoClose.addEventListener('click', () => { infoModal.style.display = 'none'; });
+      infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.style.display = 'none'; });
+    }
 
   // ========================================
   // Kick off

@@ -13,6 +13,7 @@ export interface TradeRecord {
   question: string;
   side: 'BUY_YES' | 'BUY_NO';
   entryPrice: number;
+  currentPrice?: number;   // Live price from Polymarket (updated each monitor cycle, not persisted)
   size: number;
   stake: number;
   edge: number;
@@ -140,6 +141,15 @@ export class TradeJournal {
     logger.info('TradeJournal',
       `Trade exited early: "${trade.question}" @ $${exitPrice.toFixed(4)}, P&L: $${pnl.toFixed(2)}`
     );
+  }
+
+  /**
+   * Update the live market price for an open position.
+   * This is in-memory only (not persisted to disk) — updated every monitor cycle.
+   */
+  updateCurrentPrice(tradeId: string, currentPrice: number): void {
+    const trade = this.trades.find(t => t.id === tradeId);
+    if (trade) trade.currentPrice = currentPrice;
   }
 
   getDailyReport(date: string, bankrollStart: number): DailyReport {
