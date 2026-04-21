@@ -298,9 +298,9 @@ export class TradingEngine extends EventEmitter {
       claudeEnabled: config.claudeEnabled,
       calibrationEnabled: config.calibrationEnabled,
       discordWebhookUrl: config.discordWebhookUrl || '',
-      hasPrivateKey: !!config.privateKey,
-      hasNewsApiKey: !!config.newsApiKey,
-      hasClaudeApiKey: !!config.claudeApiKey,
+      privateKey: config.privateKey ? '••••••••••••' : '',
+      newsApiKey: config.newsApiKey ? '••••••••••••' : '',
+      claudeApiKey: config.claudeApiKey ? '••••••••••••' : '',
     };
   }
 

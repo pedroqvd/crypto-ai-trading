@@ -97,7 +97,8 @@
   function setStatus(code, label) {
     if (!els.botStatus) return;
     els.botStatus.className = 'status-badge ' + code;
-    els.botStatus.querySelector('.status-lbl').textContent = label;
+    const lbl = els.botStatus.querySelector('.status-lbl') || els.botStatus.querySelector('.status-text');
+    if (lbl) lbl.textContent = label;
   }
 
   // ========================================
@@ -427,12 +428,14 @@
 
         // Ensure checkboxes that are UNCHECKED are sent as false (FormData skips unchecked)
         settingsForm.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-          if (!cb.checked) data[cb.name] = false;
+          if (cb.name) data[cb.name] = !!cb.checked;
         });
 
-        const btn = settingsForm.querySelector('button[type="submit"]');
-        btn.disabled = true;
-        btn.textContent = 'Salvando...';
+        const btn = settingsForm.querySelector('button[type="submit"]') || $('settings-save');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Salvando...';
+        }
 
         try {
           const res = await authFetch('/api/settings', {
