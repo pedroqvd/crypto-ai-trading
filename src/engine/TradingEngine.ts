@@ -377,20 +377,30 @@ export class TradingEngine extends EventEmitter {
     // Step 1: Scan markets (flat list + events for correlation)
     const { markets, events } = await this.scanMarkets();
     if (markets.length === 0) {
-      this.logDecision('scan', 'Nenhum mercado encontrado. Tentando novamente no próximo ciclo.');
+      logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP1: Nenhum mercado retornado pela API.`);
       return;
     }
+    logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP1: ${markets.length} mercados obtidos da API.`);
 
     // Step 2: Filter
     const filtered = this.filterMarkets(markets);
+    logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP2: ${markets.length} → ${filtered.length} mercados após filtros de qualidade/liquidez.`);
+
+    if (filtered.length === 0) {
+      logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP2: Todos os mercados eliminados nos filtros. Aguardando próximo ciclo.`);
+    }
 
     // Step 3: Analyze — probability, edge, EV
     const opportunities = await this.analyzeMarkets(filtered, markets);
+    logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP3: ${opportunities.length} oportunidades com edge >= ${(config.minEdge * 100).toFixed(0)}% encontradas.`);
 
     // Step 4: Correlation analysis — merges with main opportunities
     let correlationOpps: EdgeAnalysis[] = [];
     if (config.correlationEnabled && events.length > 0) {
       correlationOpps = await this.runCorrelationAnalysis(events, markets);
+      if (correlationOpps.length > 0) {
+        logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP4: +${correlationOpps.length} oportunidades de correlação.`);
+      }
     }
 
     // Merge: add correlation opps not already in the main list
@@ -403,8 +413,13 @@ export class TradingEngine extends EventEmitter {
     // Sort by edge descending so best opportunities execute first
     allOpportunities.sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge));
 
+    logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP5: Tentando executar ${Math.min(allOpportunities.length, 3)} oportunidades.`);
+
     // Step 5: Execute best opportunities
+    const beforeTrades = this.tradesExecuted;
     await this.executeOpportunities(allOpportunities);
+    const executedNow = this.tradesExecuted - beforeTrades;
+    logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP5: ${executedNow} trade(s) executado(s) neste ciclo. Total acumulado: ${this.tradesExecuted}.`);
 
     // Step 6: Monitor existing positions (exit strategy + resolution)
     await this.monitorPositions(markets);
@@ -458,7 +473,7 @@ export class TradingEngine extends EventEmitter {
       return true;
     });
 
-    logger.debug('Engine', `Filtro: ${markets.length} → ${filtered.length} mercados qualificados`);
+    logger.info('Engine', `[Filtro] ${markets.length} → ${filtered.length} (liq>=${config.minLiquidity/1000}K, vol>=${config.minVolume/1000}K, quality>=40, price 3%-97%).`);
     return filtered;
   }
 
