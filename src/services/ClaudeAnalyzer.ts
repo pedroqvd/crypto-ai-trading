@@ -139,9 +139,11 @@ export class ClaudeAnalyzer {
 
   private parseResponse(text: string, market: ParsedMarket): ClaudeEstimate | null {
     try {
-      const jsonMatch = text.match(/\{[^}]+\}/);
-      if (!jsonMatch) return null;
-      const parsed = JSON.parse(jsonMatch[0]);
+      // Use first '{' and last '}' to handle JSON with nested braces or '}' inside strings.
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start === -1 || end <= start) return null;
+      const parsed = JSON.parse(text.substring(start, end + 1));
 
       const probability = parseFloat(parsed.probability);
       const confidence = parseFloat(parsed.confidence);

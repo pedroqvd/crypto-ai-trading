@@ -33,6 +33,10 @@ function detectCategory(question: string): string {
   return 'Other';
 }
 
+// Circuit breaker cooldown: 2 hours. If no positions close to push drawdown below 5%,
+// auto-release after this period so the bot is not stuck indefinitely.
+const CIRCUIT_BREAKER_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+
 export class RiskManager {
   private peakBankroll: number;
   private currentBankroll: number;
@@ -41,6 +45,7 @@ export class RiskManager {
   private dailyLoss: number = 0;
   private lastDayReset: string = '';
   private circuitBreakerActive: boolean = false;
+  private circuitBreakerActivatedAt: number = 0;
   // category → stake exposure
   private categoryExposure = new Map<string, number>();
   // tradeId → category (to deregister correctly on close)
@@ -85,6 +90,15 @@ export class RiskManager {
   checkTrade(stakeAmount: number, marketId: string, question?: string): RiskCheck {
     this.resetDailyIfNeeded();
 
+    // Auto-release circuit breaker after cooldown period when drawdown recovered enough.
+    if (this.circuitBreakerActive) {
+      const elapsed = Date.now() - this.circuitBreakerActivatedAt;
+      if (elapsed > CIRCUIT_BREAKER_COOLDOWN_MS && this.getDrawdownPct() < 10) {
+        this.circuitBreakerActive = false;
+        logger.info('RiskMgr', `🔄 Circuit breaker auto-liberado após ${(elapsed / 3_600_000).toFixed(1)}h (drawdown=${this.getDrawdownPct().toFixed(1)}%).`);
+      }
+    }
+
     if (this.circuitBreakerActive) {
       return {
         allowed: false,
@@ -98,6 +112,7 @@ export class RiskManager {
     const drawdown = this.getDrawdownPct();
     if (drawdown >= 15) {
       this.circuitBreakerActive = true;
+      this.circuitBreakerActivatedAt = Date.now();
       logger.warn('RiskMgr', `🚨 CIRCUIT BREAKER: Drawdown de ${drawdown.toFixed(1)}% atingido. Trading pausado.`);
       return {
         allowed: false,

@@ -29,13 +29,18 @@ import { PerformanceMetrics } from '../utils/PerformanceMetrics';
 // Mounted via Fly Volumes on /data for real persistence.
 const SETTINGS_FILE = '/data/settings.json';
 
+// Fields that must never be loaded from disk — always come from env vars.
+const SENSITIVE_FIELDS = new Set(['privateKey', 'claudeApiKey', 'newsApiKey']);
+
 function loadPersistedSettings(): void {
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
       const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
       const saved = JSON.parse(raw);
-      
-      // Audit log: list what is being restored
+
+      // Strip any sensitive keys that may exist in old files (migration safety).
+      for (const key of SENSITIVE_FIELDS) delete saved[key];
+
       const restoredKeys = Object.keys(saved).join(', ');
       Object.assign(config, saved);
       logger.info('Engine', `💾 [PERSISTÊNCIA] Settings restauradas com sucesso: ${SETTINGS_FILE}`);
@@ -74,10 +79,8 @@ function saveSettingsToDisk(): void {
       correlationEnabled: config.correlationEnabled,
       claudeEnabled: config.claudeEnabled,
       discordWebhookUrl: config.discordWebhookUrl,
-      // Persist sensitive keys
-      privateKey: config.privateKey,
-      claudeApiKey: config.claudeApiKey,
-      newsApiKey: config.newsApiKey,
+      // NOTE: secrets (privateKey, claudeApiKey, newsApiKey) are intentionally
+      // NOT persisted here — they must come from environment variables only.
     };
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
     logger.info('Engine', `✅ [PERSISTÊNCIA] Configurações salvas fisicamente no Volume.`);
@@ -424,6 +427,9 @@ export class TradingEngine extends EventEmitter {
     await this.executeOpportunities(allOpportunities);
     const executedNow = this.tradesExecuted - beforeTrades;
     logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP5: ${executedNow} trade(s) executado(s) neste ciclo. Total acumulado: ${this.tradesExecuted}.`);
+
+    // Clear pendingSignals after execution: consumed ones are in tradeSignals; the rest are stale.
+    this.pendingSignals.clear();
 
     // Step 6: Monitor existing positions (exit strategy + resolution)
     await this.monitorPositions(markets);
