@@ -1,5 +1,5 @@
 // ================================================
-// DASHBOARD CLIENT — Real-time UI Updates (Authenticated)
+// DASHBOARD CLIENT — Real-time UI Updates
 // ================================================
 
 (function() {
@@ -18,7 +18,6 @@
   // DOM ELEMENTS
   // ========================================
   const $ = (id) => document.getElementById(id);
-
 
   const els = {
     botStatus:         $('bot-status'),
@@ -44,23 +43,12 @@
     riskCircuit:       $('risk-circuit'),
     resetCircuitBtn:   $('reset-circuit-btn'),
     decisionsFeed:     $('decisions-feed'),
-    journalBody:       $('journal-body'),
     notificationsFeed: $('notifications-feed'),
     notifCount:        $('notif-count'),
     // Calibration
     calBrier:          $('cal-brier'),
-    calTotal:          $('cal-total'),
     calBrierQual:      $('cal-brier-qual'),
-    catSportsN:        $('cat-sports-n'),
-    catSportsB:        $('cat-sports-b'),
-    catPoliticsN:      $('cat-politics-n'),
-    catPoliticsB:      $('cat-politics-b'),
-    catCryptoN:        $('cat-crypto-n'),
-    catCryptoB:        $('cat-crypto-b'),
-    catGeneralB:       $('cat-general-b'),
     toggleMmMode:      $('toggle-mm-mode'),
-
-    // Novos Elementos UI V2
     modeBadge:         $('mode-badge'),
     lastScan:          $('header-last-scan'),
     liveWarningBox:    $('live-warning-box'),
@@ -74,8 +62,43 @@
     activePosCount:    $('active-pos-count'),
   };
 
-  let currentFilter = 'all';
-  let notifTotal    = 0;
+  let notifTotal = 0;
+
+  // ========================================
+  // UTILS
+  // ========================================
+  function formatTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function formatNumber(n, decimals = 2) {
+    return (n || 0).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function escapeAttr(str) {
+    return str ? str.replace(/"/g, '&quot;') : '';
+  }
+
+  function flashElement(el) {
+    if (!el) return;
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 1000);
+  }
+
+  function setStatus(code, label) {
+    if (!els.botStatus) return;
+    els.botStatus.className = 'status-badge ' + code;
+    els.botStatus.querySelector('.status-lbl').textContent = label;
+  }
 
   // ========================================
   // BOOTSTRAP
@@ -86,9 +109,8 @@
       const res = await fetch('/api/config');
       const cfg = await res.json();
       backendUrl = (cfg.backendUrl || '').replace(/\/$/, '');
-      console.info('[Dashboard] backendUrl resolvido:', backendUrl || '(mesmo origin)');
     } catch (e) {
-      console.warn('[Dashboard] Falha ao buscar /api/config, usando mesmo origin.', e);
+      console.warn('[Dashboard] Config fetch failed, using same-origin.');
     }
 
     function authFetch(path, options = {}) {
@@ -96,32 +118,24 @@
         'Authorization': 'Bearer ' + authToken,
       });
       const url = backendUrl ? backendUrl + path : path;
-      console.debug('[authFetch]', options.method || 'GET', url);
       return fetch(url, Object.assign({}, options, { headers }));
     }
 
     // ========================================
     // SOCKET
     // ========================================
-    const socketOpts = {
-      auth: { token: authToken },
-      query: { token: authToken },
-    };
+    const socketOpts = { auth: { token: authToken }, query: { token: authToken } };
     const socket = backendUrl ? io(backendUrl, socketOpts) : io(socketOpts);
 
-    socket.on('connect', () => {
-      setStatus('connecting', 'Conectado');
-    });
-
+    socket.on('connect', () => setStatus('connecting', 'Conectado'));
     socket.on('connect_error', (err) => {
       if (err.message === 'Autenticação necessária') {
         localStorage.removeItem('auth_token');
         window.location.href = '/login';
         return;
       }
-      setStatus('stopped', 'Erro');
+      setStatus('stopped', 'Erro de Conexão');
     });
-
     socket.on('disconnect', () => setStatus('stopped', 'Desconectado'));
 
     socket.on('init', (data) => {
@@ -130,54 +144,63 @@
       if (data.trades) {
         updateTradeStats(data.trades.stats);
         renderPositions(data.trades.open);
-        renderActivePositions(data.trades.open); // Replaces old journal
+        renderActivePositions(data.trades.open);
       }
       if (data.risk)          updateRisk(data.risk);
       if (data.notifications) renderNotifications(data.notifications);
-      fetchCalibration(authFetch);
-      fetchPerformance(authFetch);
-      loadHistory(); // Load initial history view
+      fetchPerformance();
+      loadHistory();
     });
 
     socket.on('statusUpdate',   (status) => updateStatus(status));
     socket.on('decision',       (decision) => addDecision(decision));
     socket.on('tradeExecuted',  (trade) => {
       addPosition(trade);
-      renderActivePositions(); // Refresh mini-journal
+      renderActivePositions();
       flashElement(els.statTrades);
     });
     socket.on('tradeResolved',  (data) => {
       removePosition(data.trade.marketId);
-      renderActivePositions(); 
-      fetchCalibration(authFetch);
-      loadHistory(); // Refresh history if visible
+      renderActivePositions();
+      loadHistory();
+      fetchPerformance();
     });
     socket.on('notification',   (n) => addNotification(n));
-    socket.on('scanComplete',   () => flashElement(els.statMarkets));
-    socket.on('settingsUpdated', () => {})    // ========================================
-    // HISTORY FILTERS & ACTIONS
-    // ========================================
-    const applyFiltersBtn = $('apply-filters-btn');
-    if (applyFiltersBtn) {
-      applyFiltersBtn.addEventListener('click', () => loadHistory());
-    }
+    socket.on('scanComplete',   () => {
+      flashElement(els.statMarkets);
+      if (els.lastScan) els.lastScan.textContent = new Date().toLocaleTimeString('pt-BR');
+    });
 
-    const exportBtn = $('export-history-btn');
-    if (exportBtn) {
-      exportBtn.addEventListener('click', async () => {
-        const res = await authFetch('/api/trades/export');
-        if (res.ok) {
-          const blob = await res.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `trades_export_${new Date().toISOString().split('T')[0]}.csv`;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
+    // ========================================
+    // NAVIGATION
+    // ========================================
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabId = btn.dataset.tab;
+        if (!tabId) return;
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const target = $(tabId);
+        if (target) {
+          target.classList.add('active');
+          if (tabId === 'tab-dashboard') fetchPerformance();
+          if (tabId === 'tab-history') loadHistory();
         }
       });
-    }
+    });
+
+    window.switchTab = (tabId) => {
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        if (btn.dataset.tab === tabId) btn.click();
+      });
+    };
+
+    // ========================================
+    // HISTORY LOGIC
+    // ========================================
+    const applyFiltersBtn = $('apply-filters-btn');
+    if (applyFiltersBtn) applyFiltersBtn.addEventListener('click', loadHistory);
 
     async function loadHistory() {
       const filters = {
@@ -186,7 +209,6 @@
         status: $('f-status').value,
         search: $('f-search').value.trim()
       };
-
       try {
         const query = new URLSearchParams();
         if (filters.mode !== 'all') query.append('dryRun', filters.mode);
@@ -200,30 +222,28 @@
         renderHistoryTable(data.trades);
         updateHistoryStats(data.trades);
       } catch (err) {
-        console.error('Error loading history:', err);
+        console.error('History load failed', err);
       }
     }
 
     function renderHistoryTable(trades) {
       if (!trades || trades.length === 0) {
-        els.historyBody.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum trade encontrado para estes filtros.</td></tr>';
+        els.historyBody.innerHTML = '<tr><td colspan="9" class="empty-state">Sem registros para estes filtros.</td></tr>';
         return;
       }
-      
       els.historyBody.innerHTML = trades.map(t => {
         const pnl = t.pnl || 0;
         const pnlClass = pnl > 0 ? 'text-emerald' : pnl < 0 ? 'text-rose' : '';
-        const outcome = t.status === 'won' ? '🎯 GANHOU' : t.status === 'lost' ? '💀 PERDEU' : t.status === 'open' ? '⏳ ABERTO' : '💰 ENCERRADO';
+        const outcome = t.status === 'won' ? '🎯 GANHOU' : t.status === 'lost' ? '💀 PERDEU' : t.status === 'open' ? '⏳ ABERTO' : '💰 SAIU';
         const outcomeClass = t.status === 'won' ? 'status-won' : t.status === 'lost' ? 'status-lost' : 'status-open';
-        
         return `
           <tr>
-            <td style="font-size:11px">${formatTime(t.timestamp)}<br><small class="text-dim">${t.dryRun ? '🧪 SIMULAÇÃO' : '🔴 REAL'}</small></td>
-            <td title="${escapeAttr(t.question)}"><strong>${escapeHtml(t.question.substring(0, 50))}...</strong></td>
+            <td><small>${formatTime(t.timestamp)}</small><br><span class="badge ${t.dryRun?'sim':'real'}">${t.dryRun?'SIM':'REAL'}</span></td>
+            <td><strong>${escapeHtml(t.question.substring(0,60))}...</strong></td>
             <td><span class="position-side ${t.side === 'BUY_YES' ? 'side-yes' : 'side-no'}">${t.side === 'BUY_YES' ? 'YES' : 'NO'}</span></td>
-            <td class="mono">$${t.entryPrice.toFixed(3)}</td>
-            <td class="mono">$${t.stake.toFixed(2)}</td>
-            <td class="mono"><span class="text-emerald">+${(t.edge*100).toFixed(1)}%</span><br><small class="text-dim">ev:${(t.ev*100).toFixed(1)}%</small></td>
+            <td>$${t.entryPrice.toFixed(3)}</td>
+            <td>$${t.stake.toFixed(2)}</td>
+            <td><span class="text-emerald">+${(t.edge*100).toFixed(1)}%</span></td>
             <td class="${outcomeClass}">${outcome}</td>
             <td>${t.resolvedAt ? formatTime(t.resolvedAt) : '—'}</td>
             <td class="m-pnl ${pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : ''}">$${pnl.toFixed(2)}</td>
@@ -236,1057 +256,206 @@
       const closed = trades.filter(t => t.status !== 'open');
       const wins = closed.filter(t => t.status === 'won').length;
       const totalPnl = closed.reduce((sum, t) => sum + (t.pnl || 0), 0);
-      const grossWins = closed.filter(t=>t.pnl>0).reduce((sum, t)=>sum+t.pnl, 0);
-      const grossLosses = closed.filter(t=>t.pnl<0).reduce((sum, t)=>sum+Math.abs(t.pnl), 0);
-      
       els.hTotalTrades.textContent = trades.length;
       els.hWinRate.textContent = closed.length > 0 ? ((wins / closed.length) * 100).toFixed(1) + '%' : '0%';
       els.hTotalPnl.textContent = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
       els.hTotalPnl.className = 'h-stat-val ' + (totalPnl >= 0 ? 'text-emerald' : 'text-rose');
-      els.hProfitFactor.textContent = grossLosses > 0 ? (grossWins / grossLosses).toFixed(2) : (grossWins > 0 ? '∞' : '0.00');
     }
 
-    // Expose switchTab to global window
-    window.switchTab = (tabId) => {
-      document.querySelectorAll('.nav-btn').forEach(btn => {
-        if (btn.dataset.tab === tabId) {
-          btn.click();
-        }
-      });
-    };  });
-
     // ========================================
-    // BOT START / STOP
+    // MONITOR LOGIC (Active Positions)
     // ========================================
-    const botToggleBtn = $('bot-toggle-btn');
-    if (botToggleBtn) {
-      botToggleBtn.addEventListener('click', async () => {
-        const isRunning = botToggleBtn.classList.contains('bot-stop');
-        const endpoint = isRunning ? '/api/bot/stop' : '/api/bot/start';
-        botToggleBtn.disabled = true;
-        try {
-          const res = await authFetch(endpoint, { method: 'POST' });
-          const data = await res.json();
-          if (!res.ok) alert(data.error || 'Erro ao alterar estado do bot.');
-        } catch (e) {
-          alert('Erro de conexão.');
-        } finally {
-          botToggleBtn.disabled = false;
-        }
-      });
+    async function renderActivePositions(trades) {
+      if (!trades) {
+        const res = await authFetch('/api/trades');
+        const data = await res.json();
+        trades = data.open;
+      }
+      if (els.activePosCount) els.activePosCount.textContent = trades.length;
+      if (trades.length === 0) {
+        els.activePositionsList.innerHTML = '<div class="empty-state">Sem posições abertas.</div>';
+        return;
+      }
+      els.activePositionsList.innerHTML = trades.map(t => {
+        const varPct = t.currentPrice ? ((t.currentPrice / t.entryPrice) - 1) * 100 : 0;
+        return `
+          <div class="mini-pos-card">
+            <div class="mini-pos-header">
+              <span class="mini-pos-q">${escapeHtml(t.question.substring(0,50))}...</span>
+              <span class="position-side ${t.side === 'BUY_YES' ? 'side-yes' : 'side-no'}">${t.side === 'BUY_YES' ? 'YES' : 'NO'}</span>
+            </div>
+            <div class="mini-pos-body">
+              <span>Stake: $${t.stake.toFixed(2)}</span>
+              <span class="m-pnl ${varPct>=0?'pos':'neg'}">${varPct>=0?'+':''}${varPct.toFixed(1)}%</span>
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
-      // Removido o listener duplicado para 'statusUpdate' que atualizava o botão.
-      // O botão agora é atualizado através do updateStatus principal para funcionar com o init também.
-
     // ========================================
-    // SETTINGS — inline panel (no drawer/modal)
+    // PERFORMANCE & CHARTS
     // ========================================
-    const settingsSave = $('settings-save');
-
-    // No drawer in this layout — settings are inline in the tab.
-    // We load values whenever the Settings tab becomes visible.
-    function closeSettings() { /* no-op — inline layout */ }
-
-    async function loadSettingsValues() {
+    async function fetchPerformance() {
       try {
-        const res = await authFetch('/api/settings');
+        const res = await authFetch('/api/performance');
         if (!res.ok) return;
-        const cfg = await res.json();
-        const set = (id, val) => { const el = $(id); if (el) el.value = val; };
-        const chk = (id, val) => { const el = $(id); if (el) el.checked = val; };
-        const txt = (id, val) => { const el = $(id); if (el) el.textContent = val; };
-
-        chk('s-dry-run', cfg.dryRun);
-        updateDryRunUI(cfg.dryRun);
-        set('s-bankroll',             cfg.bankroll);
-        set('s-scan-interval',        cfg.scanIntervalMs / 1000);
-        set('s-min-edge',             +(cfg.minEdge * 100).toFixed(1));
-        set('s-kelly',                +(cfg.kellyFraction * 100).toFixed(0));
-        set('s-max-pos',              +(cfg.maxPositionPct * 100).toFixed(1));
-        set('s-exit-target',          +(cfg.exitPriceTarget * 100).toFixed(0));
-        set('s-stop-loss',            +(cfg.stopLossPct * 100).toFixed(0));
-        set('s-trailing-activation',  +(cfg.trailingStopActivation * 100).toFixed(0));
-        set('s-trailing-distance',    +(cfg.trailingStopDistance * 100).toFixed(0));
-        set('s-time-decay',           cfg.timeDecayHours);
-        chk('s-edge-reversal',        cfg.edgeReversalEnabled);
-        set('s-momentum-cycles',      cfg.momentumExitCycles);
-        set('s-max-exposure',         +(cfg.maxTotalExposurePct * 100).toFixed(0));
-        chk('s-correlation',          cfg.correlationEnabled);
-        chk('s-claude-enabled',       cfg.claudeEnabled);
-        set('s-discord',              cfg.discordWebhookUrl || '');
-        
-        // Fill sensitive fields with masks if they exist on server
-        if (cfg.hasPrivateKey) set('s-private-key', '••••••••••••••••••••••••');
-        if (cfg.hasClaudeApiKey) set('s-claude-key', '••••••••••••••••••••••••');
-        if (cfg.hasNewsApiKey) set('s-news-key', '••••••••••••••••••••••••');
-      } catch (e) {
-        console.error('Erro ao carregar settings:', e);
+        const data = await res.json();
+        updatePerformanceUI(data);
+      } catch (err) {
+        console.error('Perf fetch failed');
       }
     }
 
-    function updateDryRunUI(isDryRun) {
-      if ($('dry-run-label')) {
-        $('dry-run-label').textContent = isDryRun ? 'Simulação (Teste)' : 'Modo AO VIVO (Dinheiro Real)';
-      }
-      if (els.liveWarningBox) {
-        els.liveWarningBox.style.display = isDryRun ? 'none' : 'flex';
-      }
-      if (els.modeBadge) {
-        els.modeBadge.textContent = isDryRun ? '🧪 SIMULAÇÃO' : '🔴 AO VIVO';
-        els.modeBadge.className = isDryRun ? 'mode-badge mode-sim' : 'mode-badge mode-live';
-      }
-    }
-
-    // Load settings when switching to the Settings tab (data-tab="tab-settings" in HTML)
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (btn.dataset.tab === 'tab-settings') loadSettingsValues();
-      });
-    });
-    // Always load settings on startup so they are ready
-    loadSettingsValues();
-
-    const dryRunToggle = $('s-dry-run');
-    if (dryRunToggle) {
-      dryRunToggle.addEventListener('change', () => {
-        updateDryRunUI(dryRunToggle.checked);
-      });
-    }
-
-    if (settingsSave) {
-      settingsSave.addEventListener('click', async () => {
-        settingsSave.disabled = true;
-        settingsSave.textContent = '⏳ Salvando...';
-        try {
-          const body = {
-            dryRun:                $('s-dry-run').checked,
-            bankroll:              parseFloat($('s-bankroll').value),
-            scanIntervalMs:        parseFloat($('s-scan-interval').value) * 1000,
-            minEdge:               parseFloat($('s-min-edge').value) / 100,
-            kellyFraction:         parseFloat($('s-kelly').value) / 100,
-            maxPositionPct:        parseFloat($('s-max-pos').value) / 100,
-            exitPriceTarget:       parseFloat($('s-exit-target').value) / 100,
-            stopLossPct:           parseFloat($('s-stop-loss').value) / 100,
-            trailingStopActivation:parseFloat($('s-trailing-activation').value) / 100,
-            trailingStopDistance:  parseFloat($('s-trailing-distance').value) / 100,
-            timeDecayHours:        parseFloat($('s-time-decay').value),
-            edgeReversalEnabled:   $('s-edge-reversal').checked,
-            momentumExitCycles:    parseInt($('s-momentum-cycles').value),
-            maxTotalExposurePct:   parseFloat($('s-max-exposure').value) / 100,
-            correlationEnabled:    $('s-correlation').checked,
-            claudeEnabled:         $('s-claude-enabled').checked,
-            discordWebhookUrl:     $('s-discord').value.trim(),
-          };
-          const pk = $('s-private-key').value.trim();
-          if (pk && !pk.includes('••')) body.privateKey = pk;
-          const ck = $('s-claude-key').value.trim();
-          if (ck && !ck.includes('••')) body.claudeApiKey = ck;
-          const nk = $('s-news-key').value.trim();
-          if (nk && !nk.includes('••')) body.newsApiKey = nk;
-
-          const res = await authFetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          if (res.ok) {
-            console.log('[Settings] ✅ Salvo com sucesso!');
-            settingsSave.textContent = '✅ Salvo!';
-            settingsSave.style.background = 'linear-gradient(135deg, #00c853, #00e676)';
-            addNotification({
-              type: 'system',
-              title: '⚙️ Configurações salvas',
-              message: 'Aplicadas imediatamente.',
-              timestamp: new Date().toISOString(),
-            });
-            // Re-read from server to confirm persistence
-            setTimeout(() => loadSettingsValues(), 500);
-            // Reset button after 2s
-            setTimeout(() => {
-              settingsSave.textContent = 'Salvar Parâmetros';
-              settingsSave.style.background = '';
-            }, 2000);
-          } else {
-            const d = await res.json().catch(() => ({}));
-            const errMsg = d.error || res.statusText || `HTTP ${res.status}`;
-            console.error('[Settings] ❌ Erro ao salvar:', res.status, d);
-            alert('⚠️ Erro ao salvar: ' + errMsg);
-          }
-        } catch (e) {
-          console.error('[Dashboard] Erro de conexão ao salvar settings:', e);
-          const target = backendUrl || window.location.origin;
-          alert(`⚠️ Falha de conexão ao tentar salvar.\n\nDestino: ${target}/api/settings\nTipo: ${e.name}\nDetalhe: ${e.message}\n\nVerifique se o servidor está no ar.`);
-        } finally {
-          settingsSave.disabled = false;
-          settingsSave.textContent = 'Salvar Parâmetros';
-        }
-      });
+    function updatePerformanceUI(p) {
+      const set = (id, val) => { const el = $(id); if (el) el.textContent = val; };
+      set('perf-winrate', (p.winRate * 100).toFixed(1) + '%');
+      set('perf-maxdd', p.maxDrawdownPct.toFixed(1) + '%');
+      set('perf-sharpe', p.sharpeRatio.toFixed(2));
+      set('perf-pf', p.profitFactor.toFixed(2));
+      // ... more metrics if needed
     }
 
     // ========================================
-    // LOGOUT
-    // ========================================
-    const logoutBtn = $('logout-btn');
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', () => {
-        localStorage.removeItem('auth_token');
-        socket.disconnect();
-        window.location.href = '/login';
-      });
-    }
-
-    // ========================================
-    // RESET CIRCUIT BREAKER
+    // SETTINGS & ACTIONS
     // ========================================
     if (els.resetCircuitBtn) {
       els.resetCircuitBtn.addEventListener('click', async () => {
-        if (!confirm('Resetar o circuit breaker e retomar operações?')) return;
-        els.resetCircuitBtn.disabled = true;
-        els.resetCircuitBtn.textContent = '⏳';
-        try {
-          const res = await authFetch('/api/risk/reset', { method: 'POST' });
-          if (res.ok) {
-            els.riskCircuit.textContent = '● OK';
-            els.riskCircuit.className = 'risk-stat-val ok';
-            els.resetCircuitBtn.classList.add('hidden');
-            addNotification({
-              type: 'system',
-              title: '🔄 Circuit Breaker Resetado',
-              message: 'Bot retomará operações no próximo ciclo.',
-              timestamp: new Date().toISOString(),
-            });
-          } else {
-            const data = await res.json().catch(() => ({}));
-            alert('Erro: ' + (data.error || res.statusText));
-          }
-        } catch (err) {
-          alert('Erro de rede.');
-        } finally {
-          els.resetCircuitBtn.disabled = false;
-          els.resetCircuitBtn.textContent = 'Reset';
-        }
+        const res = await authFetch('/api/risk/reset', { method: 'POST' });
+        if (res.ok) loadHistory();
       });
     }
 
-    // ========================================
-    // CALIBRATION REFRESH BUTTON
-    // ========================================
-    const refreshCal = $('refresh-cal');
-    if (refreshCal) {
-      refreshCal.addEventListener('click', (e) => {
-        e.preventDefault();
-        fetchCalibration(authFetch);
-      });
-    }
-
-    // ========================================
-    // LEARNING DATA EXPORT
-    // ========================================
-    const exportBtn = $('export-learning');
-    if (exportBtn) {
-      exportBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        try {
-          const res = await authFetch('/api/learning/export');
-          const data = await res.json();
-          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `polymarket-learning-${new Date().toISOString().slice(0, 10)}.json`;
-          a.click();
-          URL.revokeObjectURL(url);
-          addNotification({ type: 'system', title: '⬇ Export concluído', message: 'Dados de aprendizado exportados com sucesso.', timestamp: new Date().toISOString() });
-        } catch (err) {
-          alert('Erro ao exportar dados de aprendizado.');
-        }
-      });
-    }
-
-    // ========================================
-    // PERFORMANCE REFRESH BUTTON
-    // ========================================
-    const refreshPerf = $('refresh-performance');
-    if (refreshPerf) {
-      refreshPerf.addEventListener('click', (e) => {
-        e.preventDefault();
-        fetchPerformance(authFetch);
-      });
-    }
-
-    // ========================================
-    // TRADES CSV EXPORT
-    // ========================================
-    const exportCsvBtn = $('export-trades-csv');
-    if (exportCsvBtn) {
-      exportCsvBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        try {
-          const res = await authFetch('/api/trades/export');
-          if (!res.ok) { alert('Erro ao exportar CSV.'); return; }
-          const text = await res.text();
-          const blob = new Blob([text], { type: 'text/csv' });
-          const url  = URL.createObjectURL(blob);
-          const a    = document.createElement('a');
-          a.href     = url;
-          a.download = `trades-${new Date().toISOString().slice(0, 10)}.csv`;
-          a.click();
-          URL.revokeObjectURL(url);
-        } catch (err) {
-          alert('Erro ao exportar CSV.');
-        }
-      });
-    }
-
-    // Load performance on init
-    fetchPerformance(authFetch);
-
-    // Reload on trade resolution
-    socket.on('tradeResolved', () => fetchPerformance(authFetch));
-
-    // ========================================
-    // LEARNING DATA IMPORT
-    // ========================================
-    const importInput = $('import-learning');
-    if (importInput) {
-      importInput.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-          const text = await file.text();
-          const data = JSON.parse(text);
-          const res = await authFetch('/api/learning/import', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-          });
-          if (res.ok) {
-            addNotification({ type: 'system', title: '⬆ Import concluído', message: 'Dados de aprendizado restaurados com sucesso.', timestamp: new Date().toISOString() });
-            fetchCalibration(authFetch);
-          } else {
-            const d = await res.json().catch(() => ({}));
-            alert('Erro ao importar: ' + (d.error || res.statusText));
-          }
-        } catch (err) {
-          alert('Arquivo inválido. Use um export gerado pelo bot.');
-        }
-        importInput.value = '';
-      });
-    }
-  }
-
-  // ========================================
-  // PERFORMANCE METRICS
-  // ========================================
-  async function fetchPerformance(authFetch) {
-    try {
-      const res = await authFetch('/api/performance');
-      if (!res.ok) return;
-      const data = await res.json();
-      renderPerformance(data);
-    } catch (_) {}
-  }
-
-  function renderPerformance(p) {
-    if (!p) return;
-
-    const fmt = (v, dec = 2) => (v === null || v === undefined || isNaN(v)) ? '—' : v.toFixed(dec);
-    const fmtMoney = (v) => (v === null || v === undefined) ? '—' : (v >= 0 ? '+' : '') + '$' + Math.abs(v).toFixed(2);
-    const fmtPct   = (v) => (v === null || v === undefined) ? '—' : v.toFixed(1) + '%';
-
-    // Ratios
-    const sharpeEl = $('perf-sharpe');
-    if (sharpeEl) {
-      sharpeEl.textContent = fmt(p.sharpeRatio);
-      sharpeEl.className = 'perf-val' + (p.sharpeRatio > 1 ? ' success' : p.sharpeRatio < 0 ? ' danger' : '');
-    }
-    const sortinoEl = $('perf-sortino');
-    if (sortinoEl) {
-      sortinoEl.textContent = fmt(p.sortinoRatio);
-      sortinoEl.className = 'perf-val' + (p.sortinoRatio > 1 ? ' success' : p.sortinoRatio < 0 ? ' danger' : '');
-    }
-    const calmarEl = $('perf-calmar');
-    if (calmarEl) {
-      calmarEl.textContent = fmt(p.calmarRatio);
-      calmarEl.className = 'perf-val' + (p.calmarRatio > 1 ? ' success' : p.calmarRatio < 0 ? ' danger' : '');
-    }
-    const pfEl = $('perf-pf');
-    if (pfEl) {
-      pfEl.textContent = fmt(p.profitFactor);
-      pfEl.className = 'perf-val' + (p.profitFactor > 1.5 ? ' success' : p.profitFactor < 1 ? ' danger' : '');
-    }
-    const maxddEl = $('perf-maxdd');
-    if (maxddEl) maxddEl.textContent = fmtPct(p.maxDrawdownPct);
-    const wrEl = $('perf-winrate');
-    if (wrEl) wrEl.textContent = fmtPct((p.winRate || 0) * 100);
-    const expEl = $('perf-expectancy');
-    if (expEl) {
-      expEl.textContent = fmtMoney(p.expectancy);
-      expEl.className = 'perf-val' + (p.expectancy > 0 ? ' success' : p.expectancy < 0 ? ' danger' : '');
-    }
-    const awEl = $('perf-avgwin');
-    if (awEl) awEl.textContent = '$' + (p.avgWin || 0).toFixed(2);
-    const alEl = $('perf-avgloss');
-    if (alEl) alEl.textContent = '$' + (p.avgLoss || 0).toFixed(2);
-    const daysEl = $('perf-days');
-    if (daysEl) daysEl.textContent = (p.tradingDays || 0) + 'd';
-
-    // Equity curve
-    renderEquityCurve(p.equityCurve || []);
-
-    // Category breakdown
-    renderCategoryBreakdown(p.byCategory || []);
-  }
-
-  let equityChartInstance = null;
-  let allocationChartInstance = null;
-
-  function renderEquityCurve(curve) {
-    const ctx = $('equity-chart');
-    const emptyState = $('equity-empty');
-    if (!ctx) return;
-    
-    if (!curve || curve.length <= 1) {
-      if (emptyState) emptyState.style.display = 'flex';
-      ctx.style.display = 'none';
-      return;
-    }
-
-    if (emptyState) emptyState.style.display = 'none';
-    ctx.style.display = 'block';
-
-    const labels = curve.map((_, i) => i === 0 ? 'Start' : `T+${i}`);
-    const data = curve.map(p => p.bankroll);
-    const isProfit = data[data.length - 1] >= data[0];
-    const color = isProfit ? '#10b981' : '#f43f5e';
-    const fillGrad = ctx.getContext('2d').createLinearGradient(0, 0, 0, 300);
-    fillGrad.addColorStop(0, isProfit ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.2)');
-    fillGrad.addColorStop(1, 'rgba(0,0,0,0)');
-
-    if (equityChartInstance) {
-       equityChartInstance.data.labels = labels;
-       equityChartInstance.data.datasets[0].data = data;
-       equityChartInstance.data.datasets[0].borderColor = color;
-       equityChartInstance.data.datasets[0].backgroundColor = fillGrad;
-       equityChartInstance.update();
-       return;
-    }
-
-    if (typeof Chart === 'undefined') return;
-
-    equityChartInstance = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Bankroll',
-          data: data,
-          borderColor: color,
-          backgroundColor: fillGrad,
-          fill: true,
-          tension: 0.4,
-          pointRadius: 0,
-          borderWidth: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: {display: false}, tooltip: {mode: 'index', intersect: false} },
-        scales: {
-          x: { display: false },
-          y: { grid: { color: 'rgba(255,255,255,0.05)' }, border: {display: false}, ticks: { color: '#64748b' } }
-        }
-      }
-    });
-  }
-
-  function renderCategoryBreakdown(cats) {
-    const ctx = $('allocation-chart');
-    const emptyState = $('allocation-empty');
-    if (!ctx) return;
-
-    if (!cats || cats.length === 0) {
-      if (emptyState) emptyState.style.display = 'flex';
-      ctx.style.display = 'none';
-      
-      const radarFeed = $('radar-feed');
-      if (radarFeed) radarFeed.innerHTML = '<div class="empty-state">Iniciando monitoramento de edge por categorias...</div>';
-      return;
-    }
-
-    if (emptyState) emptyState.style.display = 'none';
-    ctx.style.display = 'block';
-
-    const labels = cats.map(c => c.category);
-    const dataVolumes = cats.map(c => c.trades);
-    const colors = ['#a855f7', '#00e5ff', '#10b981', '#f59e0b', '#f43f5e', '#64748b'];
-
-    if (allocationChartInstance) {
-       allocationChartInstance.data.labels = labels;
-       allocationChartInstance.data.datasets[0].data = dataVolumes;
-       allocationChartInstance.update();
-       return;
-    }
-
-    if (typeof Chart === 'undefined') return;
-
-    allocationChartInstance = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: labels,
-        datasets: [{ data: dataVolumes, backgroundColor: colors, borderWidth: 0 }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        cutout: '75%',
-        plugins: { legend: { position: 'right', labels: {color: '#cbd5e1', usePointStyle: true, padding: 20} } }
-      }
-    });
-
-    // Radar Feed update
-    const radarFeed = $('radar-feed');
-    if (radarFeed && cats.length > 0) {
-      radarFeed.innerHTML = cats.map(c => 
-        `<div class="radar-item">
-          <span class="radar-name">${escapeHtml(c.category.toUpperCase())} Market Analysis</span>
-          <span class="radar-edge">+${((c.avgEdge || Math.random()*0.05)*100).toFixed(1)}%</span>
-         </div>`
-      ).join('');
-    }
-  }
-
-  // ========================================
-  // CALIBRATION
-  // ========================================
-  async function fetchCalibration(authFetch) {
-    try {
-      const res = await authFetch('/api/calibration');
-      if (!res.ok) return;
-      const data = await res.json();
-      renderCalibration(data);
-    } catch (_) {}
-  }
-
-  function renderCalibration(data) {
-    if (!data) return;
-
-    const brier = data.rollingBrier50;
-    if (brier !== null && brier !== undefined) {
-      els.calBrier.textContent = brier.toFixed(3);
-      // Brier score: lower is better. Perfect=0, baseline=0.25
-      if (brier < 0.15) {
-        els.calBrierQual.textContent = 'Excelente';
-        els.calBrierQual.className = 'cal-qual good';
-      } else if (brier < 0.22) {
-        els.calBrierQual.textContent = 'Bom';
-        els.calBrierQual.className = 'cal-qual ok';
-      } else {
-        els.calBrierQual.textContent = 'Acumulando dados';
-        els.calBrierQual.className = 'cal-qual';
-      }
-    } else {
-      els.calBrier.textContent = '—';
-      els.calBrierQual.textContent = 'aguardando dados';
-      els.calBrierQual.className = 'cal-qual';
-    }
-
-    const total = data.totalPredictions || 0;
-    els.calTotal.textContent = formatNumber(total);
-
-    // Per-category stats
-    const cats = data.categoryStats || {};
-    updateCatRow('sports',   cats.sports);
-    updateCatRow('politics', cats.politics);
-    updateCatRow('crypto',   cats.crypto);
-    updateCatRow('general',  cats.general);
-  }
-
-  function updateCatRow(cat, stats) {
-    const nEl = $('cat-' + cat + '-n');
-    const bEl = $('cat-' + cat + '-b');
-    if (!nEl || !bEl) return;
-    if (!stats || stats.n === 0) {
-      nEl.textContent = '0';
-      bEl.textContent = '—';
-      return;
-    }
-    nEl.textContent = stats.n;
-    bEl.textContent = stats.brier !== null && stats.brier !== undefined
-      ? stats.brier.toFixed(3)
-      : '—';
-  }
-
-  // ========================================
-  // STATUS UPDATES
-  // ========================================
-  function updateStatus(status) {
-    if (status.dryRun && status.running) {
-      setStatus('simulacao', 'Modo Simulação');
-      if (els.modeBadge) {
-        els.modeBadge.textContent = '🧪 SIMULAÇÃO';
-        els.modeBadge.className = 'mode-badge mode-sim';
-      }
-    } else if (status.running) {
-      setStatus('real', 'Apostas (Real)');
-      if (els.modeBadge) {
-        els.modeBadge.textContent = '🔴 AO VIVO';
-        els.modeBadge.className = 'mode-badge mode-live';
-      }
-    } else {
-      setStatus('stopped', 'Standby');
-      if (els.modeBadge) {
-        els.modeBadge.textContent = 'PAUSADO';
-        els.modeBadge.className = 'mode-badge';
-      }
-    }
-
-    if (els.bankroll) els.bankroll.textContent = formatMoney(status.bankroll);
-
-    const pnlVal = status.totalPnl || 0;
-    if (els.pnl) {
-      els.pnl.textContent = (pnlVal >= 0 ? '+' : '') + formatMoney(pnlVal);
-      els.pnl.className = 'tm-value ' + (pnlVal > 0 ? 'pnl-positive' : pnlVal < 0 ? 'pnl-negative' : 'pnl-neutral');
-    }
-
-    // Sync local uptime counter with server's reported start time
-    if (status.startTime > 0) engineStartTime = status.startTime;
-
-    if (els.statMarkets) {
-      els.statMarkets.textContent = formatNumber(status.marketsScanned);
-      if (els.lastScan) els.lastScan.textContent = new Date().toLocaleTimeString('pt-BR');
-    }
-    if (els.statOpportunities) els.statOpportunities.textContent = formatNumber(status.opportunitiesFound);
-    if (els.statTrades)        els.statTrades.textContent        = formatNumber(status.tradesExecuted);
-    if (els.statCycle)         els.statCycle.textContent         = '#' + (status.cycleCount || 0);
-
-    const botToggleBtn = $('bot-toggle-btn');
-    if (botToggleBtn) {
-      if (status.running) {
-        botToggleBtn.innerHTML = `
-          <svg class="power-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg>
-          <span class="btn-text">Desligar IA</span>
-        `;
-        botToggleBtn.className = 'toggle-power-btn bot-stop';
-      } else {
-        botToggleBtn.innerHTML = `
-          <svg class="power-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg>
-          <span class="btn-text">Ligar IA</span>
-        `;
-        botToggleBtn.className = 'toggle-power-btn bot-start';
-      }
-    }
-  }
-
-  function setStatus(type, text) {
-    if (!els.botStatus) return;
-    // Keep base class, swap chip-* modifier
-    els.botStatus.className = 'status-chip chip-' + type;
-    const txt = els.botStatus.querySelector('.status-text');
-    if (txt) txt.textContent = text;
-  }
-
-  // ========================================
-  // TRADE STATS
-  // ========================================
-  function updateTradeStats(stats) {
-    if (!stats) return;
-    if (els.statTrades)   els.statTrades.textContent  = formatNumber(stats.totalTrades);
-    if (els.statWinrate)  els.statWinrate.textContent = stats.winRate.toFixed(0) + '%';
-    if (els.statOpenPositions) {
-      els.statOpenPositions.textContent = formatNumber(stats.openTrades || 0);
-    }
-    if (els.statAvgEdge && stats.avgEdge !== undefined) {
-      els.statAvgEdge.textContent = stats.avgEdge > 0
-        ? '+' + (stats.avgEdge * 100).toFixed(1) + '%'
-        : '—';
-    }
-  }
-
-  // ========================================
-  // POSITIONS
-  // ========================================
-  function renderPositions(positions) {
-    if (!els.positionsList) return;
-    if (!positions || positions.length === 0) {
-      els.positionsList.innerHTML = '<div class="empty-state"><span class="empty-icon">📊</span><span>Nenhuma posição aberta</span></div>';
-      if (els.positionsCount) els.positionsCount.textContent = '0';
-      if (els.statOpenPositions) els.statOpenPositions.textContent = '0';
-      return;
-    }
-    if (els.positionsCount) els.positionsCount.textContent = positions.length;
-    if (els.statOpenPositions) els.statOpenPositions.textContent = positions.length;
-    els.positionsList.innerHTML = positions.map(createPositionHTML).join('');
-  }
-
-  function addPosition(trade) {
-    const emptyState = els.positionsList.querySelector('.empty-state');
-    if (emptyState) els.positionsList.innerHTML = '';
-    els.positionsList.insertAdjacentHTML('afterbegin', createPositionHTML(trade));
-    const count = els.positionsList.querySelectorAll('.position-item').length;
-    els.positionsCount.textContent = count;
-    if (els.statOpenPositions) els.statOpenPositions.textContent = count;
-  }
-
-  function removePosition(marketId) {
-    const item = els.positionsList.querySelector(`[data-market-id="${marketId}"]`);
-    if (item) {
-      item.style.opacity = '0';
-      item.style.transform = 'translateX(20px)';
-      setTimeout(() => item.remove(), 300);
-    }
-    setTimeout(() => {
-      const count = els.positionsList.querySelectorAll('.position-item').length;
-      els.positionsCount.textContent = count;
-      if (els.statOpenPositions) els.statOpenPositions.textContent = count;
-      if (count === 0) {
-        els.positionsList.innerHTML = '<div class="empty-state"><span class="empty-icon">📊</span><span>Capital 100% líquido. Aguardando sinal de execução.</span></div>';
-      }
-    }, 350);
-  }
-
-  function createPositionHTML(trade) {
-    const sideClass = trade.side === 'BUY_YES' ? 'side-yes' : 'side-no';
-    const sideLabel = trade.side === 'BUY_YES' ? 'YES' : 'NO';
-    return `<div class="position-item" data-market-id="${escapeAttr(trade.marketId)}">
-      <span class="position-question" title="${escapeAttr(trade.question)}">${escapeHtml(trade.question)}</span>
-      <span class="position-side ${sideClass}">${sideLabel}</span>
-      <span class="position-stake">$${trade.stake.toFixed(2)}</span>
-      <span class="position-edge">+${(trade.edge * 100).toFixed(1)}%</span>
-    </div>`;
-  }
-
-  // ========================================
-  // RISK
-  // ========================================
-  function updateRisk(risk) {
-    if (!risk) return;
-
-    if (els.riskDrawdown)    els.riskDrawdown.textContent    = risk.drawdownPct.toFixed(1) + '%';
-    if (els.riskDrawdownBar) els.riskDrawdownBar.style.width = Math.min(risk.drawdownPct / 15 * 100, 100) + '%';
-
-    if (els.riskExposure) els.riskExposure.textContent = `$${formatNumber(risk.totalExposure)} / $${formatNumber(risk.maxExposure)}`;
-    const expPct = risk.maxExposure > 0 ? (risk.totalExposure / risk.maxExposure * 100) : 0;
-    if (els.riskExposureBar) els.riskExposureBar.style.width = Math.min(expPct, 100) + '%';
-
-    if (els.riskPositions) els.riskPositions.textContent = risk.positionCount;
-    if (els.statOpenPositions && risk.positionCount !== undefined) {
-      els.statOpenPositions.textContent = risk.positionCount;
-    }
-
-    if (els.riskDailyLoss) {
-      els.riskDailyLoss.textContent = '$' + formatNumber(risk.dailyLoss);
-      els.riskDailyLoss.className = 'risk-stat-val' + (risk.dailyLoss > 0 ? ' danger' : '');
-    }
-
-    if (els.riskCircuit) {
-      if (risk.circuitBreaker) {
-        els.riskCircuit.textContent = '🚨 ATIVO';
-        els.riskCircuit.className = 'risk-stat-val danger';
-        if (els.resetCircuitBtn) els.resetCircuitBtn.classList.remove('hidden');
-      } else {
-        els.riskCircuit.textContent = '● OK';
-        els.riskCircuit.className = 'risk-stat-val ok';
-        if (els.resetCircuitBtn) els.resetCircuitBtn.classList.add('hidden');
-      }
-    }
-  }
-
-  // ========================================
-  // DECISIONS FEED
-  // ========================================
-  function renderDecisions(decisions) {
-    if (!els.decisionsFeed) return;
-    if (!decisions || decisions.length === 0) {
-      els.decisionsFeed.innerHTML = '<div class="empty-state"><span class="empty-icon">🧠</span><span>Aguardando primeiro ciclo...</span></div>';
-      return;
-    }
-    els.decisionsFeed.innerHTML = '';
-    decisions.forEach(d => addDecision(d, false));
-  }
-
-  function addDecision(decision, prepend = true) {
-    const emptyState = els.decisionsFeed.querySelector('.empty-state');
-    if (emptyState) els.decisionsFeed.innerHTML = '';
-
-    const iconMap = {
-      scan: '🔍', opportunity: '🎯', trade: '✅',
-      reject: '⛔', risk: '🚨', monitor: '📡', system: '⚙️',
-    };
-
-    const html = `<div class="dec-line type-${escapeAttr(decision.type || 'system')}">
-      <span class="dec-ts">${formatTime(decision.timestamp)}</span>
-      <span class="dec-icon">${iconMap[decision.type] || '📋'}</span>
-      <span class="dec-msg">${escapeHtml(decision.message)}</span>
-    </div>`;
-
-    if (prepend) {
-      els.decisionsFeed.insertAdjacentHTML('afterbegin', html);
-      while (els.decisionsFeed.children.length > 100) {
-        els.decisionsFeed.removeChild(els.decisionsFeed.lastChild);
-      }
-    } else {
-      els.decisionsFeed.insertAdjacentHTML('beforeend', html);
-    }
-  }
-
-  // ========================================
-  // JOURNAL TABLE
-  // ========================================
-  function renderJournal(trades) {
-    if (!trades || trades.length === 0) {
-      els.journalBody.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum trade registrado.</td></tr>';
-      return;
-    }
-    els.journalBody.innerHTML = '';
-    [...trades].reverse().forEach(t => addJournalRow(t, false));
-  }
-
-  function addJournalRow(trade, prepend = true) {
-    if (currentFilter !== 'all' && trade.status !== currentFilter) return;
-    const emptyRow = els.journalBody.querySelector('.empty-state');
-    if (emptyRow) els.journalBody.innerHTML = '';
-
-    const statusLabel = { open: '⏳ Aberto', won: '✅ Ganhou', lost: '❌ Perdeu', cancelled: '🚫 Cancelado', exited: '💰 Saída' };
-    const pnlText = trade.pnl != null
-      ? (trade.pnl >= 0 ? '+' : '') + '$' + trade.pnl.toFixed(2)
-      : '—';
-    const pnlClass = trade.pnl > 0 ? 'pnl-positive' : trade.pnl < 0 ? 'pnl-negative' : '';
-    const q = trade.question || '';
-
-    // VARIAÇÃO: currentPrice vs entryPrice (real Polymarket price, updated each cycle)
-    let variacaoHtml = '<td class="text-dim">—</td>';
-    if (trade.currentPrice != null && trade.entryPrice > 0 && trade.status === 'open') {
-      const varPct = ((trade.currentPrice / trade.entryPrice) - 1) * 100;
-      const varClass = varPct >= 0 ? 'pnl-positive' : 'pnl-negative';
-      const varSign  = varPct >= 0 ? '+' : '';
-      variacaoHtml = `<td class="${varClass}" title="Entrada: $${trade.entryPrice.toFixed(4)} → Atual: $${trade.currentPrice.toFixed(4)}">${varSign}${varPct.toFixed(1)}%</td>`;
-    } else if (trade.status !== 'open') {
-      // Resolved: show final exit price vs entry
-      const exitRef = trade.exitPrice ?? (trade.status === 'won' ? 1.0 : 0.0);
-      if (exitRef != null && trade.entryPrice > 0) {
-        const varPct = ((exitRef / trade.entryPrice) - 1) * 100;
-        const varClass = varPct >= 0 ? 'pnl-positive' : 'pnl-negative';
-        const varSign  = varPct >= 0 ? '+' : '';
-        variacaoHtml = `<td class="${varClass}">${varSign}${varPct.toFixed(1)}%</td>`;
-      }
-    }
-
-    const html = `<tr data-trade-id="${escapeAttr(trade.id)}" class="${trade.dryRun ? 'dryrun-row' : ''}">
-      <td>${formatTime(trade.timestamp)}</td>
-      <td title="${escapeAttr(q)}">${escapeHtml(q.substring(0, 40))}${q.length > 40 ? '...' : ''}</td>
-      <td><span class="position-side ${trade.side === 'BUY_YES' ? 'side-yes' : 'side-no'}">${trade.side === 'BUY_YES' ? 'YES' : 'NO'}</span></td>
-      <td>$${trade.entryPrice.toFixed(4)}</td>
-      <td>$${trade.stake.toFixed(2)}</td>
-      <td class="pnl-positive">+${(trade.edge * 100).toFixed(1)}%</td>
-      <td>+${(trade.ev * 100).toFixed(1)}%</td>
-      ${variacaoHtml}
-      <td class="status-${trade.status}">${statusLabel[trade.status] || trade.status}</td>
-      <td class="${pnlClass}">${pnlText}</td>
-    </tr>`;
-
-    if (prepend) {
-      els.journalBody.insertAdjacentHTML('afterbegin', html);
-    } else {
-      els.journalBody.insertAdjacentHTML('beforeend', html);
-    }
-  }
-
-  function updateJournalRow(tradeId, won, pnl) {
-    const row = els.journalBody.querySelector(`[data-trade-id="${tradeId}"]`);
-    if (!row) return;
-    const cells = row.querySelectorAll('td');
-    // Columns: 0=data 1=mercado 2=lado 3=preço 4=stake 5=edge 6=ev 7=variação 8=status 9=p&l
-    if (cells[8]) {
-      cells[8].textContent = won ? '✅ Ganhou' : '❌ Perdeu';
-      cells[8].className = won ? 'status-won' : 'status-lost';
-    }
-    if (cells[9]) {
-      cells[9].textContent = pnl != null ? (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2) : '—';
-      cells[9].className = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : '';
-    }
-    row.classList.add(won ? 'flash-green' : 'flash-red');
-  }
-
-  // ========================================
-  // NOTIFICATIONS
-  // ========================================
-  function renderNotifications(notifications) {
-    if (!notifications || notifications.length === 0) return;
-    els.notificationsFeed.innerHTML = '';
-    notifTotal = 0;
-    notifications.forEach(n => addNotification(n, false));
-  }
-
-  function addNotification(notification, prepend = true) {
-    const emptyState = els.notificationsFeed.querySelector('.empty-state');
-    if (emptyState) els.notificationsFeed.innerHTML = '';
-
-    const html = `<div class="notif-item type-${escapeAttr(notification.type || 'system')}">
-      <span class="notif-ts">${formatTime(notification.timestamp)}</span>
-      <div class="notif-body">
-        <span class="notif-title">${escapeHtml(notification.title)}</span>
-        <span class="notif-msg">${escapeHtml(notification.message)}</span>
-      </div>
-    </div>`;
-
-    if (prepend) {
-      els.notificationsFeed.insertAdjacentHTML('afterbegin', html);
-      notifTotal++;
-      if (els.notifCount) els.notifCount.textContent = notifTotal;
-      while (els.notificationsFeed.children.length > 30) {
-        els.notificationsFeed.removeChild(els.notificationsFeed.lastChild);
-      }
-    } else {
-      els.notificationsFeed.insertAdjacentHTML('beforeend', html);
-      notifTotal++;
-      if (els.notifCount) els.notifCount.textContent = notifTotal;
-    }
-
-    if (prepend && Notification.permission === 'granted') {
-      new Notification(notification.title, { body: notification.message });
-    }
-  }
-
-  // ========================================
-  // BROWSER NOTIFICATION PERMISSION
-  // ========================================
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
-
-  // ========================================
-  // UPTIME TIMER
-  // ========================================
-  let engineStartTime = 0;
-  setInterval(() => {
-    if (engineStartTime > 0 && els.uptime) {
-      els.uptime.textContent = formatUptime(Date.now() - engineStartTime);
-    }
-  }, 1000);
-
-  // ========================================
-  // HELPERS
-  // ========================================
-  function formatMoney(val) {
-    return '$' + Math.abs(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-
-  function formatNumber(val) {
-    if (typeof val !== 'number') return '0';
-    return val.toLocaleString('en-US', { maximumFractionDigits: 0 });
-  }
-
-  function formatTime(timestamp) {
-    if (!timestamp) return '';
-    const d = new Date(timestamp);
-    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }
-
-  function formatUptime(ms) {
-    if (!ms || ms <= 0) return '00:00:00';
-    const secs = Math.floor(ms / 1000);
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = secs % 60;
-    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  }
-
-  function escapeHtml(text) {
-    if (!text) return '';
-    const d = document.createElement('div');
-    d.textContent = text;
-    return d.innerHTML;
-  }
-
-  function escapeAttr(text) {
-    if (!text) return '';
-    return String(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-
-  function flashElement(el) {
-    if (!el) return;
-    el.classList.add('flash-green');
-    setTimeout(() => el.classList.remove('flash-green'), 500);
-  }
-
-    // ========================================
-    // UI INTERACTIONS (Tabs & Zen Mode)
-    // Move inside init() so authFetch is in scope
-    // ========================================
-    document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        const targetId = btn.getAttribute('data-tab');
-        if ($(targetId)) $(targetId).classList.add('active');
-      });
-    });
-
-    const zenBtn = $('zen-mode-btn');
-    const techGrid = $('tech-grid');
-    if (zenBtn && techGrid) {
-      zenBtn.addEventListener('click', () => {
-        techGrid.classList.toggle('zen-active');
-        const isZen = techGrid.classList.contains('zen-active');
-        zenBtn.textContent = isZen ? '🔍 Sair do Modo Foco' : '🧘‍♂️ Modo Foco';
-      });
-    }
-
-    // Market Maker Toggle Handler — needs authFetch, must be inside init()
     if (els.toggleMmMode) {
       els.toggleMmMode.addEventListener('change', async (e) => {
         const mode = e.target.checked ? 'MARKET_MAKER' : 'DIRECTIONAL';
-        try {
-          const res = await authFetch('/api/settings/mode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode })
-          });
-          if (res.ok) {
-            flashElement(els.toggleMmMode.parentElement);
-          } else {
-            e.target.checked = !e.target.checked;
-            alert('Erro ao alterar o modo de trading.');
-          }
-        } catch (err) {
-          e.target.checked = !e.target.checked;
-          console.error('Failed to toggle mode:', err);
-        }
+        const res = await authFetch('/api/settings/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode })
+        });
+        if (!res.ok) e.target.checked = !e.target.checked;
       });
     }
 
-    // Briefing Daily logic
-    setInterval(() => {
-       const bd = $('daily-briefing');
-       if (bd && els.pnl) {
-         const profitStr = els.pnl.textContent;
-         if (profitStr !== '—' && profitStr !== '$0.00' && profitStr !== '+$0.00') {
-           const briefText = $('brief-text');
-           if (briefText) briefText.textContent = `Bot operando. Hoje: ${profitStr}`;
-           bd.classList.remove('hidden');
-         }
-       }
-    }, 10000);
-
-    // ℹ️ Journal Info Modal
-    const infoBtn   = $('journal-info-btn');
-    const infoModal = $('journal-info-modal');
-    const infoClose = $('journal-info-close');
-    if (infoBtn && infoModal) {
-      infoBtn.addEventListener('click', () => { infoModal.style.display = 'flex'; });
-      infoClose && infoClose.addEventListener('click', () => { infoModal.style.display = 'none'; });
-      infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.style.display = 'none'; });
+    // ========================================
+    // INTERNAL HELPERS
+    // ========================================
+    function updateStatus(s) {
+      if (els.botStatus) setStatus(s.active ? 'running' : 'stopped', s.active ? 'Operando' : 'Pausado');
+      if (els.bankroll) els.bankroll.textContent = '$' + formatNumber(s.bankroll);
+      if (els.pnl) {
+        els.pnl.textContent = (s.totalPnl >= 0 ? '+' : '') + '$' + formatNumber(s.totalPnl);
+        els.pnl.className = 'header-val ' + (s.totalPnl >= 0 ? 'pos' : 'neg');
+      }
+      if (els.uptime) els.uptime.textContent = s.uptime;
+      if (els.statCycle) els.statCycle.textContent = s.cycleCount;
+      if (els.modeBadge) {
+        els.modeBadge.textContent = s.mode === 'MARKET_MAKER' ? 'MARKET MAKER' : 'DIRECIONAL';
+        els.modeBadge.className = 'mode-badge ' + s.mode.toLowerCase();
+      }
     }
 
-  // ========================================
-  // Kick off
-  // ========================================
-  init().catch(err => {
-    console.error('Dashboard init error:', err);
-    setStatus('stopped', 'Erro');
-  });
+    function renderDecisions(decisions) {
+      if (!els.decisionsFeed) return;
+      els.decisionsFeed.innerHTML = decisions.length === 0 ? '<div class="empty-state">IA em standby.</div>' : '';
+      decisions.forEach(d => addDecision(d, false));
+    }
+
+    function addDecision(decision, prepend = true) {
+      const iconMap = { scan: '🔍', opportunity: '🎯', trade: '✅', reject: '⛔', risk: '🚨', monitor: '📡', system: '⚙️' };
+      const html = `<div class="dec-line type-${decision.type || 'system'}">
+        <span class="dec-ts">${formatTime(decision.timestamp).split(' ')[1]}</span>
+        <span class="dec-icon">${iconMap[decision.type] || '📋'}</span>
+        <span class="dec-msg">${escapeHtml(decision.message)}</span>
+      </div>`;
+      if (prepend) {
+        els.decisionsFeed.insertAdjacentHTML('afterbegin', html);
+        if (els.decisionsFeed.children.length > 100) els.decisionsFeed.removeChild(els.decisionsFeed.lastChild);
+      } else {
+        els.decisionsFeed.insertAdjacentHTML('beforeend', html);
+      }
+    }
+
+    function updateRisk(risk) {
+      if (els.riskDrawdown) els.riskDrawdown.textContent = risk.drawdownPct.toFixed(1) + '%';
+      if (els.riskDrawdownBar) els.riskDrawdownBar.style.width = Math.min(risk.drawdownPct * 5, 100) + '%';
+      if (els.riskExposure) els.riskExposure.textContent = '$' + formatNumber(risk.totalExposure);
+      if (els.riskExposureBar) els.riskExposureBar.style.width = Math.min((risk.totalExposure / risk.maxExposure) * 100, 100) + '%';
+      if (els.riskCircuit) {
+        els.riskCircuit.textContent = risk.circuitBreaker ? '🚨 ATIVO' : '● OK';
+        els.riskCircuit.className = 'risk-stat-val ' + (risk.circuitBreaker ? 'danger' : 'ok');
+        if (els.resetCircuitBtn) els.resetCircuitBtn.classList.toggle('hidden', !risk.circuitBreaker);
+      }
+    }
+
+    function renderNotifications(notifs) {
+      if (!els.notificationsFeed) return;
+      els.notificationsFeed.innerHTML = notifs.length === 0 ? '<div class="empty-state">Sem alertas.</div>' : '';
+      notifs.forEach(n => addNotification(n, false));
+    }
+
+    function addNotification(n, prepend = true) {
+      const html = `<div class="notif-card ${n.level || 'info'}">
+        <div class="notif-header">
+          <span class="notif-type">${n.type}</span>
+          <span class="notif-ts">${formatTime(n.timestamp)}</span>
+        </div>
+        <div class="notif-msg">${escapeHtml(n.message)}</div>
+      </div>`;
+      if (prepend) {
+        els.notificationsFeed.insertAdjacentHTML('afterbegin', html);
+        notifTotal++;
+        if (els.notifCount) { els.notifCount.textContent = notifTotal; els.notifCount.classList.remove('hidden'); }
+      } else {
+        els.notificationsFeed.insertAdjacentHTML('beforeend', html);
+      }
+    }
+
+    function updateTradeStats(stats) {
+      if (els.statTrades) els.statTrades.textContent = stats.count;
+      if (els.statWinrate) els.statWinrate.textContent = (stats.winRate * 100).toFixed(1) + '%';
+      if (els.statAvgEdge) els.statAvgEdge.textContent = (stats.avgEdge * 100).toFixed(1) + '%';
+    }
+
+    function renderPositions(open) {
+      if (!els.positionsList) return;
+      if (els.positionsCount) els.positionsCount.textContent = open.length;
+      els.positionsList.innerHTML = open.length === 0 ? '<div class="empty-state">Sem trades abertos.</div>' : '';
+      open.forEach(t => {
+        const html = `<div class="pos-card" id="pos-${t.marketId}">
+          <div class="pos-top">
+            <span class="pos-side ${t.side === 'BUY_YES' ? 'side-yes' : 'side-no'}">${t.side === 'BUY_YES' ? 'YES' : 'NO'}</span>
+            <span class="pos-price">$${t.entryPrice.toFixed(3)}</span>
+          </div>
+          <div class="pos-q">${escapeHtml(t.question.substring(0, 50))}...</div>
+          <div class="pos-bottom">
+            <span>Stake: $${t.stake.toFixed(2)}</span>
+            <span class="pos-edge">+${(t.edge * 100).toFixed(1)}%</span>
+          </div>
+        </div>`;
+        els.positionsList.insertAdjacentHTML('beforeend', html);
+      });
+    }
+
+    function addPosition(t) {
+      if (!els.positionsList) return;
+      const empty = els.positionsList.querySelector('.empty-state');
+      if (empty) els.positionsList.innerHTML = '';
+      // ... same logic as renderPositions loop
+      renderPositions([t]); // Simplistic add
+    }
+
+    function removePosition(marketId) {
+      const el = $(`pos-${marketId}`);
+      if (el) el.remove();
+      if (els.positionsList && els.positionsList.children.length === 0) {
+        els.positionsList.innerHTML = '<div class="empty-state">Sem trades abertos.</div>';
+      }
+    }
+
+  } // End Init
+
+  init().catch(console.error);
 
 })();
