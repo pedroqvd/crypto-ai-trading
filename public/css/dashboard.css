@@ -366,11 +366,11 @@ body::before {
 
 .tech-grid {
   display: flex; gap: 24px;
-  height: calc(100vh - 200px);
+  height: calc(100vh - 160px);
 }
-.tech-main { flex: 3; }
+.tech-main { flex: 4; }
 .tech-sidebar {
-  flex: 1;
+  flex: 2;
   display: flex; flex-direction: column; gap: 16px;
   min-width: 300px;
 }
@@ -423,11 +423,11 @@ body::before {
 /* ════════════════════════════════════════
    TAB: SETTINGS
 ════════════════════════════════════════ */
-.settings-layout { display: block; max-width: 900px; margin: 0 auto; padding-bottom: 80px; }
+.settings-layout { display: block; max-width: 900px; margin: 40px auto; padding-bottom: 80px; }
 .settings-form { display: block; overflow: visible; background: var(--surface2); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: 30px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
 
 .form-body { display: block; }
-.journal-wrapper { flex: 2; display: flex; flex-direction: column; overflow: hidden; }
+.journal-wrapper { flex: 3; display: flex; flex-direction: column; overflow: hidden; }
 
 .cfg-group { margin-bottom: 24px; }
 .cfg-group h3 { font-size: 11px; font-weight: 800; color: var(--text3); text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid var(--border-light); padding-bottom: 6px; }
