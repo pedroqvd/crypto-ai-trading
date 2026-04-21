@@ -206,19 +206,43 @@ export class ClobApiClient {
     }
 
     try {
-      const USDC_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
       const { ethers } = await import('ethers');
-      const erc20Abi = ['function balanceOf(address) view returns (uint256)', 'function decimals() view returns (uint8)'];
-      const usdc = new ethers.Contract(USDC_ADDRESS, erc20Abi, this.cachedProvider as any);
 
-      const [rawBalance, decimals] = await Promise.all([
-        usdc.balanceOf(this.cachedWalletAddress) as Promise<any>,
-        usdc.decimals() as Promise<number>,
-      ]);
+      // All stablecoins Polymarket accepts on Polygon (query all, sum total)
+      const STABLECOINS = [
+        { symbol: 'USDC.e',          address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' }, // Bridged USDC (legacy)
+        { symbol: 'USDC',            address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' }, // Native USDC (Circle)
+        { symbol: 'Polymarket USD',  address: '0x4Fabb145d64652a948d72533023f6E7A623C7C53' }, // BUSD — placeholder; update if Polymarket publishes address
+      ];
 
-      const balance = parseFloat(ethers.utils.formatUnits(rawBalance, decimals));
-      logger.debug('ClobApi', `Saldo USDC.e: $${balance.toFixed(2)}`);
-      return balance;
+      const erc20Abi = [
+        'function balanceOf(address) view returns (uint256)',
+        'function decimals() view returns (uint8)',
+      ];
+
+      let totalBalance = 0;
+
+      await Promise.all(
+        STABLECOINS.map(async ({ symbol, address }) => {
+          try {
+            const token = new ethers.Contract(address, erc20Abi, this.cachedProvider as any);
+            const [rawBalance, decimals] = await Promise.all([
+              token.balanceOf(this.cachedWalletAddress) as Promise<any>,
+              token.decimals() as Promise<number>,
+            ]);
+            const bal = parseFloat(ethers.utils.formatUnits(rawBalance, decimals));
+            if (bal > 0) {
+              logger.info('ClobApi', `💰 Saldo ${symbol}: $${bal.toFixed(2)}`);
+              totalBalance += bal;
+            }
+          } catch (_) {
+            // Token may not exist or wallet has no interaction — silently skip
+          }
+        })
+      );
+
+      logger.info('ClobApi', `💰 Saldo total (todos stablecoins): $${totalBalance.toFixed(2)}`);
+      return totalBalance > 0 ? totalBalance : config.bankroll;
     } catch (err) {
       logger.error('ClobApi', 'Falha ao consultar saldo on-chain — retornando bankroll inicial', err instanceof Error ? err.message : err);
       return config.bankroll;
