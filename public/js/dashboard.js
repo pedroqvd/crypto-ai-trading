@@ -179,6 +179,7 @@
       botToggleBtn.addEventListener('click', async () => {
         const isRunning = botToggleBtn.classList.contains('bot-stop');
         const action = isRunning ? 'stop' : 'start';
+        const originalText = botToggleBtn.querySelector('.btn-text').textContent;
         
         botToggleBtn.disabled = true;
         botToggleBtn.querySelector('.btn-text').textContent = isRunning ? 'Parando...' : 'Ligando...';
@@ -188,9 +189,11 @@
           if (!res.ok) {
             const err = await res.json();
             alert(err.error || 'Erro ao alterar estado do bot.');
+            botToggleBtn.querySelector('.btn-text').textContent = originalText;
           }
         } catch (err) {
           console.error('Failed to toggle bot:', err);
+          botToggleBtn.querySelector('.btn-text').textContent = originalText;
         } finally {
           botToggleBtn.disabled = false;
         }
@@ -457,32 +460,36 @@
     // INTERNAL HELPERS
     // ========================================
     function updateStatus(s) {
-      if (els.botStatus) setStatus(s.active ? 'running' : 'stopped', s.active ? 'Operando' : 'Pausado');
-      if (els.bankroll) els.bankroll.textContent = '$' + formatNumber(s.bankroll || 0);
-      
-      const bToggle = $('bot-toggle-btn');
-      if (bToggle) {
-        const txt = bToggle.querySelector('.btn-text');
-        if (s.active) {
-          bToggle.classList.remove('bot-start');
-          bToggle.classList.add('bot-stop');
-          if (txt) txt.textContent = 'Desligar IA';
-        } else {
-          bToggle.classList.remove('bot-stop');
-          bToggle.classList.add('bot-start');
-          if (txt) txt.textContent = 'Ligar IA';
+      try {
+        if (els.botStatus) setStatus(s.running ? 'running' : 'stopped', s.running ? 'Operando' : 'Pausado');
+        if (els.bankroll) els.bankroll.textContent = '$' + formatNumber(s.bankroll || 0);
+        
+        const bToggle = $('bot-toggle-btn');
+        if (bToggle) {
+          const txt = bToggle.querySelector('.btn-text');
+          if (s.running) {
+            bToggle.classList.remove('bot-start');
+            bToggle.classList.add('bot-stop');
+            if (txt) txt.textContent = 'Desligar IA';
+          } else {
+            bToggle.classList.remove('bot-stop');
+            bToggle.classList.add('bot-start');
+            if (txt) txt.textContent = 'Ligar IA';
+          }
         }
-      }
 
-      if (els.pnl) {
-        els.pnl.textContent = (s.totalPnl >= 0 ? '+' : '') + '$' + formatNumber(s.totalPnl);
-        els.pnl.className = 'header-val ' + (s.totalPnl >= 0 ? 'pos' : 'neg');
-      }
-      if (els.uptime) els.uptime.textContent = s.uptime;
-      if (els.statCycle) els.statCycle.textContent = s.cycleCount;
-      if (els.modeBadge) {
-        els.modeBadge.textContent = s.mode === 'MARKET_MAKER' ? 'MARKET MAKER' : 'DIRECIONAL';
-        els.modeBadge.className = 'mode-badge ' + s.mode.toLowerCase();
+        if (els.pnl) {
+          els.pnl.textContent = (s.totalPnl >= 0 ? '+' : '') + '$' + formatNumber(s.totalPnl);
+          els.pnl.className = 'header-val ' + (s.totalPnl >= 0 ? 'pos' : 'neg');
+        }
+        if (els.uptime) els.uptime.textContent = s.uptime;
+        if (els.statCycle) els.statCycle.textContent = s.cycleCount;
+        if (els.modeBadge) {
+          els.modeBadge.textContent = s.dryRun ? '🧪 SIMULAÇÃO' : '🔴 AO VIVO';
+          els.modeBadge.className = 'mode-badge ' + (s.dryRun ? 'mode-sim' : 'mode-live');
+        }
+      } catch (err) {
+        console.error('UpdateStatus error:', err);
       }
     }
 

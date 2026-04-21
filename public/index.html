@@ -411,7 +411,7 @@
           <div class="settings-layout">
 
             <!-- Esquerda: Formulário -->
-            <div class="settings-form">
+            <div class="settings-form" id="settings-form">
               <div class="panel-header-premium">⚙️ Configuração do Bot</div>
               <div class="panel-body form-body">
 
@@ -432,25 +432,25 @@
                         <label id="dry-run-label">Modo Simulação</label>
                         <span class="cfg-desc">Quando ativado, o bot analisa mercados reais mas NÃO coloca dinheiro. Ideal para testar a estratégia.</span>
                       </div>
-                      <label class="switch-modern"><input type="checkbox" id="s-dry-run"><span class="slider"></span></label>
+                      <label class="switch-modern"><input type="checkbox" id="s-dry-run" name="dryRun"><span class="slider"></span></label>
                     </div>
                     <div class="cfg-field">
                       <label>Capital Base (USDC)
                         <span class="cfg-hint">Quanto dinheiro o bot tem para operar. Em simulação, é fictício.</span>
                       </label>
-                      <input type="number" id="s-bankroll" placeholder="1000">
+                      <input type="number" id="s-bankroll" name="bankroll" placeholder="1000">
                     </div>
                     <div class="cfg-field">
                       <label>Chave Privada da Carteira (LIVE)
                         <span class="cfg-hint">Necessária apenas no modo AO VIVO. Começa com 0x. Nunca compartilhe esta chave.</span>
                       </label>
-                      <input type="password" id="s-private-key" placeholder="0x...">
+                      <input type="password" id="s-private-key" name="privateKey" placeholder="0x...">
                     </div>
                     <div class="cfg-field">
                       <label>Intervalo entre Scans (segundos)
                         <span class="cfg-hint">Com que frequência o bot analisa novos mercados. Padrão: 60s. Menor = mais rápido, mas mais uso de API.</span>
                       </label>
-                      <input type="number" id="s-scan-interval" placeholder="60">
+                      <input type="number" id="s-scan-interval" name="scanIntervalMs" placeholder="60">
                     </div>
                   </div>
                 </div>
@@ -463,32 +463,32 @@
                       <label>Edge Mínimo para Entrar (%)
                         <span class="cfg-hint">O bot só aposta se a vantagem estimada for maior que esse valor. Ex: 3% = só entra se achar que o mercado está errado em +3 pontos.</span>
                       </label>
-                      <input type="number" id="s-min-edge" step="0.5">
+                      <input type="number" id="s-min-edge" name="minEdge" step="0.5">
                     </div>
                     <div class="cfg-field">
                       <label>Fração do Kelly (%)
                         <span class="cfg-hint">O quanto do tamanho de aposta "matematicamente ideal" o bot realmente usa. 50% = aposta metade do ideal (mais seguro).</span>
                       </label>
-                      <input type="number" id="s-kelly">
+                      <input type="number" id="s-kelly" name="kellyFraction">
                     </div>
                     <div class="cfg-field">
                       <label>Tamanho Máximo por Aposta (%)
                         <span class="cfg-hint">Limite máximo de uma aposta em relação ao capital total. Ex: 5% = nunca arrisca mais de 5% do capital em um único mercado.</span>
                       </label>
-                      <input type="number" id="s-max-pos" step="0.5">
+                      <input type="number" id="s-max-pos" name="maxPositionPct" step="0.5">
                     </div>
                     <div class="cfg-field">
                       <label>Exposição Total Máxima (%)
                         <span class="cfg-hint">Quanto do capital total pode estar em apostas abertas ao mesmo tempo. Ex: 30% = guarda 70% em caixa.</span>
                       </label>
-                      <input type="number" id="s-max-exposure" step="5">
+                      <input type="number" id="s-max-exposure" name="maxTotalExposurePct" step="5">
                     </div>
                     <div class="cfg-field cfg-field-toggle">
                       <div class="cfg-field-info">
                         <label>Análise de Correlação</label>
                         <span class="cfg-desc">Evita abrir apostas em mercados muito parecidos (ex: dois mercados sobre a mesma eleição).</span>
                       </div>
-                      <label class="switch-modern"><input type="checkbox" id="s-correlation"><span class="slider"></span></label>
+                      <label class="switch-modern"><input type="checkbox" id="s-correlation" name="correlationEnabled"><span class="slider"></span></label>
                     </div>
                   </div>
                 </div>
@@ -501,44 +501,44 @@
                       <label>Alvo de Lucro — Preço de Saída
                         <span class="cfg-hint">O bot vende automaticamente quando o preço do token atingir este valor. Ex: 72 = sai quando o mercado atinge 72% de chance (se comprou a 7%, isso é um ganho de +900%).</span>
                       </label>
-                      <input type="number" id="s-exit-target">
+                      <input type="number" id="s-exit-target" name="exitPriceTarget">
                     </div>
                     <div class="cfg-field">
                       <label>Stop-Loss (%)
                         <span class="cfg-hint">Se o preço cair X% abaixo do preço de entrada, o bot vende para limitar o prejuízo. Ex: 20% = vende se cair 20%.</span>
                       </label>
-                      <input type="number" id="s-stop-loss">
+                      <input type="number" id="s-stop-loss" name="stopLossPct">
                     </div>
                     <div class="cfg-field">
                       <label>Sair se Negativo perto do Vencimento (horas)
                         <span class="cfg-hint">Se o mercado vai fechar em menos de X horas E a aposta está no prejuízo, o bot sai automaticamente para recuperar o que puder.</span>
                       </label>
-                      <input type="number" id="s-time-decay">
+                      <input type="number" id="s-time-decay" name="timeDecayHours">
                     </div>
                     <div class="cfg-field">
                       <label>Trailing Stop — Ativar após Ganho de (%)
                         <span class="cfg-hint">Quando o preço sobe X% além da entrada, ativa uma proteção dinâmica que acompanha o preço para cima e vende se ele recuar.</span>
                       </label>
-                      <input type="number" id="s-trailing-activation">
+                      <input type="number" id="s-trailing-activation" name="trailingStopActivation">
                     </div>
                     <div class="cfg-field">
                       <label>Trailing Stop — Recuo Máximo (%)
                         <span class="cfg-hint">Quanto o preço pode recuar do pico antes do trailing stop disparar. Ex: 8% = vende se cair 8% do ponto mais alto atingido.</span>
                       </label>
-                      <input type="number" id="s-trailing-distance">
+                      <input type="number" id="s-trailing-distance" name="trailingStopDistance">
                     </div>
                     <div class="cfg-field">
                       <label>Saída por Queda Consistente (ciclos)
                         <span class="cfg-hint">Se o preço cair em X ciclos seguidos E cair mais de 5% do pico, o bot sai. Evita segurar posições em tendência de queda.</span>
                       </label>
-                      <input type="number" id="s-momentum-cycles">
+                      <input type="number" id="s-momentum-cycles" name="momentumExitCycles">
                     </div>
                     <div class="cfg-field cfg-field-toggle">
                       <div class="cfg-field-info">
                         <label>Saída por Inversão de Vantagem</label>
                         <span class="cfg-desc">Se o consenso externo (Metaculus/Manifold) mudar e agora favorecer o lado oposto ao da aposta, o bot sai automaticamente.</span>
                       </div>
-                      <label class="switch-modern"><input type="checkbox" id="s-edge-reversal"><span class="slider"></span></label>
+                      <label class="switch-modern"><input type="checkbox" id="s-edge-reversal" name="edgeReversalEnabled"><span class="slider"></span></label>
                     </div>
                   </div>
                 </div>
@@ -552,25 +552,25 @@
                         <label>Verificação Claude AI</label>
                         <span class="cfg-desc">Antes de cada aposta, a IA Claude analisa notícias e contexto do mercado para validar a decisão. Requer API Key abaixo.</span>
                       </div>
-                      <label class="switch-modern"><input type="checkbox" id="s-claude-enabled"><span class="slider"></span></label>
+                      <label class="switch-modern"><input type="checkbox" id="s-claude-enabled" name="claudeEnabled"><span class="slider"></span></label>
                     </div>
                     <div class="cfg-field">
                       <label>Claude API Key
                         <span class="cfg-hint">Chave de acesso à Anthropic Claude. Obtenha em console.anthropic.com</span>
                       </label>
-                      <input type="password" id="s-claude-key" placeholder="sk-ant-...">
+                      <input type="password" id="s-claude-key" name="claudeApiKey" placeholder="sk-ant-...">
                     </div>
                     <div class="cfg-field">
                       <label>Discord Webhook (Notificações)
                         <span class="cfg-hint">URL do webhook do Discord para receber alertas de trades e performance. Deixe em branco para desativar.</span>
                       </label>
-                      <input type="text" id="s-discord" placeholder="https://discord.com/api/webhooks/...">
+                      <input type="text" id="s-discord" name="discordWebhookUrl" placeholder="https://discord.com/api/webhooks/...">
                     </div>
                     <div class="cfg-field">
                       <label>News API Key
                         <span class="cfg-hint">Chave para buscar notícias recentes relacionadas a cada mercado. Obtenha gratuitamente em newsapi.org</span>
                       </label>
-                      <input type="password" id="s-news-key" placeholder="newsapi.org key">
+                      <input type="password" id="s-news-key" name="newsApiKey" placeholder="newsapi.org key">
                     </div>
                   </div>
                 </div>
