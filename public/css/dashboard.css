@@ -330,11 +330,13 @@ body::before {
 
 .kpi-card-label { font-size: 11px; font-weight: 800; color: var(--text3); letter-spacing: 1px; }
 .kpi-card-value { font-size: 28px; font-weight: 800; color: var(--text1); margin-top: 8px; }
-
-/* Main Chart & Heatmap Row */
-.charts-row, .bottom-row { display: flex; gap: 24px; }
-.flex-1 { flex: 1; }
-.flex-2 { flex: 2; }
+/* Main Dashboard Layout V2 Columns */
+.dashboard-columns { display: flex; gap: 24px; }
+.dashboard-col-main { flex: 2; display: flex; flex-direction: column; gap: 24px; }
+.dashboard-col-side { flex: 1; display: flex; flex-direction: column; gap: 24px; }
+.charts-row, .bottom-row { display: flex; gap: 24px; } /* kept for backwards compat if needed */
+.flex-1 { flex: 1; min-height: 250px; }
+.flex-2 { flex: 1; min-height: 250px; }
 
 .chart-filters { display: flex; gap: 8px; }
 .chart-filter { background: transparent; border: 1px solid var(--border-light); color: var(--text3); padding: 4px 10px; font-size: 11px; border-radius: 12px; cursor: pointer; }
@@ -492,8 +494,9 @@ body::before {
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .dashboard-grid { gap: 16px; }
-  .charts-row, .bottom-row { flex-direction: column; }
-  .settings-layout { flex-direction: column; }
+  .dashboard-columns { flex-direction: column; }
+  .settings-layout { flex-direction: column; height: auto; display:block; }
+  .settings-form { max-width: 100%; border-bottom: 1px solid var(--border-light); margin-bottom: 20px;}
 }
 
 /* Mobile Layout: Bottom Tab Nav */

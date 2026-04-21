@@ -533,14 +533,10 @@
     if (daysEl) daysEl.textContent = (p.tradingDays || 0) + 'd';
 
     // Equity curve
-    if (p.equityCurve && p.equityCurve.length > 1) {
-      renderEquityCurve(p.equityCurve);
-    }
+    renderEquityCurve(p.equityCurve || []);
 
     // Category breakdown
-    if (p.byCategory && p.byCategory.length > 0) {
-      renderCategoryBreakdown(p.byCategory);
-    }
+    renderCategoryBreakdown(p.byCategory || []);
   }
 
   let equityChartInstance = null;
@@ -548,8 +544,18 @@
 
   function renderEquityCurve(curve) {
     const ctx = $('equity-chart');
+    const emptyState = $('equity-empty');
     if (!ctx) return;
     
+    if (!curve || curve.length <= 1) {
+      if (emptyState) emptyState.style.display = 'flex';
+      ctx.style.display = 'none';
+      return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+    ctx.style.display = 'block';
+
     const labels = curve.map((_, i) => i === 0 ? 'Start' : `T+${i}`);
     const data = curve.map(p => p.bankroll);
     const isProfit = data[data.length - 1] >= data[0];
@@ -598,7 +604,20 @@
 
   function renderCategoryBreakdown(cats) {
     const ctx = $('allocation-chart');
+    const emptyState = $('allocation-empty');
     if (!ctx) return;
+
+    if (!cats || cats.length === 0) {
+      if (emptyState) emptyState.style.display = 'flex';
+      ctx.style.display = 'none';
+      
+      const radarFeed = $('radar-feed');
+      if (radarFeed) radarFeed.innerHTML = '<div class="empty-state">Iniciando monitoramento de edge por categorias...</div>';
+      return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+    ctx.style.display = 'block';
 
     const labels = cats.map(c => c.category);
     const dataVolumes = cats.map(c => c.trades);

@@ -129,53 +129,66 @@
               </div>
             </div>
 
-            <!-- Main Chart & Radar -->
-            <div class="charts-row">
-              <div class="chart-panel glass-panel flex-2">
-                <div class="panel-header-premium">
-                  <span>📈 Curva de Equity (P&L)</span>
-                  <div class="chart-filters">
-                    <button class="chart-filter active">All</button>
+            <!-- Layout em Colunas V2 -->
+            <div class="dashboard-columns">
+              
+              <!-- Coluna Principal (Esquerda) -->
+              <div class="dashboard-col-main">
+                <!-- Equity Curve -->
+                <div class="chart-panel glass-panel">
+                  <div class="panel-header-premium">
+                    <span>📈 Curva de Equity (P&L)</span>
+                    <div class="chart-filters">
+                      <button class="chart-filter active">All</button>
+                    </div>
+                  </div>
+                  <div class="chart-container" id="equity-container">
+                    <div class="empty-state" id="equity-empty">Aguardando a resolução dos primeiros trades...</div>
+                    <canvas id="equity-chart" style="display:none;"></canvas>
                   </div>
                 </div>
-                <div class="chart-container">
-                  <canvas id="equity-chart"></canvas>
+
+                <!-- Posições Abertas -->
+                <div class="positions-panel glass-panel" style="flex:1;">
+                  <div class="panel-header-premium">
+                    <span>⚡ Posições Abertas</span>
+                    <span id="positions-count" class="chip-count cyan">0</span>
+                    <span class="panel-sub-hint" style="margin-left:auto; margin-right:0.5rem">Apostas ainda não resolvidas</span>
+                  </div>
+                  <div class="panel-body scrollable style-list" id="positions-list">
+                    <div class="empty-state">Capital 100% líquido — aguardando sinal de entrada.</div>
+                  </div>
                 </div>
               </div>
 
-              <div class="side-panel flex-1 glass-panel">
-                <div class="panel-header-premium">
-                  <span>🔥 Oportunidades Detectadas</span>
-                  <span class="panel-sub-hint">Mercados com edge positivo neste ciclo</span>
+              <!-- Coluna Lateral (Direita) -->
+              <div class="dashboard-col-side">
+                
+                <!-- Alocação (Pie) -->
+                <div class="side-panel glass-panel">
+                  <div class="panel-header-premium">
+                    <span>📊 Alocação de Capital</span>
+                    <span class="panel-sub-hint">Média do risco assumido por categoria</span>
+                  </div>
+                  <div class="chart-container pie-container" id="allocation-container">
+                    <div class="empty-state" id="allocation-empty">Nenhum histórico de categoria disponível.</div>
+                    <canvas id="allocation-chart" style="display:none;"></canvas>
+                  </div>
                 </div>
-                <div class="panel-body scrollable radar-feed" id="radar-feed">
-                  <div class="empty-state">Buscando oportunidades na Polymarket...</div>
-                </div>
-              </div>
-            </div>
 
-            <!-- Bottom Row -->
-            <div class="bottom-row">
-              <div class="side-panel flex-1 glass-panel">
-                <div class="panel-header-premium">
-                  <span>📊 Alocação de Capital</span>
-                  <span class="panel-sub-hint">Distribuição do capital em risco por posição aberta</span>
+                <!-- Radar de Oportunidades -->
+                <div class="side-panel glass-panel" style="flex:1;">
+                  <div class="panel-header-premium">
+                    <span>🔥 Radar de Oportunidades</span>
+                    <span class="panel-sub-hint">Principais alvos no ciclo atual</span>
+                  </div>
+                  <div class="panel-body scrollable radar-feed" id="radar-feed">
+                    <div class="empty-state">Buscando oportunidades na Polymarket...</div>
+                  </div>
                 </div>
-                <div class="chart-container pie-container">
-                  <canvas id="allocation-chart"></canvas>
-                </div>
+
               </div>
 
-              <div class="positions-panel flex-2 glass-panel">
-                <div class="panel-header-premium">
-                  <span>⚡ Posições Abertas</span>
-                  <span id="positions-count" class="chip-count cyan">0</span>
-                  <span class="panel-sub-hint" style="margin-left:auto; margin-right:0.5rem">Apostas ainda não resolvidas</span>
-                </div>
-                <div class="panel-body scrollable style-list" id="positions-list">
-                  <div class="empty-state">Capital 100% líquido — aguardando sinal de entrada.</div>
-                </div>
-              </div>
             </div>
 
           </div>
