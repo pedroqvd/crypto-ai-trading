@@ -172,6 +172,43 @@
     });
 
     // ========================================
+    // BOT CONTROL (Start/Stop)
+    // ========================================
+    const botToggleBtn = $('bot-toggle-btn');
+    if (botToggleBtn) {
+      botToggleBtn.addEventListener('click', async () => {
+        const isRunning = botToggleBtn.classList.contains('bot-stop');
+        const action = isRunning ? 'stop' : 'start';
+        
+        botToggleBtn.disabled = true;
+        botToggleBtn.querySelector('.btn-text').textContent = isRunning ? 'Parando...' : 'Ligando...';
+
+        try {
+          const res = await authFetch(`/api/bot/${action}`, { method: 'POST' });
+          if (!res.ok) {
+            const err = await res.json();
+            alert(err.error || 'Erro ao alterar estado do bot.');
+          }
+        } catch (err) {
+          console.error('Failed to toggle bot:', err);
+        } finally {
+          botToggleBtn.disabled = false;
+        }
+      });
+    }
+
+    // ========================================
+    // LOGOUT
+    // ========================================
+    const logoutBtn = $('logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', () => {
+        localStorage.removeItem('auth_token');
+        window.location.href = '/login';
+      });
+    }
+
+    // ========================================
     // NAVIGATION
     // ========================================
     document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -339,11 +376,104 @@
     }
 
     // ========================================
+    // SETTINGS FORM
+    // ========================================
+    const settingsForm = $('settings-form');
+    if (settingsForm) {
+      // Load current settings
+      (async function fetchSettings() {
+        try {
+          const res = await authFetch('/api/settings');
+          if (!res.ok) return;
+          const cfg = await res.json();
+          
+          // Populate fields
+          for (const key in cfg) {
+            const input = settingsForm.querySelector(`[name="${key}"]`);
+            if (input) {
+              if (input.type === 'checkbox') {
+                input.checked = cfg[key];
+              } else {
+                // Mask sensitive keys
+                const isSensitive = ['privateKey', 'claudeApiKey', 'newsApiKey'].includes(key);
+                input.value = (isSensitive && cfg[key] && cfg[key].length > 4) ? '••••••••••••' : cfg[key];
+              }
+            }
+          }
+        } catch (err) { console.error('Failed to load settings', err); }
+      })();
+
+      settingsForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(settingsForm);
+        const data = {};
+        
+        formData.forEach((value, key) => {
+          const input = settingsForm.querySelector(`[name="${key}"]`);
+          // Skip masked values to avoid overwriting secret keys with bullets
+          if (value === '••••••••••••') return;
+          
+          if (input && input.type === 'checkbox') {
+            data[key] = true;
+          } else if (input && input.type === 'number') {
+            data[key] = parseFloat(value);
+          } else {
+            data[key] = value;
+          }
+        });
+
+        // Ensure checkboxes that are UNCHECKED are sent as false (FormData skips unchecked)
+        settingsForm.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          if (!cb.checked) data[cb.name] = false;
+        });
+
+        const btn = settingsForm.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.textContent = 'Salvando...';
+
+        try {
+          const res = await authFetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+          if (res.ok) {
+            alert('Configurações salvas com sucesso!');
+            if (window.location.reload) window.location.reload();
+          } else {
+            const err = await res.json();
+            alert('Erro: ' + (err.error || 'Falha ao salvar.'));
+          }
+        } catch (err) {
+          alert('Erro na rede ao salvar.');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Salvar Alterações';
+        }
+      });
+    }
+
+    // ========================================
     // INTERNAL HELPERS
     // ========================================
     function updateStatus(s) {
       if (els.botStatus) setStatus(s.active ? 'running' : 'stopped', s.active ? 'Operando' : 'Pausado');
-      if (els.bankroll) els.bankroll.textContent = '$' + formatNumber(s.bankroll);
+      if (els.bankroll) els.bankroll.textContent = '$' + formatNumber(s.bankroll || 0);
+      
+      const bToggle = $('bot-toggle-btn');
+      if (bToggle) {
+        const txt = bToggle.querySelector('.btn-text');
+        if (s.active) {
+          bToggle.classList.remove('bot-start');
+          bToggle.classList.add('bot-stop');
+          if (txt) txt.textContent = 'Desligar IA';
+        } else {
+          bToggle.classList.remove('bot-stop');
+          bToggle.classList.add('bot-start');
+          if (txt) txt.textContent = 'Ligar IA';
+        }
+      }
+
       if (els.pnl) {
         els.pnl.textContent = (s.totalPnl >= 0 ? '+' : '') + '$' + formatNumber(s.totalPnl);
         els.pnl.className = 'header-val ' + (s.totalPnl >= 0 ? 'pos' : 'neg');
