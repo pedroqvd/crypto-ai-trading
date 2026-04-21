@@ -59,6 +59,11 @@
     catCryptoB:        $('cat-crypto-b'),
     catGeneralB:       $('cat-general-b'),
     toggleMmMode:      $('toggle-mm-mode'),
+
+    // Novos Elementos UI V2
+    modeBadge:         $('mode-badge'),
+    lastScan:          $('header-last-scan'),
+    liveWarningBox:    $('live-warning-box'),
   };
 
   let currentFilter = 'all';
@@ -198,7 +203,7 @@
         const txt = (id, val) => { const el = $(id); if (el) el.textContent = val; };
 
         chk('s-dry-run', cfg.dryRun);
-        txt('dry-run-label', cfg.dryRun ? 'Modo Simulação Ativo' : 'Modo Real Ativo');
+        updateDryRunUI(cfg.dryRun);
         set('s-bankroll',             cfg.bankroll);
         set('s-scan-interval',        cfg.scanIntervalMs / 1000);
         set('s-min-edge',             +(cfg.minEdge * 100).toFixed(1));
@@ -215,12 +220,21 @@
         chk('s-correlation',          cfg.correlationEnabled);
         chk('s-claude-enabled',       cfg.claudeEnabled);
         set('s-discord',              cfg.discordWebhookUrl || '');
-        // Optional status labels (may not exist in current HTML)
-        txt('pk-status',         cfg.hasPrivateKey   ? '✅ Configurada' : '❌ Não configurada');
-        txt('claude-key-status', cfg.hasClaudeApiKey ? '✅ Configurada' : '❌ Não configurada');
-        txt('news-key-status',   cfg.hasNewsApiKey   ? '✅ Configurada' : '❌ Não configurada');
       } catch (e) {
         console.error('Erro ao carregar settings:', e);
+      }
+    }
+
+    function updateDryRunUI(isDryRun) {
+      if ($('dry-run-label')) {
+        $('dry-run-label').textContent = isDryRun ? 'Simulação (Teste)' : 'Modo AO VIVO (Dinheiro Real)';
+      }
+      if (els.liveWarningBox) {
+        els.liveWarningBox.style.display = isDryRun ? 'none' : 'flex';
+      }
+      if (els.modeBadge) {
+        els.modeBadge.textContent = isDryRun ? '🧪 SIMULAÇÃO' : '🔴 AO VIVO';
+        els.modeBadge.className = isDryRun ? 'mode-badge mode-sim' : 'mode-badge mode-live';
       }
     }
 
@@ -236,8 +250,7 @@
     const dryRunToggle = $('s-dry-run');
     if (dryRunToggle) {
       dryRunToggle.addEventListener('change', () => {
-        const label = $('dry-run-label');
-        if (label) label.textContent = dryRunToggle.checked ? 'Modo Simulação Ativo' : 'Modo Real Ativo';
+        updateDryRunUI(dryRunToggle.checked);
       });
     }
 
@@ -692,21 +705,21 @@
   function updateStatus(status) {
     if (status.dryRun && status.running) {
       setStatus('simulacao', 'Modo Simulação');
-      if (els.footerMode) {
-        els.footerMode.textContent = 'SIMULAÇÃO';
-        els.footerMode.className = 'kpi-val mode-badge dryrun';
+      if (els.modeBadge) {
+        els.modeBadge.textContent = '🧪 SIMULAÇÃO';
+        els.modeBadge.className = 'mode-badge mode-sim';
       }
     } else if (status.running) {
-      setStatus('real', 'Modo Real');
-      if (els.footerMode) {
-        els.footerMode.textContent = 'REAL';
-        els.footerMode.className = 'kpi-val mode-badge live';
+      setStatus('real', 'Apostas (Real)');
+      if (els.modeBadge) {
+        els.modeBadge.textContent = '🔴 AO VIVO';
+        els.modeBadge.className = 'mode-badge mode-live';
       }
     } else {
       setStatus('stopped', 'Standby');
-      if (els.footerMode) {
-        els.footerMode.textContent = 'STANDBY';
-        els.footerMode.className = 'kpi-val mode-badge';
+      if (els.modeBadge) {
+        els.modeBadge.textContent = 'PAUSADO';
+        els.modeBadge.className = 'mode-badge';
       }
     }
 
@@ -721,7 +734,10 @@
     // Sync local uptime counter with server's reported start time
     if (status.startTime > 0) engineStartTime = status.startTime;
 
-    if (els.statMarkets)       els.statMarkets.textContent       = formatNumber(status.marketsScanned);
+    if (els.statMarkets) {
+      els.statMarkets.textContent = formatNumber(status.marketsScanned);
+      if (els.lastScan) els.lastScan.textContent = new Date().toLocaleTimeString('pt-BR');
+    }
     if (els.statOpportunities) els.statOpportunities.textContent = formatNumber(status.opportunitiesFound);
     if (els.statTrades)        els.statTrades.textContent        = formatNumber(status.tradesExecuted);
     if (els.statCycle)         els.statCycle.textContent         = '#' + (status.cycleCount || 0);

@@ -3,49 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Polymarket AI · Central</title>
+  <title>Polymarket AI · Central de Operações</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="/css/dashboard.css">
 </head>
 <body>
-  
+
   <div class="app-layout">
+
     <!-- ═══════════════════════════════════════════
-         SIDEBAR NAVIGATION
+         SIDEBAR
     ═══════════════════════════════════════════ -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <div class="brand-mark">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </div>
+        <span class="brand-name">POLY AI</span>
       </div>
-      
+
       <nav class="sidebar-nav">
-        <button class="nav-btn active" data-tab="tab-dashboard" title="Dashboard Geral">
+        <button class="nav-btn active" data-tab="tab-dashboard" title="Visão geral da performance">
           <span class="nav-icon">📊</span>
           <span class="nav-label">Dashboard</span>
         </button>
-        <button class="nav-btn" data-tab="tab-technical" title="Terminal e IA">
+        <button class="nav-btn" data-tab="tab-technical" title="Feed de decisões da IA e métricas técnicas">
           <span class="nav-icon">🧠</span>
-          <span class="nav-label">Técnica</span>
+          <span class="nav-label">IA & Monitor</span>
         </button>
-        <button class="nav-btn" data-tab="tab-settings" title="Configurações">
+        <button class="nav-btn" data-tab="tab-settings" title="Configurar parâmetros do bot">
           <span class="nav-icon">⚙️</span>
           <span class="nav-label">Ajustes</span>
-        </button>
-        <button class="nav-btn" data-tab="tab-marketmaker" title="Market Maker">
-          <span class="nav-icon">🏛️</span>
-          <span class="nav-label">Market Maker</span>
         </button>
       </nav>
 
       <div class="sidebar-footer">
-        <button id="logout-btn" class="nav-btn logout-btn" title="Sair do Sistema">
+        <button id="logout-btn" class="nav-btn logout-btn" title="Sair">
           <span class="nav-icon">🚪</span>
           <span class="nav-label">Sair</span>
         </button>
@@ -53,21 +52,25 @@
     </aside>
 
     <!-- ═══════════════════════════════════════════
-         MAIN CONTENT AREA
+         MAIN CONTENT
     ═══════════════════════════════════════════ -->
     <main class="main-content">
-      
+
       <!-- TOPBAR -->
       <header class="topbar">
         <div class="topbar-left">
-          <div class="brand-text-mobile">POLYMARKET AI</div>
+          <div class="brand-text-mobile">POLY AI</div>
           <div id="bot-status" class="status-chip chip-connecting">
             <span class="chip-led"></span>
             <span class="status-text">Conectando...</span>
           </div>
+          <!-- Mode Badge: updated by JS -->
+          <div id="mode-badge" class="mode-badge mode-sim" title="Clique em Ajustes para alternar">
+            🧪 SIMULAÇÃO
+          </div>
           <div class="daily-briefing hidden" id="daily-briefing">
             <span class="brief-icon">✨</span>
-            <span id="brief-text">Bot ativo. Tudo rodando bem.</span>
+            <span id="brief-text">Bot ativo.</span>
           </div>
         </div>
 
@@ -79,8 +82,13 @@
             </div>
             <div class="tm-div"></div>
             <div class="tm">
-              <span class="tm-label">CAPITAL TOTAL</span>
+              <span class="tm-label">CAPITAL</span>
               <span id="header-bankroll" class="tm-value">$—</span>
+            </div>
+            <div class="tm-div"></div>
+            <div class="tm">
+              <span class="tm-label">ÚLTIMO SCAN</span>
+              <span id="header-last-scan" class="tm-value mono text-dim">—</span>
             </div>
           </div>
           <button id="bot-toggle-btn" class="toggle-power-btn bot-start">
@@ -92,64 +100,36 @@
 
       <!-- TAB CONTENTS -->
       <div class="tab-content-wrapper scrollable-wrapper">
-        
-        <!-- ─── TAB: MARKET MAKER (OPCIONAL) ─── -->
-        <section id="tab-marketmaker" class="tab-pane">
-          <div class="glass-panel" style="padding: 2rem;">
-            <h2>🏛️ Central Market Maker</h2>
-            <p style="color:var(--text-dim); margin-top:0.5rem; margin-bottom: 2rem; max-width: 600px;">
-              No Modo Market Maker, o bot para de atacar ordens Limit passivas do livro (taker) e passa a oferecer liquidez (maker). 
-              Ele posta ofertas nos dois lados ou numa distorção do preço justo, aguardando execução por terceiros e 
-              absorvendo os descontos nas taxas ao invés de pagá-las.
-            </p>
-            
-            <div style="background: rgba(16,18,27,0.6); padding: 1.5rem; border-radius:12px; border: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <h3 style="margin-bottom:0.3rem">Status do Modo MM</h3>
-                <div style="color:var(--text-dim); font-size:0.9rem;">Alternar entre execução Direcional Clássica e Provisão Mútua de Liquidez.</div>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" id="toggle-mm-mode">
-                <span class="slider"></span>
-              </label>
-            </div>
-            
-            <div style="margin-top: 2rem; padding:1.5rem; border:1px dashed var(--accent-cyan); border-radius:8px; background:rgba(0, 229, 255, 0.05);">
-              <h4 style="color:var(--accent-cyan); margin-bottom:0.5rem;">[BETA] Motor de Execução Restrita</h4>
-              <ul style="color:var(--text-dim); font-size:0.9rem; line-height:1.6; margin-left:1.5rem;">
-                <li>Ao ativar o modo MM, compras instantâneas são bloqueadas.</li>
-                <li>O robô define ordens Limits com Edge = +2% de defasagem e as mantém reescrevendo-as periodicamente.</li>
-                <li>Isso diminui a frequência de execuções diretas e exige ordens flutuantes abertas nas carteiras da rede Polygon.</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-        
+
         <!-- ─── TAB: DASHBOARD ─── -->
         <section id="tab-dashboard" class="tab-pane active">
-          
           <div class="dashboard-grid">
-            <!-- KPIs Grandes Topo -->
+
+            <!-- KPI Banner -->
             <div class="kpi-banner">
               <div class="kpi-card glass-panel kpi-cyan">
                 <div class="kpi-card-label">P&L TOTAL</div>
                 <div class="kpi-card-value mono" id="header-pnl">$0.00</div>
+                <div class="kpi-card-sub">Lucro/Prejuízo acumulado de todos os trades fechados</div>
               </div>
               <div class="kpi-card glass-panel kpi-emerald">
                 <div class="kpi-card-label">WIN RATE</div>
                 <div class="kpi-card-value mono" id="stat-winrate">—</div>
+                <div class="kpi-card-sub">% de mercados que resolveram a favor</div>
               </div>
               <div class="kpi-card glass-panel kpi-amber">
-                <div class="kpi-card-label">MERCADOS ANALISADOS</div>
+                <div class="kpi-card-label">MERCADOS / CICLO</div>
                 <div class="kpi-card-value mono" id="stat-markets">0</div>
+                <div class="kpi-card-sub">Mercados analisados no último scan</div>
               </div>
               <div class="kpi-card glass-panel kpi-violet">
                 <div class="kpi-card-label">TRADES TOTAIS</div>
                 <div class="kpi-card-value mono" id="stat-trades">0</div>
+                <div class="kpi-card-sub">Apostas realizadas desde o início</div>
               </div>
             </div>
 
-            <!-- Main Chart & Heatmap -->
+            <!-- Main Chart & Radar -->
             <div class="charts-row">
               <div class="chart-panel glass-panel flex-2">
                 <div class="panel-header-premium">
@@ -159,34 +139,41 @@
                   </div>
                 </div>
                 <div class="chart-container">
-                    <canvas id="equity-chart"></canvas>
+                  <canvas id="equity-chart"></canvas>
                 </div>
               </div>
 
               <div class="side-panel flex-1 glass-panel">
-                <div class="panel-header-premium">🔥 Radar de Oportunidades</div>
+                <div class="panel-header-premium">
+                  <span>🔥 Oportunidades Detectadas</span>
+                  <span class="panel-sub-hint">Mercados com edge positivo neste ciclo</span>
+                </div>
                 <div class="panel-body scrollable radar-feed" id="radar-feed">
-                   <div class="empty-state">Buscando as melhores apostas na Polymarket...</div>
+                  <div class="empty-state">Buscando oportunidades na Polymarket...</div>
                 </div>
               </div>
             </div>
 
-            <!-- Bottom Row: Allocations & Recent Pos -->
+            <!-- Bottom Row -->
             <div class="bottom-row">
               <div class="side-panel flex-1 glass-panel">
-                 <div class="panel-header-premium">📊 Alocação de Risco</div>
-                 <div class="chart-container pie-container">
-                    <canvas id="allocation-chart"></canvas>
-                 </div>
+                <div class="panel-header-premium">
+                  <span>📊 Alocação de Capital</span>
+                  <span class="panel-sub-hint">Distribuição do capital em risco por posição aberta</span>
+                </div>
+                <div class="chart-container pie-container">
+                  <canvas id="allocation-chart"></canvas>
+                </div>
               </div>
 
               <div class="positions-panel flex-2 glass-panel">
                 <div class="panel-header-premium">
-                   <span>⚡ Posições Abertas</span>
-                   <span id="positions-count" class="chip-count cyan">0</span>
+                  <span>⚡ Posições Abertas</span>
+                  <span id="positions-count" class="chip-count cyan">0</span>
+                  <span class="panel-sub-hint" style="margin-left:auto; margin-right:0.5rem">Apostas ainda não resolvidas</span>
                 </div>
                 <div class="panel-body scrollable style-list" id="positions-list">
-                  <div class="empty-state">Capital 100% líquido. Aguardando sinal de execução.</div>
+                  <div class="empty-state">Capital 100% líquido — aguardando sinal de entrada.</div>
                 </div>
               </div>
             </div>
@@ -194,190 +181,327 @@
           </div>
         </section>
 
-        <!-- ─── TAB: TÉCNICA ─── -->
+        <!-- ─── TAB: IA & MONITOR ─── -->
         <section id="tab-technical" class="tab-pane">
-           <div class="tech-header">
-             <h2>Terminal IA & Calibração</h2>
-             <button id="zen-mode-btn" class="btn-ghost">🧘‍♂️ Modo Foco</button>
-           </div>
+          <div class="tech-header">
+            <div>
+              <h2>🧠 IA &amp; Monitor</h2>
+              <p class="tech-subtitle">Feed de decisões em tempo real, gestão de risco e precisão histórica da IA</p>
+            </div>
+            <button id="zen-mode-btn" class="btn-ghost" title="Expande o feed de decisões para tela cheia">
+              ⛶ Tela Cheia
+            </button>
+          </div>
 
-           <div class="tech-grid" id="tech-grid">
-              
-              <!-- Feed Central de IA -->
-              <div class="terminal-panel glass-panel tech-main">
-                <div class="panel-header-premium glow-violet">
-                   <span>🧠 Feed de Decisões</span>
-                   <div class="live-indicator">LIVE</div>
+          <div class="tech-grid" id="tech-grid">
+
+            <!-- Feed Central -->
+            <div class="terminal-panel glass-panel tech-main">
+              <div class="panel-header-premium glow-violet">
+                <span>💬 Feed de Decisões da IA</span>
+                <div class="live-indicator">LIVE</div>
+              </div>
+              <p class="feed-hint">Raciocínio do bot a cada ciclo: quais mercados foram analisados, por que foram aceitos ou rejeitados, e quais trades foram executados.</p>
+              <div class="terminal-body scrollable" id="decisions-feed">
+                <div class="empty-state">IA em standby. Ligue o bot para começar.</div>
+              </div>
+            </div>
+
+            <!-- Sidebar Técnica -->
+            <div class="tech-sidebar">
+
+              <!-- Gestão de Risco -->
+              <div class="glass-panel risk-side-panel">
+                <div class="panel-header-premium glow-amber">
+                  ⚠️ Gestão de Risco
                 </div>
-                <div class="terminal-body scrollable" id="decisions-feed">
-                   <div class="empty-state">Rede neural em Standby. Aguardando conexão.</div>
+                <div class="panel-body">
+                  <div class="risk-block">
+                    <div class="risk-row">
+                      <span class="risk-lbl" title="Queda máxima acumulada desde o capital inicial. Acima de 20% o bot pausa automaticamente.">Drawdown</span>
+                      <div class="risk-track"><div id="risk-drawdown-bar" class="risk-fill fill-rose" style="width:0%"></div></div>
+                      <span id="risk-drawdown" class="risk-num">0%</span>
+                    </div>
+                    <div class="risk-row">
+                      <span class="risk-lbl" title="Quanto do capital total está comprometido em posições abertas agora.">Em risco agora</span>
+                      <div class="risk-track"><div id="risk-exposure-bar" class="risk-fill fill-cyan" style="width:0%"></div></div>
+                      <span id="risk-exposure" class="risk-num">$0</span>
+                    </div>
+                  </div>
+                  <div class="circuit-flex">
+                    <div>
+                      <span class="circuit-label">Circuit Breaker</span>
+                      <div class="circuit-hint">Proteção automática: pausa o bot se o drawdown ultrapassar o limite configurado.</div>
+                    </div>
+                    <div class="circuit-right">
+                      <span id="risk-circuit" class="risk-stat-val ok">● OK</span>
+                      <button id="reset-circuit-btn" class="btn-reset hidden">Reativar</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <!-- Sidebar Técnica (Risk & Calibração) -->
-              <div class="tech-sidebar">
-                  
-                  <div class="glass-panel risk-side-panel">
-                     <div class="panel-header-premium glow-amber">Gestão de Risco</div>
-                     <div class="panel-body">
-                        <div class="risk-block">
-                          <div class="risk-row"><span class="risk-lbl">Drawdown</span><div class="risk-track"><div id="risk-drawdown-bar" class="risk-fill fill-rose" style="width:0%"></div></div><span id="risk-drawdown" class="risk-num">0%</span></div>
-                          <div class="risk-row"><span class="risk-lbl">Exposição</span><div class="risk-track"><div id="risk-exposure-bar" class="risk-fill fill-cyan" style="width:0%"></div></div><span id="risk-exposure" class="risk-num">$0</span></div>
-                        </div>
-                        <div class="circuit-flex">
-                           <span>Circuit Breaker:</span>
-                           <span id="risk-circuit" class="risk-stat-val ok">● OK</span>
-                           <button id="reset-circuit-btn" class="btn-reset hidden">Reset</button>
-                        </div>
-                     </div>
+              <!-- Precisão da IA -->
+              <div class="glass-panel calib-side-panel">
+                <div class="panel-header-premium glow-emerald">
+                  <span>🎯 Precisão da IA</span>
+                  <button id="refresh-cal" class="icon-btn" title="Atualizar">↻</button>
+                </div>
+                <div class="panel-body">
+                  <div class="calib-explain">
+                    <strong>Brier Score</strong> — mede o erro médio das previsões do bot (0 = perfeito, 1 = sempre errado). <span class="text-dim">Quanto menor, melhor.</span>
                   </div>
-
-                  <div class="glass-panel calib-side-panel">
-                     <div class="panel-header-premium glow-emerald">
-                        Brier Score & Aprendizado
-                        <button id="refresh-cal" class="icon-btn">↻</button>
-                     </div>
-                     <div class="panel-body">
-                        <div class="cal-big-metric">
-                           <span id="cal-brier" class="cal-val">—</span>
-                           <span id="cal-brier-qual" class="cal-qual">Aguardando...</span>
-                        </div>
-                        <div class="cal-categories-list" id="cal-categories">
-                           <!-- Injected by JS -->
-                        </div>
-                     </div>
+                  <div class="cal-big-metric">
+                    <span id="cal-brier" class="cal-val">—</span>
+                    <span id="cal-brier-qual" class="cal-qual">Aguardando dados...</span>
                   </div>
-
-                  <div class="glass-panel notif-side-panel">
-                     <div class="panel-header-premium glow-rose">Alertas do Sistema <span id="notif-count" class="chip-count rose" style="margin-left:auto">0</span></div>
-                     <div class="panel-body scrollable notif-feed-style" id="notifications-feed">
-                        <div class="empty-state">Sistema tranquilo.</div>
-                     </div>
+                  <div class="cal-categories-list" id="cal-categories">
+                    <!-- Injected by JS -->
                   </div>
-
+                </div>
               </div>
 
-           </div>
+              <!-- Alertas -->
+              <div class="glass-panel notif-side-panel">
+                <div class="panel-header-premium glow-rose">
+                  <span>🔔 Alertas do Sistema</span>
+                  <span id="notif-count" class="chip-count rose" style="margin-left:auto">0</span>
+                </div>
+                <div class="panel-body scrollable notif-feed-style" id="notifications-feed">
+                  <div class="empty-state">Tudo tranquilo por aqui.</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
         </section>
 
-        <!-- ─── TAB: CONFIGURAÇÕES E REGISTROS ─── -->
+        <!-- ─── TAB: AJUSTES ─── -->
         <section id="tab-settings" class="tab-pane">
-           
-           <div class="settings-layout">
-              <!-- Esquerda: Configurações do Bot -->
-              <div class="settings-form glass-panel">
-                 <div class="panel-header-premium">⚙️ Painel de Controle</div>
-                 <div class="panel-body form-body">
-                    
-                    <div class="cfg-group">
-                       <h3>Operação & Execução</h3>
-                       <div class="cfg-grid-2">
-                          <div class="cfg-field">
-                            <label id="dry-run-label">Modo Simulação Ativo</label>
-                            <label class="switch-modern"><input type="checkbox" id="s-dry-run"><span class="slider"></span></label>
-                          </div>
-                          <div class="cfg-field">
-                            <label>Capital Total Inicial (USDC)</label>
-                            <input type="number" id="s-bankroll" placeholder="1000">
-                          </div>
-                          <div class="cfg-field">
-                            <label>Chave Privada Polygon (LIVE)</label>
-                            <input type="password" id="s-private-key" placeholder="0x...">
-                          </div>
-                          <div class="cfg-field">
-                            <label>Intervalo de Scan (seg)</label>
-                            <input type="number" id="s-scan-interval" placeholder="60">
-                          </div>
-                       </div>
-                    </div>
+          <div class="settings-layout">
 
-                    <div class="cfg-group">
-                       <h3>Estratégia e Risco</h3>
-                       <div class="cfg-grid-3">
-                          <div class="cfg-field"><label>Edge Mínimo (%)</label><input type="number" id="s-min-edge" step="0.5"></div>
-                          <div class="cfg-field"><label>Fração Kelly (%)</label><input type="number" id="s-kelly"></div>
-                          <div class="cfg-field"><label>Posição Max (%)</label><input type="number" id="s-max-pos" step="0.5"></div>
-                          <div class="cfg-field"><label>Alvo Lucro (%)</label><input type="number" id="s-exit-target"></div>
-                          <div class="cfg-field"><label>Stop-Loss (%)</label><input type="number" id="s-stop-loss"></div>
-                          <div class="cfg-field"><label>Decay (horas)</label><input type="number" id="s-time-decay"></div>
-                          <div class="cfg-field"><label>Trail Ativar (%)</label><input type="number" id="s-trailing-activation"></div>
-                          <div class="cfg-field"><label>Trail Recuo (%)</label><input type="number" id="s-trailing-distance"></div>
-                          <div class="cfg-field"><label>Momentum</label><input type="number" id="s-momentum-cycles"></div>
-                       </div>
-                       <div class="cfg-grid-3" style="margin-top:15px">
-                           <div class="cfg-field">
-                            <label>Exposição Total (%)</label>
-                            <input type="number" id="s-max-exposure" step="5">
-                          </div>
-                          <div class="cfg-field" style="display:flex; justify-content:space-between; align-items:center;">
-                            <label>Reversão</label>
-                            <label class="switch-modern"><input type="checkbox" id="s-edge-reversal"><span class="slider"></span></label>
-                          </div>
-                          <div class="cfg-field" style="display:flex; justify-content:space-between; align-items:center;">
-                            <label>Correlação</label>
-                            <label class="switch-modern"><input type="checkbox" id="s-correlation"><span class="slider"></span></label>
-                          </div>
-                       </div>
-                    </div>
+            <!-- Esquerda: Formulário -->
+            <div class="settings-form glass-panel">
+              <div class="panel-header-premium">⚙️ Configuração do Bot</div>
+              <div class="panel-body form-body">
 
-                    <div class="cfg-group">
-                       <h3>Integração com LLM & Serviços</h3>
-                       <div class="cfg-grid-1">
-                          <div class="cfg-field">
-                            <div style="display:flex; justify-content:space-between; width:100%;">
-                               <label>Gate de Confirmação Claude AI</label>
-                               <label class="switch-modern"><input type="checkbox" id="s-claude-enabled"><span class="slider"></span></label>
-                            </div>
-                          </div>
-                          <div class="cfg-field">
-                             <label>Claude API Key</label>
-                             <input type="password" id="s-claude-key" placeholder="sk-ant-...">
-                          </div>
-                          <div class="cfg-field">
-                             <label>Discord Webhook URL</label>
-                             <input type="text" id="s-discord" placeholder="https://discord.com/api/webhooks/...">
-                          </div>
-                          <div class="cfg-field">
-                             <label>News API Key</label>
-                             <input type="password" id="s-news-key" placeholder="newsapi.org key">
-                          </div>
-                       </div>
-                    </div>
+                <!-- BLOCO 1: Modo de Operação -->
+                <div class="cfg-group">
+                  <h3>Modo de Operação</h3>
 
-                    <div class="cfg-actions">
-                       <button id="settings-save" class="btn-primary">Salvar Parâmetros</button>
+                  <div class="live-warning-box" id="live-warning-box" style="display:none">
+                    <span>🚨</span>
+                    <div>
+                      <strong>Modo AO VIVO ativado.</strong> O bot vai usar dinheiro real. Certifique-se de que sua chave privada e saldo estão corretos antes de ligar a IA.
                     </div>
+                  </div>
 
-                 </div>
+                  <div class="cfg-grid-2">
+                    <div class="cfg-field cfg-field-toggle">
+                      <div class="cfg-field-info">
+                        <label id="dry-run-label">Modo Simulação</label>
+                        <span class="cfg-desc">Quando ativado, o bot analisa mercados reais mas NÃO coloca dinheiro. Ideal para testar a estratégia.</span>
+                      </div>
+                      <label class="switch-modern"><input type="checkbox" id="s-dry-run"><span class="slider"></span></label>
+                    </div>
+                    <div class="cfg-field">
+                      <label>Capital Base (USDC)
+                        <span class="cfg-hint">Quanto dinheiro o bot tem para operar. Em simulação, é fictício.</span>
+                      </label>
+                      <input type="number" id="s-bankroll" placeholder="1000">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Chave Privada da Carteira (LIVE)
+                        <span class="cfg-hint">Necessária apenas no modo AO VIVO. Começa com 0x. Nunca compartilhe esta chave.</span>
+                      </label>
+                      <input type="password" id="s-private-key" placeholder="0x...">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Intervalo entre Scans (segundos)
+                        <span class="cfg-hint">Com que frequência o bot analisa novos mercados. Padrão: 60s. Menor = mais rápido, mas mais uso de API.</span>
+                      </label>
+                      <input type="number" id="s-scan-interval" placeholder="60">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- BLOCO 2: Estratégia de Entrada -->
+                <div class="cfg-group">
+                  <h3>Estratégia de Entrada</h3>
+                  <div class="cfg-grid-3">
+                    <div class="cfg-field">
+                      <label>Edge Mínimo para Entrar (%)
+                        <span class="cfg-hint">O bot só aposta se a vantagem estimada for maior que esse valor. Ex: 3% = só entra se achar que o mercado está errado em +3 pontos.</span>
+                      </label>
+                      <input type="number" id="s-min-edge" step="0.5">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Fração do Kelly (%)
+                        <span class="cfg-hint">O quanto do tamanho de aposta "matematicamente ideal" o bot realmente usa. 50% = aposta metade do ideal (mais seguro).</span>
+                      </label>
+                      <input type="number" id="s-kelly">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Tamanho Máximo por Aposta (%)
+                        <span class="cfg-hint">Limite máximo de uma aposta em relação ao capital total. Ex: 5% = nunca arrisca mais de 5% do capital em um único mercado.</span>
+                      </label>
+                      <input type="number" id="s-max-pos" step="0.5">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Exposição Total Máxima (%)
+                        <span class="cfg-hint">Quanto do capital total pode estar em apostas abertas ao mesmo tempo. Ex: 30% = guarda 70% em caixa.</span>
+                      </label>
+                      <input type="number" id="s-max-exposure" step="5">
+                    </div>
+                    <div class="cfg-field cfg-field-toggle">
+                      <div class="cfg-field-info">
+                        <label>Análise de Correlação</label>
+                        <span class="cfg-desc">Evita abrir apostas em mercados muito parecidos (ex: dois mercados sobre a mesma eleição).</span>
+                      </div>
+                      <label class="switch-modern"><input type="checkbox" id="s-correlation"><span class="slider"></span></label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- BLOCO 3: Saída e Proteção -->
+                <div class="cfg-group">
+                  <h3>Saída e Proteção de Capital</h3>
+                  <div class="cfg-grid-3">
+                    <div class="cfg-field">
+                      <label>Alvo de Lucro — Preço de Saída
+                        <span class="cfg-hint">O bot vende automaticamente quando o preço do token atingir este valor. Ex: 72 = sai quando o mercado atinge 72% de chance (se comprou a 7%, isso é um ganho de +900%).</span>
+                      </label>
+                      <input type="number" id="s-exit-target">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Stop-Loss (%)
+                        <span class="cfg-hint">Se o preço cair X% abaixo do preço de entrada, o bot vende para limitar o prejuízo. Ex: 20% = vende se cair 20%.</span>
+                      </label>
+                      <input type="number" id="s-stop-loss">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Sair se Negativo perto do Vencimento (horas)
+                        <span class="cfg-hint">Se o mercado vai fechar em menos de X horas E a aposta está no prejuízo, o bot sai automaticamente para recuperar o que puder.</span>
+                      </label>
+                      <input type="number" id="s-time-decay">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Trailing Stop — Ativar após Ganho de (%)
+                        <span class="cfg-hint">Quando o preço sobe X% além da entrada, ativa uma proteção dinâmica que acompanha o preço para cima e vende se ele recuar.</span>
+                      </label>
+                      <input type="number" id="s-trailing-activation">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Trailing Stop — Recuo Máximo (%)
+                        <span class="cfg-hint">Quanto o preço pode recuar do pico antes do trailing stop disparar. Ex: 8% = vende se cair 8% do ponto mais alto atingido.</span>
+                      </label>
+                      <input type="number" id="s-trailing-distance">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Saída por Queda Consistente (ciclos)
+                        <span class="cfg-hint">Se o preço cair em X ciclos seguidos E cair mais de 5% do pico, o bot sai. Evita segurar posições em tendência de queda.</span>
+                      </label>
+                      <input type="number" id="s-momentum-cycles">
+                    </div>
+                    <div class="cfg-field cfg-field-toggle">
+                      <div class="cfg-field-info">
+                        <label>Saída por Inversão de Vantagem</label>
+                        <span class="cfg-desc">Se o consenso externo (Metaculus/Manifold) mudar e agora favorecer o lado oposto ao da aposta, o bot sai automaticamente.</span>
+                      </div>
+                      <label class="switch-modern"><input type="checkbox" id="s-edge-reversal"><span class="slider"></span></label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- BLOCO 4: Integrações -->
+                <div class="cfg-group">
+                  <h3>Integrações e APIs</h3>
+                  <div class="cfg-grid-2">
+                    <div class="cfg-field cfg-field-toggle">
+                      <div class="cfg-field-info">
+                        <label>Verificação Claude AI</label>
+                        <span class="cfg-desc">Antes de cada aposta, a IA Claude analisa notícias e contexto do mercado para validar a decisão. Requer API Key abaixo.</span>
+                      </div>
+                      <label class="switch-modern"><input type="checkbox" id="s-claude-enabled"><span class="slider"></span></label>
+                    </div>
+                    <div class="cfg-field">
+                      <label>Claude API Key
+                        <span class="cfg-hint">Chave de acesso à Anthropic Claude. Obtenha em console.anthropic.com</span>
+                      </label>
+                      <input type="password" id="s-claude-key" placeholder="sk-ant-...">
+                    </div>
+                    <div class="cfg-field">
+                      <label>Discord Webhook (Notificações)
+                        <span class="cfg-hint">URL do webhook do Discord para receber alertas de trades e performance. Deixe em branco para desativar.</span>
+                      </label>
+                      <input type="text" id="s-discord" placeholder="https://discord.com/api/webhooks/...">
+                    </div>
+                    <div class="cfg-field">
+                      <label>News API Key
+                        <span class="cfg-hint">Chave para buscar notícias recentes relacionadas a cada mercado. Obtenha gratuitamente em newsapi.org</span>
+                      </label>
+                      <input type="password" id="s-news-key" placeholder="newsapi.org key">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- BLOCO 5: Market Maker (BETA) -->
+                <div class="cfg-group cfg-group-beta">
+                  <h3>🏛️ Market Maker <span class="badge-beta">BETA</span></h3>
+                  <p class="cfg-group-desc">Em vez de comprar ordens existentes, o bot pode ofertar liquidez dos dois lados e lucrar com o spread. Modo experimental.</p>
+                  <div class="cfg-field-toggle mm-toggle-row">
+                    <div class="cfg-field-info">
+                      <label>Ativar Modo Market Maker</label>
+                      <span class="cfg-desc">Quando ativo, o bot para de executar compras diretas e passa a postar ordens limite dos dois lados do livro.</span>
+                    </div>
+                    <label class="toggle-switch"><input type="checkbox" id="toggle-mm-mode"><span class="slider"></span></label>
+                  </div>
+                </div>
+
+                <div class="cfg-actions">
+                  <button id="settings-save" class="btn-primary">💾 Salvar Configurações</button>
+                  <span class="cfg-save-hint">As configurações são aplicadas imediatamente ao próximo ciclo do bot.</span>
+                </div>
+
               </div>
+            </div>
 
-              <!-- Direita: Trade Journal Completo -->
-              <div class="journal-wrapper glass-panel">
-                 <div class="panel-header-premium">
-                    <span>📚 Trade Journal</span>
-                    <div class="jtabs">
-                      <button class="jtab active" data-filter="all">Todos</button>
-                      <button class="jtab" data-filter="open">Abertos</button>
-                      <button class="jtab" data-filter="won">Ganhos</button>
-                      <button class="jtab" data-filter="lost">Perdas</button>
-                    </div>
-                    <button id="journal-info-btn" class="icon-btn" title="O que significa cada coluna?">ℹ️</button>
-                 </div>
-                 <div class="panel-body full-table-body scrollable">
-                    <table class="premium-table" id="journal-table">
-                       <thead>
-                         <tr>
-                            <th>DATA</th><th>MERCADO</th><th>LADO</th><th title="Preço de entrada no momento da compra">PREÇO</th><th title="Quantidade de dinheiro arriscado nessa aposta">STAKE</th><th title="Edge no momento da entrada">EDGE</th><th title="Retorno esperado por dólar">EV</th><th title="Variação do preço desde a entrada">VARIAÇÃO</th><th title="Situação do trade">STATUS</th><th title="Lucro ou Prejuízo realizado">P&L</th>
-                         </tr>
-                       </thead>
-                       <tbody id="journal-body">
-                          <tr><td colspan="10" class="empty-state">Sem trades registrados.</td></tr>
-                       </tbody>
-                    </table>
-                 </div>
+            <!-- Direita: Trade Journal -->
+            <div class="journal-wrapper glass-panel">
+              <div class="panel-header-premium">
+                <span>📚 Trade Journal</span>
+                <div class="jtabs">
+                  <button class="jtab active" data-filter="all">Todos</button>
+                  <button class="jtab" data-filter="open">Abertos</button>
+                  <button class="jtab" data-filter="won">Ganhos</button>
+                  <button class="jtab" data-filter="lost">Perdas</button>
+                </div>
+                <button id="journal-info-btn" class="icon-btn" title="O que significa cada coluna?">ℹ️</button>
               </div>
+              <div class="panel-body full-table-body scrollable">
+                <table class="premium-table" id="journal-table">
+                  <thead>
+                    <tr>
+                      <th>DATA</th>
+                      <th>MERCADO</th>
+                      <th>LADO</th>
+                      <th title="Preço de entrada no momento da compra">PREÇO</th>
+                      <th title="Dinheiro arriscado nessa aposta">STAKE</th>
+                      <th title="Vantagem estimada sobre o mercado na entrada">EDGE</th>
+                      <th title="Retorno esperado por dólar">EV</th>
+                      <th title="Variação do preço desde a entrada (dado real da Polymarket, atualizado a cada 60s)">VARIAÇÃO</th>
+                      <th title="Situação da aposta">STATUS</th>
+                      <th title="Lucro ou Prejuízo quando encerrada">P&amp;L</th>
+                    </tr>
+                  </thead>
+                  <tbody id="journal-body">
+                    <tr><td colspan="10" class="empty-state">Nenhum trade registrado ainda.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-           </div>
+          </div>
         </section>
 
       </div> <!-- /tab-content-wrapper -->
@@ -389,7 +513,7 @@
   <div id="journal-info-modal" class="info-modal-overlay" style="display:none;">
     <div class="info-modal-box glass-panel">
       <div class="info-modal-header">
-        <span>📖 Guia Rápido — Trade Journal</span>
+        <span>📖 Guia — Trade Journal</span>
         <button id="journal-info-close" class="icon-btn">✕</button>
       </div>
       <div class="info-modal-body">
@@ -412,19 +536,19 @@
           </div>
           <div class="info-row">
             <dt>🎲 STAKE</dt>
-            <dd>Quantos dólares o bot arriscou nessa aposta (calculado pelo Kelly).</dd>
+            <dd>Quantos dólares o bot arriscou nessa aposta (calculado automaticamente pelo critério de Kelly).</dd>
           </div>
           <div class="info-row">
             <dt>📐 EDGE</dt>
-            <dd>Diferença entre o que o bot estima como chance real e o que o mercado precifica. Ex: <em>+33%</em> = bot acha que a chance real é 33 pontos percentuais maior que o mercado.</dd>
+            <dd>Diferença entre o que o bot estima como chance real e o que o mercado precifica. <em>+33%</em> = bot acha que a chance real é 33 pontos percentuais maior que o preço.</dd>
           </div>
           <div class="info-row">
-            <dt>📈 EV (Expected Value)</dt>
-            <dd>Retorno esperado por dólar investido. <em>+1.8%</em> = a cada $1 apostado, espera-se ganhar $1.018 em média descontando a taxa da Polymarket.</dd>
+            <dt>📈 EV</dt>
+            <dd>Retorno esperado por dólar investido, já descontando a taxa da Polymarket. <em>+1.8%</em> = a cada $1, espera-se ganhar $1.018 em média.</dd>
           </div>
           <div class="info-row">
             <dt>📊 VARIAÇÃO</dt>
-            <dd>Quanto o preço do mercado subiu ou caiu desde que o bot entrou. <span class="pnl-positive">+20%</span> = o token valorizado 20% desde a compra.</dd>
+            <dd>Quanto o preço do mercado subiu ou caiu desde que o bot entrou. Dado real da Polymarket, atualizado a cada 60s. <span class="pnl-positive">+20%</span> = valorizou 20%.</dd>
           </div>
           <div class="info-row">
             <dt>🔖 STATUS</dt>
@@ -432,10 +556,10 @@
           </div>
           <div class="info-row">
             <dt>💵 P&amp;L</dt>
-            <dd>Lucro ou Prejuízo <strong>realizado</strong>, em dólares, quando o mercado foi resolvido ou o bot saiu da posição.</dd>
+            <dd>Lucro ou Prejuízo <strong>realizado</strong>, em dólares, quando o mercado foi resolvido ou o bot encerrou a posição.</dd>
           </div>
         </dl>
-        <p style="margin-top:1rem; color:var(--text-dim); font-size:0.8rem;">Todos os preços e variações são dados reais da Polymarket, atualizados a cada ciclo (60s).</p>
+        <p style="margin-top:1rem; color:var(--text-dim); font-size:0.8rem;">Todos os preços e variações são dados reais da Polymarket, atualizados a cada ciclo (~60s).</p>
       </div>
     </div>
   </div>
