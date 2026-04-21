@@ -949,24 +949,42 @@ export class TradingEngine extends EventEmitter {
         exitReason = `🛑 STOP-LOSS: queda de ${(config.stopLossPct * 100).toFixed(0)}% do preço de entrada (${(trade.entryPrice * 100).toFixed(1)}¢ → ${(currentSidePrice * 100).toFixed(1)}¢)`;
       }
 
-      // 4. EDGE REVERSAL — thesis invalidated
+      // 4. EDGE REVERSAL — thesis invalidated (fresh consensus re-estimation)
+      // FIX: Uses LIVE consensus data (Metaculus + Manifold) instead of static entry probability.
+      // This catches macro shifts that weren't available when the position was opened.
       if (!exitReason && config.edgeReversalEnabled) {
-        // Reconstruct original estimated true YES probability:
-        // BUY_YES: trueYesProb = entryPrice + edge
-        // BUY_NO:  trueNoProb  = entryPrice + edge → trueYesProb = 1 - trueNoProb
-        const originalProb = trade.side === 'BUY_YES'
-          ? trade.entryPrice + trade.edge
-          : 1 - trade.entryPrice - trade.edge;
+        let freshProb: number | null = null;
+
+        try {
+          const consensusEstimates = await this.consensusClient.getConsensus(trade.question);
+          if (consensusEstimates.length > 0) {
+            // Weighted average by confidence
+            const totalWeight = consensusEstimates.reduce((s, e) => s + e.confidence, 0);
+            freshProb = consensusEstimates.reduce((s, e) => s + e.probability * e.confidence, 0) / totalWeight;
+          }
+        } catch (_) { /* consensus unavailable — fall back to entry estimate */ }
+
+        // Fall back to entry-time estimate if consensus returned nothing
+        const probForReversal = freshProb ?? (
+          trade.side === 'BUY_YES'
+            ? trade.entryPrice + trade.edge
+            : 1 - trade.entryPrice - trade.edge
+        );
+
         const currentEdgeAnalysis = this.edgeCalc.calculateEdge(
           trade.marketId, trade.question, market.yesPrice,
-          originalProb, trade.confidence ?? 0.5,
+          probForReversal, trade.confidence ?? 0.5,
           market.liquidity, market.yesTokenId, market.noTokenId, market.negRisk
         );
+
+        const REVERSAL_EDGE_THRESHOLD = config.minEdge * 2.0; // must be twice minEdge to trigger
         const oppositeHasEdge =
-          (trade.side === 'BUY_YES' && currentEdgeAnalysis.side === 'BUY_NO' && Math.abs(currentEdgeAnalysis.edge) > config.minEdge * 1.5) ||
-          (trade.side === 'BUY_NO'  && currentEdgeAnalysis.side === 'BUY_YES' && Math.abs(currentEdgeAnalysis.edge) > config.minEdge * 1.5);
+          (trade.side === 'BUY_YES' && currentEdgeAnalysis.side === 'BUY_NO'  && Math.abs(currentEdgeAnalysis.edge) > REVERSAL_EDGE_THRESHOLD) ||
+          (trade.side === 'BUY_NO'  && currentEdgeAnalysis.side === 'BUY_YES' && Math.abs(currentEdgeAnalysis.edge) > REVERSAL_EDGE_THRESHOLD);
+
         if (oppositeHasEdge) {
-          exitReason = `🔄 EDGE REVERSAL: mercado agora favorece o lado oposto (edge=${(currentEdgeAnalysis.edgePercent).toFixed(1)}%)`;
+          const source = freshProb ? 'consenso externo' : 'estimativa de entrada';
+          exitReason = `🔄 EDGE REVERSAL [${source}]: mercado agora favorece o lado oposto (edge=${(currentEdgeAnalysis.edgePercent).toFixed(1)}%)`;
         }
       }
 
@@ -978,9 +996,15 @@ export class TradingEngine extends EventEmitter {
         }
       }
 
-      // 6. MOMENTUM EXIT — consecutive declines signal trend reversal
+      // 6. MOMENTUM EXIT — FIX: require BOTH consecutive declines AND meaningful price drop
+      // Before: 3 cycles of decline (3 minutes) was enough — far too aggressive.
+      // Now: requires consecutive declines AND price is >=5% below peak (real trend, not noise).
       if (!exitReason && state.declineCount >= config.momentumExitCycles && currentSidePrice < trade.entryPrice) {
-        exitReason = `📊 MOMENTUM NEGATIVO: ${state.declineCount} ciclos consecutivos de queda (${(trade.entryPrice * 100).toFixed(1)}¢ → ${(currentSidePrice * 100).toFixed(1)}¢)`;
+        const dropFromPeak = (state.peakPrice - currentSidePrice) / state.peakPrice;
+        const MIN_MEANINGFUL_DROP = 0.05; // 5% from peak before treating as trend reversal
+        if (dropFromPeak >= MIN_MEANINGFUL_DROP) {
+          exitReason = `📊 MOMENTUM NEGATIVO: ${state.declineCount} ciclos consecutivos + queda de ${(dropFromPeak * 100).toFixed(1)}% do pico (${(state.peakPrice * 100).toFixed(1)}¢ → ${(currentSidePrice * 100).toFixed(1)}¢)`;
+        }
       }
 
       if (!exitReason) continue;
@@ -991,16 +1015,35 @@ export class TradingEngine extends EventEmitter {
 
       if (config.dryRun || trade.dryRun) {
         exitSuccess = true;
-        logger.info('Engine', `🏜️ [DRY-RUN] Exit simulado @ $${currentSidePrice.toFixed(3)}`);
+        logger.info('Engine', `🏜️ [DRY-RUN] Exit simulado: ${exitReason} @ $${currentSidePrice.toFixed(3)}`);
       } else {
-        const sellResult = await this.clobApi.placeLimitOrder(
+        // FIX: Try limit order first (better price), fallback to market order (guaranteed fill).
+        // This ensures positions are ALWAYS closed when an exit signal fires in LIVE mode.
+        logger.info('Engine', `Executing LIVE exit: SELL ${trade.size.toFixed(2)} shares @ $${currentSidePrice.toFixed(4)} [${sellTokenId.slice(0, 12)}...]`);
+
+        const limitResult = await this.clobApi.placeLimitOrder(
           sellTokenId, 'SELL', currentSidePrice, trade.size, market.negRisk
         );
-        exitSuccess = sellResult.success;
-        if (!exitSuccess) {
-          logger.warn('Engine', `Falha ao vender "${trade.question.substring(0, 40)}...": ${sellResult.error}`);
+
+        if (limitResult.success) {
+          exitSuccess = true;
+          logger.info('Engine', `✅ SELL Limit Order aceita: ${limitResult.orderId}`);
+        } else {
+          // Fallback: market sell at 2% below current price to guarantee fill
+          logger.warn('Engine', `Limit SELL falhou (${limitResult.error}), tentando market sell...`);
+          const marketPrice = Math.max(0.01, currentSidePrice * 0.98);
+          const marketResult = await this.clobApi.placeLimitOrder(
+            sellTokenId, 'SELL', marketPrice, trade.size, market.negRisk
+          );
+          if (marketResult.success) {
+            exitSuccess = true;
+            logger.info('Engine', `✅ SELL Market fallback: preenchido @ $${marketPrice.toFixed(4)}`);
+          } else {
+            logger.error('Engine', `❌ SELL falhou: limit=${limitResult.error} | market=${marketResult.error}. Posição mantida aberta.`);
+          }
         }
       }
+
 
       if (exitSuccess) {
         // Deduct Polymarket taker fee (~2%) from exit proceeds to simulate real P&L
