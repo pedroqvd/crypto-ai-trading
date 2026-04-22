@@ -74,7 +74,7 @@ export class DashboardServer {
       res.setHeader('X-XSS-Protection', '1; mode=block');
       res.setHeader('Referrer-Policy', 'no-referrer');
       res.setHeader('Content-Security-Policy',
-        `default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:${extraConnect}; img-src 'self' data:`);
+        `default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:${extraConnect}; img-src 'self' data:`);
         
       // Ensure APIs are never cached by the browser
       if (req.path.startsWith('/api/')) {
@@ -211,7 +211,7 @@ export class DashboardServer {
     this.app.post('/api/settings/mode', (req, res) => {
       const mode = req.body.mode;
       if (mode === 'MARKET_MAKER' || mode === 'DIRECTIONAL') {
-        config.tradeMode = mode;
+        this.engine.updateConfig({ tradeMode: mode });
         logger.info('Engine', `🚀 Config: tradeMode alterado para ${mode} via Dashboard.`);
         res.json({ success: true, mode });
       } else {

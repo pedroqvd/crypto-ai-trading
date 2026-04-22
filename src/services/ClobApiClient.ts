@@ -6,6 +6,32 @@
 import { config } from '../engine/Config';
 import { logger } from '../utils/Logger';
 
+const TRANSIENT_PATTERNS = ['timeout', 'network', 'ECONNRESET', 'ECONNREFUSED', '503', '502', '429', 'rate limit'];
+
+function isTransientError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return TRANSIENT_PATTERNS.some(p => msg.toLowerCase().includes(p.toLowerCase()));
+}
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxAttempts = 3,
+  delays = [2_000, 4_000]
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isTransientError(err) || attempt === maxAttempts) throw err;
+      const delay = delays[attempt - 1] ?? delays[delays.length - 1];
+      logger.warn('ClobApi', `${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay / 1000}s…`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error(`${label}: max retries exceeded`);
+}
+
 export interface OrderResult {
   success: boolean;
   orderId?: string;
@@ -112,12 +138,14 @@ export class ClobApiClient {
       };
     }
     try {
-      const book = await (this.client as any).getOrderBook(tokenId);
-      const bids = (book.bids || []).map((b: any) => ({ price: parseFloat(b.price), size: parseFloat(b.size) }));
-      const asks = (book.asks || []).map((a: any) => ({ price: parseFloat(a.price), size: parseFloat(a.size) }));
-      const bestBid = bids.length > 0 ? bids[0].price : 0;
-      const bestAsk = asks.length > 0 ? asks[0].price : 1;
-      return { bids, asks, midpoint: (bestBid + bestAsk) / 2, spread: bestAsk - bestBid };
+      return await withRetry(async () => {
+        const book = await (this.client as any).getOrderBook(tokenId);
+        const bids: OrderBookEntry[] = (book.bids || []).map((b: { price: string; size: string }) => ({ price: parseFloat(b.price), size: parseFloat(b.size) }));
+        const asks: OrderBookEntry[] = (book.asks || []).map((a: { price: string; size: string }) => ({ price: parseFloat(a.price), size: parseFloat(a.size) }));
+        const bestBid = bids.length > 0 ? bids[0].price : 0;
+        const bestAsk = asks.length > 0 ? asks[0].price : 1;
+        return { bids, asks, midpoint: (bestBid + bestAsk) / 2, spread: bestAsk - bestBid };
+      }, `getOrderBook(${tokenId.slice(0, 12)})`);
     } catch (err) {
       logger.error('ClobApi', `Failed to get order book for ${tokenId}`, err instanceof Error ? err.message : err);
       return null;
@@ -141,11 +169,8 @@ export class ClobApiClient {
       return { success: false, error: 'CLOB client not initialized' };
     }
 
-    const MAX_ATTEMPTS = 3;
-    const RETRY_DELAYS_MS = [2_000, 4_000];
-
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
+    try {
+      return await withRetry(async () => {
         const { Side, OrderType } = await import('@polymarket/clob-client');
         const orderSide = side === 'BUY' ? Side.BUY : Side.SELL;
         const response = await (this.client as any).createAndPostOrder(
@@ -155,21 +180,12 @@ export class ClobApiClient {
         );
         logger.info('ClobApi', `✅ Order placed: ${side} ${size} @ $${price}. ID: ${response.orderID}`);
         return { success: true, orderId: response.orderID, status: response.status, transactedSize: size };
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : 'Unknown error';
-        const isTransient = errMsg.includes('timeout') || errMsg.includes('network') ||
-          errMsg.includes('ECONNRESET') || errMsg.includes('503') ||
-          errMsg.includes('502') || errMsg.includes('429');
-        if (!isTransient || attempt === MAX_ATTEMPTS) {
-          logger.error('ClobApi', `Failed to place order (attempt ${attempt}/${MAX_ATTEMPTS})`, errMsg);
-          return { success: false, error: errMsg };
-        }
-        const delay = RETRY_DELAYS_MS[attempt - 1];
-        logger.warn('ClobApi', `Order placement failed (attempt ${attempt}/${MAX_ATTEMPTS}), retrying in ${delay / 1000}s...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
+      }, `placeLimitOrder(${side} ${size}@${price})`);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      logger.error('ClobApi', `Failed to place order`, errMsg);
+      return { success: false, error: errMsg };
     }
-    return { success: false, error: 'Max retries exceeded' };
   }
 
   async cancelOrder(orderId: string): Promise<boolean> {
@@ -206,6 +222,7 @@ export class ClobApiClient {
     }
 
     try {
+      return await withRetry(async () => {
       const { ethers } = await import('ethers');
 
       // All stablecoins Polymarket accepts on Polygon (query all, sum total)
@@ -243,6 +260,7 @@ export class ClobApiClient {
 
       logger.info('ClobApi', `💰 Saldo total (todos stablecoins): $${totalBalance.toFixed(2)}`);
       return totalBalance > 0 ? totalBalance : config.bankroll;
+      }, 'getBalance');
     } catch (err) {
       logger.error('ClobApi', 'Falha ao consultar saldo on-chain — retornando bankroll inicial', err instanceof Error ? err.message : err);
       return config.bankroll;

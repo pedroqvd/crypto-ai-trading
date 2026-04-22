@@ -6,6 +6,10 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from './Logger';
 
+// Cap the number of closed trades kept in memory. Open trades are always retained.
+const MAX_CLOSED_IN_MEMORY = 5_000;
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+
 export interface TradeRecord {
   id: string;
   timestamp: string;
@@ -46,6 +50,7 @@ export class TradeJournal {
   private dataDir: string;
   private tradesFile: string;
   private persistenceAvailable = false;
+  private statsCache: ReturnType<TradeJournal['getStats']> | null = null;
 
   constructor() {
     this.dataDir = path.join(process.cwd(), 'data');
@@ -82,15 +87,28 @@ export class TradeJournal {
 
   private saveToDisk(): void {
     if (!this.persistenceAvailable) return;
-    try {
-      fs.writeFileSync(this.tradesFile, JSON.stringify(this.trades, null, 2));
-    } catch (err) {
-      logger.error('TradeJournal', 'Failed to save trade history to disk');
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => {
+      _saveTimer = null;
+      const payload = JSON.stringify(this.trades, null, 2);
+      fs.writeFile(this.tradesFile, payload, err => {
+        if (err) logger.error('TradeJournal', 'Failed to save trade history to disk');
+      });
+    }, 1000);
+  }
+
+  private trimMemory(): void {
+    const open = this.trades.filter(t => t.status === 'open');
+    const closed = this.trades.filter(t => t.status !== 'open');
+    if (closed.length > MAX_CLOSED_IN_MEMORY) {
+      this.trades = [...closed.slice(-MAX_CLOSED_IN_MEMORY), ...open];
     }
   }
 
   recordTrade(trade: TradeRecord): void {
     this.trades.push(trade);
+    this.trimMemory();
+    this.statsCache = null;
     this.saveToDisk();
     logger.info('TradeJournal', `Trade recorded: ${trade.side} "${trade.question}" @ $${trade.stake.toFixed(2)}`);
   }
@@ -106,6 +124,7 @@ export class TradeJournal {
       : -trade.stake;                     // Lost: lose entire stake
     trade.resolvedAt = new Date().toISOString();
 
+    this.statsCache = null;
     this.saveToDisk();
     logger.info('TradeJournal', `Trade resolved: ${trade.status} "${trade.question}" P&L: $${trade.pnl?.toFixed(2)}`);
   }
@@ -118,6 +137,7 @@ export class TradeJournal {
     trade.pnl = 0;
     trade.resolvedAt = new Date().toISOString();
 
+    this.statsCache = null;
     this.saveToDisk();
     logger.info('TradeJournal', `Trade cancelled: "${trade.question}"`);
   }
@@ -137,6 +157,7 @@ export class TradeJournal {
     trade.pnl = pnl;
     trade.resolvedAt = new Date().toISOString();
 
+    this.statsCache = null;
     this.saveToDisk();
     logger.info('TradeJournal',
       `Trade exited early: "${trade.question}" @ $${exitPrice.toFixed(4)}, P&L: $${pnl.toFixed(2)}`
@@ -244,6 +265,7 @@ export class TradeJournal {
     bestTrade: number;
     worstTrade: number;
   } {
+    if (this.statsCache) return this.statsCache;
     const closed = this.getClosedTrades();
     const wins = closed.filter(t => t.status === 'won').length;
     const losses = closed.filter(t => t.status === 'lost').length;
@@ -256,7 +278,7 @@ export class TradeJournal {
       : 0;
     const pnls = closed.map(t => t.pnl || 0);
 
-    return {
+    const result = {
       totalTrades: this.trades.length,
       openTrades: this.getOpenTrades().length,
       wins,
@@ -268,6 +290,8 @@ export class TradeJournal {
       bestTrade: pnls.length > 0 ? Math.max(...pnls) : 0,
       worstTrade: pnls.length > 0 ? Math.min(...pnls) : 0,
     };
+    this.statsCache = result;
+    return result;
   }
 
   // Export all trades as CSV string

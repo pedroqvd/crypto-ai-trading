@@ -9,6 +9,7 @@
 
 import { TradeRecord } from './TradeJournal';
 import { config } from '../engine/Config';
+import { detectMarketCategory } from './categoryDetector';
 
 export interface DrawdownPeriod {
   peak: number;           // bankroll at peak
@@ -68,31 +69,6 @@ export interface PerformanceReport {
   byCategory: CategoryStats[];
 }
 
-// ── CATEGORY DETECTION ────────────────────────────────────────────────────
-// Infers category from question text for P&L attribution.
-function detectCategory(question: string): string {
-  const q = question.toLowerCase();
-
-  if (/\b(bitcoin|btc|ethereum|eth|crypto|defi|nft|blockchain|solana|sol)\b/.test(q))
-    return 'Crypto';
-  if (/\b(election|president|vote|senator|congress|governor|parliament|prime minister)\b/.test(q))
-    return 'Politics';
-  if (/\b(fed|interest rate|inflation|gdp|recession|economy|employment|cpi)\b/.test(q))
-    return 'Economics';
-  if (/\b(nba|nfl|nhl|mlb|soccer|football|basketball|tennis|golf|olympic)\b/.test(q))
-    return 'Sports';
-  if (/\b(ai|artificial intelligence|chatgpt|openai|google|microsoft|apple|meta|amazon)\b/.test(q))
-    return 'Tech / AI';
-  if (/\b(war|conflict|military|nato|russia|ukraine|china|taiwan|iran|north korea)\b/.test(q))
-    return 'Geopolitics';
-  if (/\b(climate|carbon|temperature|hurricane|earthquake|weather|environment)\b/.test(q))
-    return 'Science / Climate';
-  if (/\b(covid|vaccine|fda|drug|clinical trial|cancer|disease|pandemic)\b/.test(q))
-    return 'Health / Bio';
-
-  return 'Other';
-}
-
 export class PerformanceMetrics {
   // ========================================
   // MAIN: BUILD FULL REPORT
@@ -128,8 +104,8 @@ export class PerformanceMetrics {
     const lastDate  = new Date(closed[closed.length - 1].resolvedAt!);
     const tradingDays = Math.max(1, (lastDate.getTime() - firstDate.getTime()) / 86_400_000);
 
-    // Annualisation factor (252 trading days)
-    const annFactor = Math.sqrt(252 / Math.max(tradingDays, 1));
+    // Annualisation factor: sqrt(252) converts daily Sharpe/Sortino to annual.
+    const annFactor = Math.sqrt(252);
 
     const sharpe  = this.sharpe(dailyReturns, annFactor);
     const sortino = this.sortino(dailyReturns, annFactor);
@@ -141,7 +117,7 @@ export class PerformanceMetrics {
 
     // Current drawdown
     const currentBankroll = finalBankroll;
-    const peakBankroll = Math.max(...equityCurve.map(p => p.bankroll));
+    const peakBankroll = equityCurve.reduce((max, p) => Math.max(max, p.bankroll), -Infinity);
     const currentDrawdownPct = peakBankroll > 0
       ? ((peakBankroll - currentBankroll) / peakBankroll) * 100
       : 0;
@@ -278,7 +254,7 @@ export class PerformanceMetrics {
     const map = new Map<string, TradeRecord[]>();
 
     for (const t of closed) {
-      const cat = detectCategory(t.question);
+      const cat = detectMarketCategory(t.question);
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(t);
     }

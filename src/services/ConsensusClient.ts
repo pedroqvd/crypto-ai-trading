@@ -14,6 +14,7 @@
 
 import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/Logger';
+import { extractKeywords } from '../utils/keywordExtractor';
 
 export interface ConsensusEstimate {
   source: 'metaculus' | 'manifold';
@@ -65,7 +66,7 @@ export class ConsensusClient {
   async getConsensus(question: string): Promise<ConsensusEstimate[]> {
     if (this.cycleCallCount >= MAX_PER_CYCLE) return [];
 
-    const cacheKey = question.substring(0, 100).toLowerCase();
+    const cacheKey = question.toLowerCase();
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
       return cached.estimates;
@@ -91,7 +92,7 @@ export class ConsensusClient {
   // ========================================
   private async fetchMetaculus(question: string): Promise<ConsensusEstimate[]> {
     try {
-      const keywords = extractKeywords(question).slice(0, 4).join(' ');
+      const keywords = extractKeywords(question).slice(0, 4).map(w => w.toLowerCase()).join(' ');
       if (!keywords) return [];
 
       const resp = await this.metaculusClient.get('/questions/', {
@@ -143,7 +144,7 @@ export class ConsensusClient {
   // ========================================
   private async fetchManifold(question: string): Promise<ConsensusEstimate[]> {
     try {
-      const keywords = extractKeywords(question).slice(0, 4).join(' ');
+      const keywords = extractKeywords(question).slice(0, 4).map(w => w.toLowerCase()).join(' ');
       if (!keywords) return [];
 
       const resp = await this.manifoldClient.get('/search-markets', {
@@ -193,25 +194,11 @@ export class ConsensusClient {
 // HELPERS
 // ========================================
 
-function extractKeywords(text: string): string[] {
-  const stopWords = new Set([
-    'will', 'the', 'a', 'an', 'be', 'is', 'are', 'was', 'were',
-    'in', 'on', 'at', 'by', 'for', 'of', 'to', 'and', 'or', 'but',
-    'if', 'that', 'this', 'which', 'who', 'what', 'when', 'where',
-    'how', 'than', 'with', 'from', 'has', 'have', 'had', 'do', 'does',
-    'did', 'not', 'no', 'more', 'its', 'their', 'any', 'during',
-  ]);
-  return text
-    .replace(/[?.,!();:]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 2 && !stopWords.has(w.toLowerCase()))
-    .map(w => w.toLowerCase());
-}
-
-// Jaccard token overlap similarity
+// Jaccard token overlap similarity using the shared keyword extractor.
+// Lowercases for case-insensitive matching.
 function tokenSimilarity(a: string, b: string): number {
-  const ta = new Set(extractKeywords(a));
-  const tb = new Set(extractKeywords(b));
+  const ta = new Set(extractKeywords(a).map(w => w.toLowerCase()));
+  const tb = new Set(extractKeywords(b).map(w => w.toLowerCase()));
   if (ta.size === 0 || tb.size === 0) return 0;
   let intersection = 0;
   for (const t of ta) { if (tb.has(t)) intersection++; }

@@ -113,10 +113,10 @@ export class NotificationService {
   // CORE SEND
   // ========================================
   private async send(notification: Notification): Promise<void> {
-    // Store in recent
+    // Store in recent — shift oldest rather than recreating the array.
     this.recentNotifications.push(notification);
     if (this.recentNotifications.length > this.maxRecent) {
-      this.recentNotifications = this.recentNotifications.slice(-this.maxRecent);
+      this.recentNotifications.shift();
     }
 
     // Emit to WebSocket listeners (dashboard)
