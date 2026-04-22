@@ -13,6 +13,7 @@ import { TradingEngine } from '../engine/TradingEngine';
 import { logger } from '../utils/Logger';
 import { AuthService } from '../auth/AuthService';
 import { createAuthMiddleware, verifySocketAuth } from '../auth/authMiddleware';
+import { validators, validateSettingsUpdate, validateTradeHistoryFilters, ValidationError } from '../utils/InputValidator';
 
 export class DashboardServer {
   private app: express.Application;
@@ -129,7 +130,8 @@ export class DashboardServer {
       const token = await this.authService.login(email, password, ip);
 
       if (token) {
-        res.json({ token, expiresIn: '24h' });
+        const refreshToken = this.authService.generateRefreshToken(email);
+        res.json({ token, refreshToken, expiresIn: '24h', refreshExpiresIn: '7d' });
       } else {
         res.status(401).json({ error: 'Credenciais inválidas', code: 'INVALID_CREDENTIALS' });
       }
@@ -154,6 +156,24 @@ export class DashboardServer {
       // Client clears the cookie; server doesn't need to do much
       // In production, you'd add the token to a blacklist
       res.json({ success: true });
+    });
+
+    // Refresh token
+    this.app.post('/api/auth/refresh', (req, res) => {
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        res.status(400).json({ error: 'Refresh token é obrigatório', code: 'MISSING_TOKEN' });
+        return;
+      }
+
+      const newToken = this.authService.refreshToken(refreshToken);
+
+      if (newToken) {
+        res.json({ token: newToken, expiresIn: '24h' });
+      } else {
+        res.status(401).json({ error: 'Refresh token inválido ou expirado', code: 'INVALID_REFRESH_TOKEN' });
+      }
     });
   }
 
@@ -185,21 +205,30 @@ export class DashboardServer {
 
     // Advanced Trade History (Search & Filter)
     this.app.get('/api/trades/history', (req, res) => {
-      const { search, dryRun, status, days } = req.query;
-      const journal = this.engine.getJournal();
-      
-      const filters = {
-        search: search ? String(search) : undefined,
-        dryRun: dryRun !== undefined ? dryRun === 'true' : undefined,
-        status: status ? String(status) : undefined,
-        days: days ? parseInt(String(days)) : undefined,
-      };
+      try {
+        const validated = validateTradeHistoryFilters(req.query as Record<string, unknown>);
+        const journal = this.engine.getJournal();
 
-      const trades = journal.getFilteredTrades(filters);
-      res.json({
-        count: trades.length,
-        trades: trades,
-      });
+        const filters = {
+          search: validated.search,
+          dryRun: validated.dryRun ? validated.dryRun === 'true' : undefined,
+          status: validated.status as any,
+          days: validated.days,
+        };
+
+        const trades = journal.getFilteredTrades(filters);
+        res.json({
+          count: trades.length,
+          trades: trades,
+        });
+      } catch (err) {
+        if (err instanceof ValidationError) {
+          res.status(400).json({ error: err.message });
+        } else {
+          logger.error('Dashboard', 'History error', err);
+          res.status(500).json({ error: 'Internal server error' });
+        }
+      }
     });
 
     // Risk status
@@ -209,13 +238,18 @@ export class DashboardServer {
 
     // Toggle market maker mode
     this.app.post('/api/settings/mode', (req, res) => {
-      const mode = req.body.mode;
-      if (mode === 'MARKET_MAKER' || mode === 'DIRECTIONAL') {
+      try {
+        const mode = validators.mode(req.body.mode);
         this.engine.updateConfig({ tradeMode: mode });
         logger.info('Engine', `🚀 Config: tradeMode alterado para ${mode} via Dashboard.`);
         res.json({ success: true, mode });
-      } else {
-        res.status(400).json({ error: 'Modo inválido.' });
+      } catch (err) {
+        if (err instanceof ValidationError) {
+          res.status(400).json({ error: err.message });
+        } else {
+          logger.error('Dashboard', 'Settings mode error', err);
+          res.status(500).json({ error: 'Internal server error' });
+        }
       }
     });
 
@@ -363,20 +397,29 @@ export class DashboardServer {
     ]);
 
     this.app.post('/api/settings', (req, res) => {
-      const body = req.body as Record<string, unknown>;
-      const updates: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(body)) {
-        if (ALLOWED_SETTING_KEYS.has(key)) updates[key] = value;
+      try {
+        const validated = validateSettingsUpdate(req.body);
+        const updates: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(validated)) {
+          if (ALLOWED_SETTING_KEYS.has(key)) updates[key] = value;
+        }
+        if (Object.keys(updates).length === 0) {
+          res.status(400).json({ error: 'Nenhum campo válido enviado.' });
+          return;
+        }
+        this.engine.updateConfig(updates as Parameters<typeof this.engine.updateConfig>[0]);
+        this.io.emit('statusUpdate', this.engine.getStatus());
+        this.io.emit('settingsUpdated', this.engine.getPublicConfig());
+        logger.info('Dashboard', '⚙️ Settings atualizadas via dashboard');
+        res.json({ success: true });
+      } catch (err) {
+        if (err instanceof ValidationError) {
+          res.status(400).json({ error: err.message });
+        } else {
+          logger.error('Dashboard', 'Settings error', err);
+          res.status(500).json({ error: 'Internal server error' });
+        }
       }
-      if (Object.keys(updates).length === 0) {
-        res.status(400).json({ error: 'Nenhum campo válido enviado.' });
-        return;
-      }
-      this.engine.updateConfig(updates as Parameters<typeof this.engine.updateConfig>[0]);
-      this.io.emit('statusUpdate', this.engine.getStatus());
-      this.io.emit('settingsUpdated', this.engine.getPublicConfig());
-      logger.info('Dashboard', '⚙️ Settings atualizadas via dashboard');
-      res.json({ success: true });
     });
 
     // Serve dashboard (protected by auth middleware)

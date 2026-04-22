@@ -89,6 +89,9 @@
 
         if (response.ok && data.token) {
           localStorage.setItem('auth_token', data.token);
+          if (data.refreshToken) {
+            localStorage.setItem('refresh_token', data.refreshToken);
+          }
           window.location.href = '/';
         } else {
           const errorMessages = {

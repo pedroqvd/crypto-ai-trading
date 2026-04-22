@@ -8,7 +8,8 @@
   // ========================================
   // AUTH
   // ========================================
-  const authToken = localStorage.getItem('auth_token');
+  let authToken = localStorage.getItem('auth_token');
+  let refreshToken = localStorage.getItem('refresh_token');
   if (!authToken) {
     window.location.href = '/login';
     return;
@@ -105,12 +106,47 @@
       console.warn('[Dashboard] Config fetch failed, using same-origin.');
     }
 
-    function authFetch(path, options = {}) {
+    async function authFetch(path, options = {}) {
       const headers = Object.assign({}, options.headers, {
         'Authorization': 'Bearer ' + authToken,
       });
       const url = backendUrl ? backendUrl + path : path;
-      return fetch(url, Object.assign({}, options, { headers }));
+      let response = await fetch(url, Object.assign({}, options, { headers }));
+
+      // Handle token expiration: try to refresh if we get a 401
+      if (response.status === 401 && refreshToken) {
+        try {
+          const refreshRes = await fetch(backendUrl ? backendUrl + '/api/auth/refresh' : '/api/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          });
+
+          if (refreshRes.ok) {
+            const refreshData = await refreshRes.json();
+            authToken = refreshData.token;
+            localStorage.setItem('auth_token', authToken);
+
+            // Retry original request with new token
+            const retryHeaders = Object.assign({}, options.headers, {
+              'Authorization': 'Bearer ' + authToken,
+            });
+            response = await fetch(url, Object.assign({}, options, { headers: retryHeaders }));
+          } else {
+            // Refresh failed - redirect to login
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('refresh_token');
+            window.location.href = '/login';
+          }
+        } catch (err) {
+          console.error('[Dashboard] Token refresh error', err);
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('refresh_token');
+          window.location.href = '/login';
+        }
+      }
+
+      return response;
     }
 
     // ========================================
@@ -134,6 +170,7 @@
     socket.on('connect_error', (err) => {
       if (err.message === 'Autenticação necessária') {
         localStorage.removeItem('auth_token');
+        localStorage.removeItem('refresh_token');
         window.location.href = '/login';
         return;
       }
@@ -220,6 +257,7 @@
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
         localStorage.removeItem('auth_token');
+        localStorage.removeItem('refresh_token');
         window.location.href = '/login';
       });
     }
