@@ -426,6 +426,16 @@ export class DashboardServer {
       res.json({ success: true, jsonOutput: logger.isJsonOutput() });
     });
 
+    // API documentation (OpenAPI/Swagger)
+    this.app.get('/api/docs/openapi.json', (req, res) => {
+      const spec = require('../swagger/openapi.json');
+      res.json(spec);
+    });
+
+    this.app.get('/api/docs', (req, res) => {
+      res.sendFile(path.join(__dirname, '../../public/api-docs.html'));
+    });
+
     // Learning data import — restore after redeploy
     this.app.post('/api/learning/import', (req, res) => {
       const body = req.body as { calibration?: unknown; ensemble?: unknown };

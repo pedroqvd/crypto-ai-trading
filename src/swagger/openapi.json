@@ -1,0 +1,449 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Polymarket AI Trading Bot API",
+    "description": "REST API for Polymarket AI autonomous trading bot",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.example.com",
+      "description": "Production server"
+    },
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT token obtained from /api/auth/login"
+      }
+    },
+    "schemas": {
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "minLength": 8 }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "description": "JWT access token (24h expiry)" },
+          "refreshToken": { "type": "string", "description": "JWT refresh token (7d expiry)" },
+          "expiresIn": { "type": "string" },
+          "refreshExpiresIn": { "type": "string" }
+        }
+      },
+      "RefreshTokenRequest": {
+        "type": "object",
+        "required": ["refreshToken"],
+        "properties": {
+          "refreshToken": { "type": "string" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "code": { "type": "string" }
+        }
+      },
+      "EngineStatus": {
+        "type": "object",
+        "properties": {
+          "running": { "type": "boolean" },
+          "dryRun": { "type": "boolean" },
+          "uptime": { "type": "number" },
+          "cycleCount": { "type": "number" },
+          "bankroll": { "type": "number" },
+          "totalPnl": { "type": "number" }
+        }
+      },
+      "TradeRecord": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "marketId": { "type": "string" },
+          "question": { "type": "string" },
+          "side": { "type": "string", "enum": ["BUY_YES", "BUY_NO"] },
+          "stake": { "type": "number" },
+          "entryPrice": { "type": "number" },
+          "exitPrice": { "type": "number" },
+          "pnl": { "type": "number" },
+          "status": { "type": "string", "enum": ["open", "won", "lost", "exited"] }
+        }
+      },
+      "RiskStatus": {
+        "type": "object",
+        "properties": {
+          "bankroll": { "type": "number" },
+          "drawdownPct": { "type": "number" },
+          "exposurePct": { "type": "number" },
+          "circuitBreaker": { "type": "boolean" },
+          "emergencyStop": { "type": "boolean" }
+        }
+      },
+      "Backup": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "size": { "type": "number" }
+        }
+      },
+      "CriticalEvent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "type": { "type": "string" },
+          "severity": { "type": "string", "enum": ["critical", "warning", "info"] },
+          "title": { "type": "string" },
+          "message": { "type": "string" },
+          "resolved": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "paths": {
+    "/api/config": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Get backend configuration",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "backendUrl": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Login with email and password",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LoginResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Refresh access token",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RefreshTokenRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token refreshed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": { "type": "string" },
+                    "expiresIn": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired refresh token"
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "tags": ["Engine"],
+        "summary": "Get trading engine status",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EngineStatus" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades": {
+      "get": {
+        "tags": ["Trading"],
+        "summary": "Get trade journal summary",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "stats": { "type": "object" },
+                    "open": { "type": "array", "items": { "$ref": "#/components/schemas/TradeRecord" } },
+                    "recent": { "type": "array", "items": { "$ref": "#/components/schemas/TradeRecord" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades/history": {
+      "get": {
+        "tags": ["Trading"],
+        "summary": "Get filtered trade history",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["won", "lost", "open", "exited"] }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "schema": { "type": "number" }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": { "type": "string", "maxLength": 100 }
+          },
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["true", "false"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": { "type": "number" },
+                    "trades": { "type": "array", "items": { "$ref": "#/components/schemas/TradeRecord" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/risk": {
+      "get": {
+        "tags": ["Risk Management"],
+        "summary": "Get risk status",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RiskStatus" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/backups/list": {
+      "get": {
+        "tags": ["Backup"],
+        "summary": "List all backups",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "backups": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Backup" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/backups/create": {
+      "post": {
+        "tags": ["Backup"],
+        "summary": "Create manual backup",
+        "responses": {
+          "200": {
+            "description": "Backup created successfully"
+          }
+        }
+      }
+    },
+    "/api/events/critical": {
+      "get": {
+        "tags": ["Monitoring"],
+        "summary": "Get critical events",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "number", "default": 50 }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["critical", "warning", "info"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": { "type": "array", "items": { "$ref": "#/components/schemas/CriticalEvent" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events/stats": {
+      "get": {
+        "tags": ["Monitoring"],
+        "summary": "Get event statistics",
+        "parameters": [
+          {
+            "name": "window",
+            "in": "query",
+            "schema": { "type": "number", "default": 24, "description": "Hours" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/logging/config": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Get logging configuration",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jsonOutput": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/logging/json": {
+      "post": {
+        "tags": ["System"],
+        "summary": "Enable/disable JSON logging",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    }
+  }
+}
