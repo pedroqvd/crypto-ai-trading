@@ -14,6 +14,7 @@ import { ClobApiClient } from '../services/ClobApiClient';
 import { NotificationService } from '../services/NotificationService';
 import { NewsApiClient } from '../services/NewsApiClient';
 import { BackupService } from '../services/BackupService';
+import { CriticalEventMonitor } from '../services/CriticalEventMonitor';
 import { ProbabilityEstimator } from '../analysis/ProbabilityEstimator';
 import { EdgeCalculator, EdgeAnalysis } from '../analysis/EdgeCalculator';
 import { KellyCalculator } from '../analysis/KellyCalculator';
@@ -126,6 +127,7 @@ export class TradingEngine extends EventEmitter {
   private newsApi: NewsApiClient;
   private journal: TradeJournal;
   private backupService: BackupService;
+  private eventMonitor: CriticalEventMonitor;
 
   // Analysis
   private probEstimator: ProbabilityEstimator;
@@ -176,6 +178,7 @@ export class TradingEngine extends EventEmitter {
     this.notifications = new NotificationService();
     this.newsApi = new NewsApiClient();
     this.backupService = new BackupService();
+    this.eventMonitor = new CriticalEventMonitor();
     this.journal = new TradeJournal();
     this.probEstimator = new ProbabilityEstimator();
     this.edgeCalc = new EdgeCalculator();
@@ -543,6 +546,10 @@ export class TradingEngine extends EventEmitter {
 
   getBackupService(): BackupService {
     return this.backupService;
+  }
+
+  getCriticalEventMonitor(): CriticalEventMonitor {
+    return this.eventMonitor;
   }
 
   getJournal(): TradeJournal {

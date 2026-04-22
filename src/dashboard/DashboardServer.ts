@@ -369,6 +369,50 @@ export class DashboardServer {
       }
     });
 
+    // Critical events monitoring
+    this.app.get('/api/events/critical', (req, res) => {
+      const monitor = this.engine.getCriticalEventMonitor();
+      const limit = parseInt(req.query.limit as string) || 50;
+      const type = req.query.type as string | undefined;
+      const severity = req.query.severity as string | undefined;
+
+      const events = monitor.getRecentEvents({
+        limit,
+        type: type as any,
+        severity: severity as any,
+      });
+
+      res.json({ events });
+    });
+
+    // Critical events statistics
+    this.app.get('/api/events/stats', (req, res) => {
+      const monitor = this.engine.getCriticalEventMonitor();
+      const windowHours = parseInt(req.query.window as string) || 24;
+      const stats = monitor.getStatistics(windowHours);
+      res.json(stats);
+    });
+
+    // Unresolved critical events
+    this.app.get('/api/events/unresolved', (req, res) => {
+      const monitor = this.engine.getCriticalEventMonitor();
+      const events = monitor.getUnresolvedCriticalEvents();
+      res.json({ events });
+    });
+
+    // Resolve an event
+    this.app.post('/api/events/:id/resolve', (req, res) => {
+      const { id } = req.params;
+      const monitor = this.engine.getCriticalEventMonitor();
+      const success = monitor.resolveEvent(id);
+
+      if (success) {
+        res.json({ success: true, message: 'Evento resolvido' });
+      } else {
+        res.status(404).json({ error: 'Evento não encontrado' });
+      }
+    });
+
     // Learning data import — restore after redeploy
     this.app.post('/api/learning/import', (req, res) => {
       const body = req.body as { calibration?: unknown; ensemble?: unknown };
