@@ -12,6 +12,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/Logger';
 
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+
 interface SignalRecord {
   adjustment: number; // + or - contribution from this signal
   won: boolean;       // whether the trade was profitable
@@ -106,13 +108,16 @@ export class EnsembleWeightTracker {
   }
 
   private save(): void {
-    try {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => {
+      _saveTimer = null;
+      const payload = JSON.stringify(this.history, null, 2);
       const dir = path.dirname(this.dataPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(this.dataPath, JSON.stringify(this.history, null, 2));
-    } catch (err) {
-      logger.warn('Ensemble', `Save failed: ${err instanceof Error ? err.message : err}`);
-    }
+      fs.writeFile(this.dataPath, payload, err => {
+        if (err) logger.warn('Ensemble', `Save failed: ${err.message}`);
+      });
+    }, 2000);
   }
 
   private load(): void {

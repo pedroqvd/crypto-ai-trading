@@ -211,7 +211,7 @@ export class DashboardServer {
     this.app.post('/api/settings/mode', (req, res) => {
       const mode = req.body.mode;
       if (mode === 'MARKET_MAKER' || mode === 'DIRECTIONAL') {
-        config.tradeMode = mode;
+        this.engine.updateConfig({ tradeMode: mode });
         logger.info('Engine', `🚀 Config: tradeMode alterado para ${mode} via Dashboard.`);
         res.json({ success: true, mode });
       } else {

@@ -582,8 +582,19 @@
       if (!els.positionsList) return;
       const empty = els.positionsList.querySelector('.empty-state');
       if (empty) els.positionsList.innerHTML = '';
-      // ... same logic as renderPositions loop
-      renderPositions([t]); // Simplistic add
+      const html = `<div class="pos-card" id="pos-${t.marketId}">
+        <div class="pos-top">
+          <span class="pos-side ${t.side === 'BUY_YES' ? 'side-yes' : 'side-no'}">${t.side === 'BUY_YES' ? 'YES' : 'NO'}</span>
+          <span class="pos-price">$${t.entryPrice.toFixed(3)}</span>
+        </div>
+        <div class="pos-q">${escapeHtml(t.question.substring(0, 50))}...</div>
+        <div class="pos-bottom">
+          <span>Stake: $${t.stake.toFixed(2)}</span>
+          <span class="pos-edge">+${(t.edge * 100).toFixed(1)}%</span>
+        </div>
+      </div>`;
+      els.positionsList.insertAdjacentHTML('beforeend', html);
+      if (els.positionsCount) els.positionsCount.textContent = els.positionsList.querySelectorAll('.pos-card').length;
     }
 
     function removePosition(marketId) {

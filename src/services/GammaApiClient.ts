@@ -104,25 +104,18 @@ export class GammaApiClient {
     }
   }
 
-  // Fetches all pages in parallel for speed, then discards trailing empty pages
   async getAllActiveMarkets(maxPages = 5): Promise<ParsedMarket[]> {
     const cacheKey = 'all-active-markets';
     const cached = this.getFromCache<ParsedMarket[]>(cacheKey);
     if (cached) return cached;
 
+    const allMarkets: ParsedMarket[] = [];
     try {
-      const pagePromises = Array.from({ length: maxPages }, (_, i) =>
-        this.client.get('/markets', {
-          params: { active: true, closed: false, limit: 100, offset: i * 100, order: 'volume', ascending: false },
-        })
-          .then(r => (r.data as GammaMarket[]) || [])
-          .catch(() => [] as GammaMarket[])
-      );
-
-      const pages = await Promise.all(pagePromises);
-      const allMarkets: ParsedMarket[] = [];
-
-      for (const rawMarkets of pages) {
+      for (let page = 0; page < maxPages; page++) {
+        const response = await this.client.get('/markets', {
+          params: { active: true, closed: false, limit: 100, offset: page * 100, order: 'volume', ascending: false },
+        });
+        const rawMarkets: GammaMarket[] = response.data || [];
         if (rawMarkets.length === 0) break;
         const parsed = rawMarkets
           .filter(m => m.active && !m.closed && m.acceptingOrders)
@@ -131,13 +124,12 @@ export class GammaApiClient {
         allMarkets.push(...parsed);
         if (rawMarkets.length < 100) break;
       }
-
       this.setCache(cacheKey, allMarkets, 60_000);
       logger.info('GammaApi', `Full scan: ${allMarkets.length} tradeable markets found`);
       return allMarkets;
     } catch (err) {
       logger.error('GammaApi', 'Failed full market scan', err instanceof Error ? err.message : err);
-      return [];
+      return allMarkets;
     }
   }
 

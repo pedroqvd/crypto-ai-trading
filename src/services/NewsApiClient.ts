@@ -112,8 +112,8 @@ export class NewsApiClient {
   async searchRelevantNews(question: string): Promise<NewsResult> {
     if (!this.enabled || !this.client) return { ...NO_NEWS_RESULT };
 
-    // Check cache
-    const cacheKey = question.substring(0, 80).toLowerCase();
+    // Check cache — use full question as key to avoid false hits from shared 80-char prefixes.
+    const cacheKey = question.toLowerCase();
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
       logger.debug('NewsApi', `Cache hit for: "${question.substring(0, 40)}..."`);

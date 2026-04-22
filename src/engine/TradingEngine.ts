@@ -78,6 +78,7 @@ function saveSettingsToDisk(): void {
       momentumExitCycles: config.momentumExitCycles,
       correlationEnabled: config.correlationEnabled,
       claudeEnabled: config.claudeEnabled,
+      tradeMode: config.tradeMode,
       discordWebhookUrl: config.discordWebhookUrl,
       // NOTE: secrets (privateKey, claudeApiKey, newsApiKey) are intentionally
       // NOT persisted here — they must come from environment variables only.
@@ -262,6 +263,7 @@ export class TradingEngine extends EventEmitter {
     discordWebhookUrl: string;
     privateKey: string;
     newsApiKey: string;
+    tradeMode: string;
   }>): void {
     Object.assign(config, updates);
     saveSettingsToDisk();
@@ -504,7 +506,8 @@ export class TradingEngine extends EventEmitter {
 
     for (const market of filtered) {
       // Pre-estimate to see if consensus lookup is worthwhile (edge proxy)
-      const roughEdge = Math.abs(market.yesPrice - 0.5) > 0;
+      // Only query consensus when market price shows ≥3% directional signal from 50/50.
+      const roughEdge = Math.abs(market.yesPrice - 0.5) > 0.03;
       let consensusEstimates = undefined;
       if (roughEdge) {
         consensusEstimates = await this.consensusClient.getConsensus(market.question);

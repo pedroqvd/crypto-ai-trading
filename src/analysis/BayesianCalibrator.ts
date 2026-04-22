@@ -9,6 +9,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/Logger';
 
+// Debounce timer so frequent recordOutcome calls collapse into one disk write.
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+
 export type MarketCategory = 'sports' | 'politics' | 'crypto' | 'general';
 
 interface TimedOutcome {
@@ -254,16 +257,19 @@ export class BayesianCalibrator {
   }
 
   private save(): void {
-    try {
-      const dir = path.dirname(this.dataPath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(this.dataPath, JSON.stringify({
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => {
+      _saveTimer = null;
+      const payload = JSON.stringify({
         categoryBuckets: this.categoryBuckets,
         recentPredictions: this.recentPredictions,
-      }, null, 2));
-    } catch (err) {
-      logger.warn('Calibrator', `Save failed: ${err instanceof Error ? err.message : err}`);
-    }
+      }, null, 2);
+      const dir = path.dirname(this.dataPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFile(this.dataPath, payload, err => {
+        if (err) logger.warn('Calibrator', `Save failed: ${err.message}`);
+      });
+    }, 2000);
   }
 
   private load(): void {
