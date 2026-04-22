@@ -65,6 +65,15 @@
     return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
 
+  function formatUptime(ms) {
+    if (!ms || ms <= 0) return '00:00:00';
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  }
+
   function formatNumber(n, decimals = 2) {
     return (n || 0).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   }
@@ -347,10 +356,17 @@
       const closed = trades.filter(t => t.status !== 'open');
       const wins = closed.filter(t => t.status === 'won').length;
       const totalPnl = closed.reduce((sum, t) => sum + (t.pnl || 0), 0);
-      els.hTotalTrades.textContent = trades.length;
-      els.hWinRate.textContent = closed.length > 0 ? ((wins / closed.length) * 100).toFixed(1) + '%' : '0%';
-      els.hTotalPnl.textContent = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
-      els.hTotalPnl.className = 'h-stat-val ' + (totalPnl >= 0 ? 'text-emerald' : 'text-rose');
+      const grossProfit = closed.filter(t => (t.pnl || 0) > 0).reduce((s, t) => s + t.pnl, 0);
+      const grossLoss = Math.abs(closed.filter(t => (t.pnl || 0) < 0).reduce((s, t) => s + t.pnl, 0));
+      const profitFactor = grossLoss > 0 ? (grossProfit / grossLoss) : (grossProfit > 0 ? 999 : 0);
+
+      if (els.hTotalTrades) els.hTotalTrades.textContent = trades.length;
+      if (els.hWinRate) els.hWinRate.textContent = closed.length > 0 ? ((wins / closed.length) * 100).toFixed(1) + '%' : '0%';
+      if (els.hTotalPnl) {
+        els.hTotalPnl.textContent = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
+        els.hTotalPnl.className = 'h-stat-val ' + (totalPnl >= 0 ? 'text-emerald' : 'text-rose');
+      }
+      if (els.hProfitFactor) els.hProfitFactor.textContent = profitFactor >= 999 ? '∞' : profitFactor.toFixed(2);
     }
 
     // ========================================
@@ -461,9 +477,16 @@
               if (input.type === 'checkbox') {
                 input.checked = cfg[key];
               } else {
-                // Mask sensitive keys
                 const isSensitive = ['privateKey', 'claudeApiKey', 'newsApiKey'].includes(key);
-                input.value = (isSensitive && cfg[key] && cfg[key].length > 4) ? '••••••••••••' : cfg[key];
+                const isSet = isSensitive && cfg[key] && cfg[key].length > 0;
+                if (isSet) {
+                  // Show placeholder indicating key is configured, not the masked value
+                  input.value = '';
+                  input.placeholder = '● Configurada — deixe em branco para manter';
+                  input.dataset.isSet = 'true';
+                } else {
+                  input.value = cfg[key] || '';
+                }
               }
             }
           }
@@ -548,7 +571,7 @@
           els.pnl.textContent = (s.totalPnl >= 0 ? '+' : '') + '$' + formatNumber(s.totalPnl);
           els.pnl.className = 'header-val ' + (s.totalPnl >= 0 ? 'pos' : 'neg');
         }
-        if (els.uptime) els.uptime.textContent = s.uptime;
+        if (els.uptime) els.uptime.textContent = formatUptime(s.uptime);
         if (els.modeBadge) {
           els.modeBadge.textContent = s.dryRun ? '🧪 SIMULAÇÃO' : '🔴 AO VIVO';
           els.modeBadge.className = 'mode-badge ' + (s.dryRun ? 'mode-sim' : 'mode-live');
@@ -558,22 +581,68 @@
       }
     }
 
+    // Feed filter state
+    let feedFilter = 'important'; // 'all' | 'important'
+    const IMPORTANT_TYPES = ['opportunity', 'trade', 'risk'];
+
+    function setupFeedFilter() {
+      const feed = els.decisionsFeed && els.decisionsFeed.parentElement;
+      if (!feed) return;
+      const existing = document.getElementById('feed-filter-bar');
+      if (existing) return;
+
+      const bar = document.createElement('div');
+      bar.id = 'feed-filter-bar';
+      bar.style.cssText = 'display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.06);';
+      bar.innerHTML = `
+        <button id="ff-important" class="feed-filter-btn active" style="font-size:11px;padding:3px 10px;border-radius:20px;border:none;cursor:pointer;background:rgba(139,92,246,0.25);color:#a78bfa;font-weight:700;">Importantes</button>
+        <button id="ff-all" class="feed-filter-btn" style="font-size:11px;padding:3px 10px;border-radius:20px;border:none;cursor:pointer;background:transparent;color:var(--text3);font-weight:600;">Todos</button>
+      `;
+      els.decisionsFeed.before(bar);
+
+      bar.addEventListener('click', (e) => {
+        const btn = e.target.closest('.feed-filter-btn');
+        if (!btn) return;
+        feedFilter = btn.id === 'ff-all' ? 'all' : 'important';
+        bar.querySelectorAll('.feed-filter-btn').forEach(b => {
+          b.style.background = b === btn ? 'rgba(139,92,246,0.25)' : 'transparent';
+          b.style.color = b === btn ? '#a78bfa' : 'var(--text3)';
+        });
+        // Re-render feed with new filter
+        if (els.decisionsFeed) {
+          const items = els.decisionsFeed.querySelectorAll('.dec-line');
+          items.forEach(item => {
+            const type = (item.className.match(/type-(\w+)/) || [])[1];
+            item.style.display = (feedFilter === 'all' || IMPORTANT_TYPES.includes(type)) ? '' : 'none';
+          });
+        }
+      });
+    }
+
     function renderDecisions(decisions) {
       if (!els.decisionsFeed) return;
-      els.decisionsFeed.innerHTML = decisions.length === 0 ? '<div class="empty-state">IA em standby.</div>' : '';
+      setupFeedFilter();
+      const visible = feedFilter === 'all' ? decisions : decisions.filter(d => IMPORTANT_TYPES.includes(d.type));
+      els.decisionsFeed.innerHTML = visible.length === 0
+        ? '<div class="empty-state">Aguardando oportunidades...</div>'
+        : '';
       decisions.forEach(d => addDecision(d, false));
     }
 
     function addDecision(decision, prepend = true) {
+      if (!els.decisionsFeed) return;
+      setupFeedFilter();
       const iconMap = { scan: '🔍', opportunity: '🎯', trade: '✅', reject: '⛔', risk: '🚨', monitor: '📡', system: '⚙️' };
-      const html = `<div class="dec-line type-${decision.type || 'system'}">
+      const type = decision.type || 'system';
+      const hidden = feedFilter === 'important' && !IMPORTANT_TYPES.includes(type);
+      const html = `<div class="dec-line type-${type}" style="${hidden ? 'display:none' : ''}">
         <span class="dec-ts">${formatTime(decision.timestamp).split(' ')[1]}</span>
-        <span class="dec-icon">${iconMap[decision.type] || '📋'}</span>
+        <span class="dec-icon">${iconMap[type] || '📋'}</span>
         <span class="dec-msg">${escapeHtml(decision.message)}</span>
       </div>`;
       if (prepend) {
         els.decisionsFeed.insertAdjacentHTML('afterbegin', html);
-        if (els.decisionsFeed.children.length > 100) els.decisionsFeed.removeChild(els.decisionsFeed.lastChild);
+        if (els.decisionsFeed.children.length > 200) els.decisionsFeed.removeChild(els.decisionsFeed.lastChild);
       } else {
         els.decisionsFeed.insertAdjacentHTML('beforeend', html);
       }
