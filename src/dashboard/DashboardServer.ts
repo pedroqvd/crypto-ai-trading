@@ -332,6 +332,43 @@ export class DashboardServer {
       res.send(csv);
     });
 
+    // Backup management
+    this.app.get('/api/backups/list', (req, res) => {
+      const backups = this.engine.getBackupService().getBackupList();
+      res.json({ backups });
+    });
+
+    // Manually trigger a backup
+    this.app.post('/api/backups/create', (req, res) => {
+      const calibration = this.engine.exportCalibrationData();
+      const ensemble = this.engine.exportEnsembleData();
+      const trades = this.engine.getJournal().getAllTrades();
+
+      this.engine.getBackupService().createBackup(calibration, ensemble, trades)
+        .then(success => {
+          if (success) {
+            res.json({ success: true, message: 'Backup criado com sucesso' });
+          } else {
+            res.status(500).json({ error: 'Falha ao criar backup' });
+          }
+        })
+        .catch(err => {
+          logger.error('Dashboard', 'Backup creation error', err);
+          res.status(500).json({ error: 'Internal server error' });
+        });
+    });
+
+    // Delete a backup
+    this.app.delete('/api/backups/:name', (req, res) => {
+      const { name } = req.params;
+      const success = this.engine.getBackupService().deleteBackup(name);
+      if (success) {
+        res.json({ success: true, message: 'Backup deletado com sucesso' });
+      } else {
+        res.status(404).json({ error: 'Backup não encontrado' });
+      }
+    });
+
     // Learning data import — restore after redeploy
     this.app.post('/api/learning/import', (req, res) => {
       const body = req.body as { calibration?: unknown; ensemble?: unknown };
