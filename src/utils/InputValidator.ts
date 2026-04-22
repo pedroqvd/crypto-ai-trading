@@ -83,26 +83,68 @@ export function validateSettingsUpdate(data: unknown): Record<string, unknown> {
   const obj = validators.settingsObject(data);
   const validated: Record<string, unknown> = {};
 
+  const ALLOWED_KEYS = new Set([
+    'dryRun', 'bankroll', 'kellyFraction', 'minEdge', 'maxPositionPct', 'maxTotalExposurePct',
+    'scanIntervalMs', 'exitPriceTarget', 'stopLossPct', 'trailingStopActivation',
+    'trailingStopDistance', 'timeDecayHours', 'edgeReversalEnabled', 'momentumExitCycles',
+    'correlationEnabled', 'claudeEnabled', 'calibrationEnabled',
+    'claudeApiKey', 'newsApiKey', 'privateKey', 'discordWebhookUrl',
+  ]);
+
   for (const [key, val] of Object.entries(obj)) {
-    // Only allow known settings keys
-    if (!['dryRun', 'bankroll', 'kellyFraction', 'minEdge', 'maxPositionPct', 'maxTotalExposurePct'].includes(key)) {
+    if (!ALLOWED_KEYS.has(key)) {
       throw new ValidationError(`Unknown settings key: ${key}`);
     }
 
-    // Validate each field
+    // Skip empty strings for sensitive keys (user left field blank = keep existing)
+    const sensitiveKeys = new Set(['privateKey', 'claudeApiKey', 'newsApiKey']);
+    if (sensitiveKeys.has(key) && val === '') continue;
+
     switch (key) {
       case 'dryRun':
-        if (typeof val !== 'boolean') throw new ValidationError('dryRun must be boolean');
+      case 'edgeReversalEnabled':
+      case 'correlationEnabled':
+      case 'claudeEnabled':
+      case 'calibrationEnabled':
+        if (typeof val !== 'boolean') throw new ValidationError(`${key} must be boolean`);
         validated[key] = val;
         break;
+
       case 'bankroll':
         validated[key] = validators.positiveNumber(val, 'bankroll');
         break;
+
+      case 'scanIntervalMs':
+        validated[key] = validators.positiveNumber(val, 'scanIntervalMs');
+        break;
+
+      case 'momentumExitCycles':
+        validated[key] = validators.positiveNumber(val, 'momentumExitCycles');
+        break;
+
+      case 'timeDecayHours':
+        validated[key] = validators.positiveNumber(val, 'timeDecayHours');
+        break;
+
       case 'kellyFraction':
       case 'minEdge':
       case 'maxPositionPct':
       case 'maxTotalExposurePct':
+      case 'exitPriceTarget':
+      case 'stopLossPct':
+      case 'trailingStopActivation':
+      case 'trailingStopDistance':
         validated[key] = validators.percentage(val, key);
+        break;
+
+      case 'claudeApiKey':
+      case 'newsApiKey':
+      case 'privateKey':
+      case 'discordWebhookUrl':
+        // String fields — basic length check, no other validation
+        if (typeof val !== 'string') throw new ValidationError(`${key} must be a string`);
+        if (val.length > 512) throw new ValidationError(`${key} is too long`);
+        validated[key] = val;
         break;
     }
   }
