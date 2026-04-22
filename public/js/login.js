@@ -92,7 +92,10 @@
           if (data.refreshToken) {
             localStorage.setItem('refresh_token', data.refreshToken);
           }
-          window.location.href = '/';
+          window.showToast('✅ Login bem-sucedido!', 'success', 1000);
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 500);
         } else {
           const errorMessages = {
             'INVALID_CREDENTIALS': 'E-mail ou senha incorretos.',
@@ -100,13 +103,17 @@
             'NOT_CONFIGURED': 'Sistema de autenticação não configurado. Execute o setup.',
           };
 
-          showError(errorMessages[data.code] || data.error || 'Erro desconhecido. Tente novamente.');
+          const errorMsg = errorMessages[data.code] || data.error || 'Erro desconhecido. Tente novamente.';
+          showError(errorMsg);
+          window.showToast('❌ ' + errorMsg, 'error');
 
           form.classList.add('shake');
           setTimeout(() => form.classList.remove('shake'), 400);
         }
       } catch (err) {
-        showError('Erro de conexão. Verifique se o servidor está rodando.');
+        const msg = 'Erro de conexão. Verifique se o servidor está rodando.';
+        showError(msg);
+        window.showToast('❌ ' + msg, 'error');
       } finally {
         setLoading(false);
       }
