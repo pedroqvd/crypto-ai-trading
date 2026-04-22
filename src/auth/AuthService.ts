@@ -11,6 +11,7 @@ import { logger } from '../utils/Logger';
 
 const SALT_ROUNDS = 12;
 const TOKEN_EXPIRY = '24h'; // Session duration
+const REFRESH_TOKEN_EXPIRY = '7d'; // Refresh token valid for 7 days
 
 export interface AuthConfig {
   email: string;
@@ -90,7 +91,7 @@ export class AuthService {
     // Clear failed attempts on success
     this.loginAttempts.delete(ip);
 
-    // Generate JWT
+    // Generate access token
     const token = jwt.sign(
       { email: email.toLowerCase().trim() },
       this.config.jwtSecret,
@@ -99,6 +100,38 @@ export class AuthService {
 
     logger.info('Auth', `✅ Login bem-sucedido: ${email}`);
     return token;
+  }
+
+  /**
+   * Generate a new access token using a refresh token
+   * Returns new JWT access token or null if refresh token is invalid
+   */
+  refreshToken(refreshToken: string): string | null {
+    try {
+      const decoded = jwt.verify(refreshToken, this.config.jwtSecret) as JwtPayload;
+      // Generate new access token with same email
+      const newToken = jwt.sign(
+        { email: decoded.email },
+        this.config.jwtSecret,
+        { expiresIn: TOKEN_EXPIRY }
+      );
+      logger.info('Auth', `🔄 Token refreshed for ${decoded.email}`);
+      return newToken;
+    } catch {
+      logger.warn('Auth', '❌ Token refresh failed — invalid or expired refresh token');
+      return null;
+    }
+  }
+
+  /**
+   * Generate a refresh token (used after successful login)
+   */
+  generateRefreshToken(email: string): string {
+    return jwt.sign(
+      { email: email.toLowerCase().trim(), type: 'refresh' },
+      this.config.jwtSecret,
+      { expiresIn: REFRESH_TOKEN_EXPIRY }
+    );
   }
 
   /**

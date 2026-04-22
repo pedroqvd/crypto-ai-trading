@@ -64,6 +64,14 @@ export class TradeExecutor {
     this.emit = emit;
   }
 
+  setClaudeAnalyzer(analyzer: ClaudeAnalyzer | null): void {
+    this.claudeAnalyzer = analyzer;
+  }
+
+  resetClaudeCycleCounter(): void {
+    this.claudeAnalyzer?.resetCycleCounter();
+  }
+
   async execute(opportunities: EdgeAnalysis[], cycleCount: number): Promise<number> {
     const toExecute = opportunities.slice(0, 3);
     let tradesExecuted = 0;

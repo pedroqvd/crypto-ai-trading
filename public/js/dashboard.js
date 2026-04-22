@@ -8,7 +8,8 @@
   // ========================================
   // AUTH
   // ========================================
-  const authToken = localStorage.getItem('auth_token');
+  let authToken = localStorage.getItem('auth_token');
+  let refreshToken = localStorage.getItem('refresh_token');
   if (!authToken) {
     window.location.href = '/login';
     return;
@@ -25,34 +26,25 @@
     pnl:               $('header-pnl'),
     uptime:            $('header-uptime'),
     statMarkets:       $('stat-markets'),
-    statOpportunities: $('stat-opportunities'),
     statTrades:        $('stat-trades'),
     statWinrate:       $('stat-winrate'),
-    statCycle:         $('stat-cycle'),
-    statAvgEdge:       $('stat-avg-edge'),
-    statOpenPositions: $('stat-open-positions'),
-    footerMode:        $('footer-mode'),
     positionsList:     $('positions-list'),
     positionsCount:    $('positions-count'),
     riskDrawdown:      $('risk-drawdown'),
     riskDrawdownBar:   $('risk-drawdown-bar'),
     riskExposure:      $('risk-exposure'),
     riskExposureBar:   $('risk-exposure-bar'),
-    riskPositions:     $('risk-positions'),
-    riskDailyLoss:     $('risk-daily-loss'),
     riskCircuit:       $('risk-circuit'),
     resetCircuitBtn:   $('reset-circuit-btn'),
+    resetEmergencyBtn: $('reset-emergency-btn'),
+    emergencyStopSection: $('emergency-stop-section'),
     decisionsFeed:     $('decisions-feed'),
     notificationsFeed: $('notifications-feed'),
     notifCount:        $('notif-count'),
-    // Calibration
-    calBrier:          $('cal-brier'),
-    calBrierQual:      $('cal-brier-qual'),
     toggleMmMode:      $('toggle-mm-mode'),
     modeBadge:         $('mode-badge'),
     lastScan:          $('header-last-scan'),
     liveWarningBox:    $('live-warning-box'),
-    // History
     historyBody:       $('history-body'),
     hTotalTrades:      $('h-total-trades'),
     hWinRate:          $('h-win-rate'),
@@ -114,12 +106,47 @@
       console.warn('[Dashboard] Config fetch failed, using same-origin.');
     }
 
-    function authFetch(path, options = {}) {
+    async function authFetch(path, options = {}) {
       const headers = Object.assign({}, options.headers, {
         'Authorization': 'Bearer ' + authToken,
       });
       const url = backendUrl ? backendUrl + path : path;
-      return fetch(url, Object.assign({}, options, { headers }));
+      let response = await fetch(url, Object.assign({}, options, { headers }));
+
+      // Handle token expiration: try to refresh if we get a 401
+      if (response.status === 401 && refreshToken) {
+        try {
+          const refreshRes = await fetch(backendUrl ? backendUrl + '/api/auth/refresh' : '/api/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          });
+
+          if (refreshRes.ok) {
+            const refreshData = await refreshRes.json();
+            authToken = refreshData.token;
+            localStorage.setItem('auth_token', authToken);
+
+            // Retry original request with new token
+            const retryHeaders = Object.assign({}, options.headers, {
+              'Authorization': 'Bearer ' + authToken,
+            });
+            response = await fetch(url, Object.assign({}, options, { headers: retryHeaders }));
+          } else {
+            // Refresh failed - redirect to login
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('refresh_token');
+            window.location.href = '/login';
+          }
+        } catch (err) {
+          console.error('[Dashboard] Token refresh error', err);
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('refresh_token');
+          window.location.href = '/login';
+        }
+      }
+
+      return response;
     }
 
     // ========================================
@@ -143,6 +170,7 @@
     socket.on('connect_error', (err) => {
       if (err.message === 'Autenticação necessária') {
         localStorage.removeItem('auth_token');
+        localStorage.removeItem('refresh_token');
         window.location.href = '/login';
         return;
       }
@@ -174,6 +202,7 @@
     });
 
     socket.on('statusUpdate',   (status) => updateStatus(status));
+    socket.on('riskUpdate',     (risk) => updateRisk(risk));
     socket.on('decision',       (decision) => addDecision(decision));
     socket.on('tradeExecuted',  (trade) => {
       addPosition(trade);
@@ -228,6 +257,7 @@
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
         localStorage.removeItem('auth_token');
+        localStorage.removeItem('refresh_token');
         window.location.href = '/login';
       });
     }
@@ -387,6 +417,19 @@
       });
     }
 
+    if (els.resetEmergencyBtn) {
+      els.resetEmergencyBtn.addEventListener('click', async () => {
+        if (!confirm('Tem certeza? O emergency stop protege contra drawdown severo. Só resete se entender os riscos.')) return;
+        const res = await authFetch('/api/risk/emergency-reset', { method: 'POST' });
+        if (res.ok) {
+          alert('Emergency stop resetado. Monitore o bot com atenção.');
+        } else {
+          const err = await res.json();
+          alert('Erro: ' + (err.error || 'Falha ao resetar.'));
+        }
+      });
+    }
+
     if (els.toggleMmMode) {
       els.toggleMmMode.addEventListener('change', async (e) => {
         const mode = e.target.checked ? 'MARKET_MAKER' : 'DIRECTIONAL';
@@ -506,7 +549,6 @@
           els.pnl.className = 'header-val ' + (s.totalPnl >= 0 ? 'pos' : 'neg');
         }
         if (els.uptime) els.uptime.textContent = s.uptime;
-        if (els.statCycle) els.statCycle.textContent = s.cycleCount;
         if (els.modeBadge) {
           els.modeBadge.textContent = s.dryRun ? '🧪 SIMULAÇÃO' : '🔴 AO VIVO';
           els.modeBadge.className = 'mode-badge ' + (s.dryRun ? 'mode-sim' : 'mode-live');
@@ -547,6 +589,9 @@
         els.riskCircuit.className = 'risk-stat-val ' + (risk.circuitBreaker ? 'danger' : 'ok');
         if (els.resetCircuitBtn) els.resetCircuitBtn.classList.toggle('hidden', !risk.circuitBreaker);
       }
+      if (els.emergencyStopSection) {
+        els.emergencyStopSection.style.display = risk.emergencyStop ? 'flex' : 'none';
+      }
     }
 
     function renderNotifications(notifs) {
@@ -575,7 +620,6 @@
     function updateTradeStats(stats) {
       if (els.statTrades) els.statTrades.textContent = stats.count;
       if (els.statWinrate) els.statWinrate.textContent = (stats.winRate * 100).toFixed(1) + '%';
-      if (els.statAvgEdge) els.statAvgEdge.textContent = (stats.avgEdge * 100).toFixed(1) + '%';
     }
 
     function renderPositions(open) {

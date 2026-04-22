@@ -31,9 +31,11 @@ export interface LogEntry {
 class Logger {
   private minLevel: LogLevel;
   private listeners: Array<(entry: LogEntry) => void> = [];
+  private jsonOutput: boolean;
 
   constructor() {
     this.minLevel = config.logLevel || 'info';
+    this.jsonOutput = process.env.LOG_FORMAT === 'json';
   }
 
   /**
@@ -63,6 +65,20 @@ class Logger {
     this.log('error', module, message, data);
   }
 
+  /**
+   * Enable/disable JSON output mode
+   */
+  setJsonOutput(enabled: boolean): void {
+    this.jsonOutput = enabled;
+  }
+
+  /**
+   * Check if JSON output is enabled
+   */
+  isJsonOutput(): boolean {
+    return this.jsonOutput;
+  }
+
   private log(level: LogLevel, module: string, message: string, data?: unknown): void {
     if (LEVEL_ORDER[level] < LEVEL_ORDER[this.minLevel]) return;
 
@@ -74,15 +90,36 @@ class Logger {
       data,
     };
 
-    // Console output
-    const icon = LEVEL_ICONS[level];
-    const timeStr = new Date().toLocaleTimeString('pt-BR');
-    const prefix = `${icon} [${timeStr}] [${module}]`;
+    if (this.jsonOutput) {
+      // JSON-formatted output for log aggregation systems
+      const jsonOutput: Record<string, unknown> = {
+        timestamp: entry.timestamp,
+        level: entry.level,
+        module: entry.module,
+        message: entry.message,
+      };
 
-    if (data) {
-      console.log(`${prefix} ${message}`, typeof data === 'object' ? JSON.stringify(data, null, 0) : data);
+      if (data) {
+        if (typeof data === 'object') {
+          jsonOutput.data = data;
+        } else {
+          jsonOutput.data = String(data);
+        }
+      }
+
+      const stream = level === 'error' || level === 'warn' ? process.stderr : process.stdout;
+      stream.write(JSON.stringify(jsonOutput) + '\n');
     } else {
-      console.log(`${prefix} ${message}`);
+      // Human-readable console output with emojis
+      const icon = LEVEL_ICONS[level];
+      const timeStr = new Date().toLocaleTimeString('pt-BR');
+      const prefix = `${icon} [${timeStr}] [${module}]`;
+
+      if (data) {
+        console.log(`${prefix} ${message}`, typeof data === 'object' ? JSON.stringify(data, null, 0) : data);
+      } else {
+        console.log(`${prefix} ${message}`);
+      }
     }
 
     // Notify listeners (dashboard)

@@ -271,6 +271,16 @@
                       <button id="reset-circuit-btn" class="btn-reset hidden">Reativar</button>
                     </div>
                   </div>
+                  <div class="circuit-flex" id="emergency-stop-section" style="display:none">
+                    <div>
+                      <span class="circuit-label" style="color:#ef4444">🛑 Emergency Stop</span>
+                      <div class="circuit-hint">Drawdown ≥ 25% atingido. Bot permanentemente parado até reset manual.</div>
+                    </div>
+                    <div class="circuit-right">
+                      <span class="risk-stat-val danger">🛑 ATIVO</span>
+                      <button id="reset-emergency-btn" class="btn-reset" style="background:#ef4444">Reset</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -660,6 +670,7 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/ui-helpers.js"></script>
   <script src="/js/dashboard.js"></script>
 </body>
 </html>

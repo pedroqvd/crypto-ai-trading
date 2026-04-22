@@ -13,6 +13,8 @@ import { GammaApiClient, ParsedMarket, ParsedEvent } from '../services/GammaApiC
 import { ClobApiClient } from '../services/ClobApiClient';
 import { NotificationService } from '../services/NotificationService';
 import { NewsApiClient } from '../services/NewsApiClient';
+import { BackupService } from '../services/BackupService';
+import { CriticalEventMonitor } from '../services/CriticalEventMonitor';
 import { ProbabilityEstimator } from '../analysis/ProbabilityEstimator';
 import { EdgeCalculator, EdgeAnalysis } from '../analysis/EdgeCalculator';
 import { KellyCalculator } from '../analysis/KellyCalculator';
@@ -124,6 +126,8 @@ export class TradingEngine extends EventEmitter {
   private notifications: NotificationService;
   private newsApi: NewsApiClient;
   private journal: TradeJournal;
+  private backupService: BackupService;
+  private eventMonitor: CriticalEventMonitor;
 
   // Analysis
   private probEstimator: ProbabilityEstimator;
@@ -173,6 +177,8 @@ export class TradingEngine extends EventEmitter {
     this.clobApi = new ClobApiClient();
     this.notifications = new NotificationService();
     this.newsApi = new NewsApiClient();
+    this.backupService = new BackupService();
+    this.eventMonitor = new CriticalEventMonitor();
     this.journal = new TradeJournal();
     this.probEstimator = new ProbabilityEstimator();
     this.edgeCalc = new EdgeCalculator();
@@ -303,6 +309,7 @@ export class TradingEngine extends EventEmitter {
       this.claudeAnalyzer = (config.claudeEnabled && config.claudeApiKey)
         ? new ClaudeAnalyzer(config.claudeApiKey, config.claudeMaxCallsPerCycle)
         : null;
+      this.executor.setClaudeAnalyzer(this.claudeAnalyzer);
     }
     logger.info('Engine', `⚙️ Config atualizada: ${JSON.stringify(
       Object.fromEntries(Object.entries(updates).map(([k, v]) =>
@@ -409,6 +416,7 @@ export class TradingEngine extends EventEmitter {
     this.cycleCount++;
     this.lastScanAt = new Date().toISOString();
     this.claudeAnalyzer?.resetCycleCounter();
+    this.executor.resetClaudeCycleCounter();
     this.consensusClient.resetCycleCounter();
     logger.info('Engine', `\n--- Ciclo #${this.cycleCount} ---`);
 
@@ -456,12 +464,27 @@ export class TradingEngine extends EventEmitter {
     await this.monitor.monitor(markets);
 
     if (this.cycleCount % 10 === 0) await this.syncBalance();
+    if (this.cycleCount % 240 === 0) await this.performBackup();
     await this.maybeSendDailyReport();
 
     this.emit('statusUpdate', this.getStatus());
     this.emit('decisionsUpdate', this.getRecentDecisions(20));
   }
 
+
+  // ========================================
+  // BACKUP (every 240 cycles)
+  // ========================================
+  private async performBackup(): Promise<void> {
+    const calibration = this.exportCalibrationData();
+    const ensemble = this.exportEnsembleData();
+    const trades = this.journal.getAllTrades();
+
+    const success = await this.backupService.createBackup(calibration, ensemble, trades);
+    if (success) {
+      this.logDecision('system', '💾 Backup automático criado com sucesso');
+    }
+  }
 
   // ========================================
   // BALANCE SYNC (every 10 cycles)
@@ -521,12 +544,24 @@ export class TradingEngine extends EventEmitter {
     return this.notifications;
   }
 
+  getBackupService(): BackupService {
+    return this.backupService;
+  }
+
+  getCriticalEventMonitor(): CriticalEventMonitor {
+    return this.eventMonitor;
+  }
+
   getJournal(): TradeJournal {
     return this.journal;
   }
 
   getRiskManager(): RiskManager {
     return this.riskManager;
+  }
+
+  getApiHealth() {
+    return this.healthMonitor.getHealth();
   }
 
   // ========================================

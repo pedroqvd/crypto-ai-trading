@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Documentation — Polymarket AI Trader</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3.52.3/swagger-ui.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .topbar {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 16px 20px;
+      color: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    .topbar p {
+      margin: 4px 0 0 0;
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    #swagger-ui {
+      padding-bottom: 40px;
+    }
+    .swagger-ui .topbar {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>🤖 Polymarket AI Trader — API Documentation</h1>
+    <p>REST API Reference for autonomous trading bot</p>
+  </div>
+
+  <div id="swagger-ui"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3.52.3/swagger-ui-bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3.52.3/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = () => {
+      SwaggerUIBundle({
+        url: '/api/docs/openapi.json',
+        dom_id: '#swagger-ui',
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        layout: 'StandaloneLayout',
+        requestInterceptor: (request) => {
+          // Automatically add Bearer token to requests if available
+          const token = localStorage.getItem('auth_token');
+          if (token) {
+            request.headers['Authorization'] = `Bearer ${token}`;
+          }
+          return request;
+        }
+      });
+    };
+  </script>
+</body>
+</html>
