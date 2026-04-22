@@ -25,6 +25,11 @@ import { ConsensusClient } from '../services/ConsensusClient';
 import { MarketQualityAnalyzer } from '../analysis/MarketQualityAnalyzer';
 import { PerformanceMetrics } from '../utils/PerformanceMetrics';
 import { HealthMonitor } from './HealthMonitor';
+import { MarketScanner } from './MarketScanner';
+import { TradeAnalyzer } from './TradeAnalyzer';
+import { TradeExecutor } from './TradeExecutor';
+import { PositionMonitor } from './PositionMonitor';
+import { SignalSnapshot, PositionTrackState, LogDecisionFn, EmitFn } from './engine-types';
 
 // File used to persist settings changes between process restarts.
 // Mounted via Fly Volumes on /data for real persistence.
@@ -32,12 +37,6 @@ const SETTINGS_FILE = '/data/settings.json';
 
 // Fields that must never be loaded from disk — always come from env vars.
 const SENSITIVE_FIELDS = new Set(['privateKey', 'claudeApiKey', 'newsApiKey']);
-
-// Monitoring constants
-const STALE_ORDER_MS        = 24 * 60 * 60 * 1000; // cancel unfilled orders after 24h
-const FORCED_EXIT_AFTER_MS  = 48 * 60 * 60 * 1000; // force-exit unresolved closed markets after 48h
-const MAX_LIQUIDITY_IMPACT  = 0.40;                 // never take more than 40% of order-book depth
-const POLYMARKET_TAKER_FEE  = 0.02;                 // 2% Polymarket taker fee
 
 function loadPersistedSettings(): void {
   try {
@@ -140,7 +139,7 @@ export class TradingEngine extends EventEmitter {
   private performanceMetrics: PerformanceMetrics;
   private healthMonitor: HealthMonitor;
   // In-memory signal snapshots for ensemble learning (tradeId → signals)
-  private tradeSignals = new Map<string, Array<{ name: string; adjustment: number; weight: number }>>();
+  private tradeSignals = new Map<string, SignalSnapshot[]>();
 
   // State
   private running = false;
@@ -156,11 +155,15 @@ export class TradingEngine extends EventEmitter {
   private activeMarketIds: Set<string> = new Set();
   private lastDailyReportDate = '';
   // Per-position tracking for trailing stop and momentum exit
-  private positionState = new Map<string, {
-    peakPrice: number;
-    declineCount: number;
-    lastPrice: number;
-  }>();
+  private positionState = new Map<string, PositionTrackState>();
+  // Stores signal snapshots by marketId for ensemble learning
+  private pendingSignals = new Map<string, SignalSnapshot[]>();
+
+  // Sub-modules
+  private scanner!: MarketScanner;
+  private analyzer!: TradeAnalyzer;
+  private executor!: TradeExecutor;
+  private monitor!: PositionMonitor;
 
   constructor() {
     super();
@@ -199,6 +202,15 @@ export class TradingEngine extends EventEmitter {
     if (historicalStats.totalPnl !== 0) {
       this.riskManager.updateBankroll(config.bankroll + historicalStats.totalPnl);
     }
+
+    // Instantiate sub-modules (after all services/analysis/risk are ready)
+    const logFn: LogDecisionFn = this.logDecision.bind(this);
+    const emitFn: EmitFn = this.emit.bind(this);
+
+    this.scanner = new MarketScanner(this.gammaApi, this.qualityAnalyzer, this.activeMarketIds, logFn, emitFn);
+    this.analyzer = new TradeAnalyzer(this.probEstimator, this.edgeCalc, this.calibrator, this.ensembleTracker, this.consensusClient, this.correlationAnalyzer, this.pendingSignals, this.activeMarketIds, logFn);
+    this.executor = new TradeExecutor(this.clobApi, this.gammaApi, this.newsApi, this.claudeAnalyzer, this.kellyCalc, this.riskManager, this.edgeCalc, this.journal, this.notifications, this.activeMarketIds, this.pendingSignals, this.tradeSignals, logFn, emitFn);
+    this.monitor = new PositionMonitor(this.clobApi, this.gammaApi, this.riskManager, this.calibrator, this.ensembleTracker, this.journal, this.notifications, this.edgeCalc, this.consensusClient, this.activeMarketIds, this.positionState, this.tradeSignals, logFn, emitFn);
   }
 
   // ========================================
@@ -400,714 +412,56 @@ export class TradingEngine extends EventEmitter {
     this.consensusClient.resetCycleCounter();
     logger.info('Engine', `\n--- Ciclo #${this.cycleCount} ---`);
 
-    // Step 1: Scan markets (flat list + events for correlation)
-    const { markets, events } = await this.scanMarkets();
+    const { markets, events } = await this.scanner.scan();
+    this.marketsScanned = markets.length;
     if (markets.length === 0) {
       logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP1: Nenhum mercado retornado pela API.`);
       return;
     }
     logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP1: ${markets.length} mercados obtidos da API.`);
 
-    // Step 2: Filter
-    const filtered = this.filterMarkets(markets);
+    const filtered = this.scanner.filter(markets);
     logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP2: ${markets.length} → ${filtered.length} mercados após filtros de qualidade/liquidez.`);
-
     if (filtered.length === 0) {
       logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP2: Todos os mercados eliminados nos filtros. Aguardando próximo ciclo.`);
     }
 
-    // Step 3: Analyze — probability, edge, EV
-    const opportunities = await this.analyzeMarkets(filtered, markets);
+    const opportunities = await this.analyzer.analyze(filtered, markets);
+    this.opportunitiesFound = opportunities.length;
     logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP3: ${opportunities.length} oportunidades com edge >= ${(config.minEdge * 100).toFixed(0)}% encontradas.`);
 
-    // Step 4: Correlation analysis — merges with main opportunities
     let correlationOpps: EdgeAnalysis[] = [];
     if (config.correlationEnabled && events.length > 0) {
-      correlationOpps = await this.runCorrelationAnalysis(events, markets);
+      correlationOpps = await this.analyzer.analyzeCorrelation(events, markets);
       if (correlationOpps.length > 0) {
         logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP4: +${correlationOpps.length} oportunidades de correlação.`);
       }
     }
 
-    // Merge: add correlation opps not already in the main list
     const allOpportunities = [...opportunities];
     for (const corrOpp of correlationOpps) {
       if (!allOpportunities.some(o => o.marketId === corrOpp.marketId)) {
         allOpportunities.push(corrOpp);
       }
     }
-    // Sort by edge descending so best opportunities execute first
     allOpportunities.sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge));
-
     logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP5: Tentando executar ${Math.min(allOpportunities.length, 3)} oportunidades.`);
 
-    // Step 5: Execute best opportunities
-    const beforeTrades = this.tradesExecuted;
-    await this.executeOpportunities(allOpportunities);
-    const executedNow = this.tradesExecuted - beforeTrades;
+    const executedNow = await this.executor.execute(allOpportunities, this.cycleCount);
+    this.tradesExecuted += executedNow;
     logger.info('Engine', `[Ciclo #${this.cycleCount}] STEP5: ${executedNow} trade(s) executado(s) neste ciclo. Total acumulado: ${this.tradesExecuted}.`);
 
-    // Clear pendingSignals after execution: consumed ones are in tradeSignals; the rest are stale.
     this.pendingSignals.clear();
 
-    // Step 6: Monitor existing positions (exit strategy + resolution)
-    await this.monitorPositions(markets);
+    await this.monitor.monitor(markets);
 
-    // Step 7: Balance sync every 10 cycles
-    if (this.cycleCount % 10 === 0) {
-      await this.syncBalance();
-    }
-
-    // Step 8: Daily report
+    if (this.cycleCount % 10 === 0) await this.syncBalance();
     await this.maybeSendDailyReport();
 
     this.emit('statusUpdate', this.getStatus());
     this.emit('decisionsUpdate', this.getRecentDecisions(20));
   }
 
-  // ========================================
-  // STEP 1: SCAN
-  // ========================================
-  private async scanMarkets(): Promise<{ markets: ParsedMarket[]; events: ParsedEvent[] }> {
-    // Fetch flat market list and (optionally) event groups in parallel
-    const [markets, events] = await Promise.all([
-      this.gammaApi.getAllActiveMarkets(5),
-      config.correlationEnabled
-        ? this.gammaApi.getActiveEventsWithMarkets(3)
-        : Promise.resolve<ParsedEvent[]>([]),
-    ]);
-
-    this.marketsScanned = markets.length;
-    this.logDecision('scan', `Escaneou ${markets.length} mercados ativos${events.length > 0 ? `, ${events.length} eventos` : ''}.`);
-    this.emit('scanComplete', { count: markets.length });
-
-    return { markets, events };
-  }
-
-  // ========================================
-  // STEP 2: FILTER
-  // ========================================
-  private filterMarkets(markets: ParsedMarket[]): ParsedMarket[] {
-    const filtered = markets.filter(m => {
-      if (this.activeMarketIds.has(m.id)) return false;
-      if (m.negRisk) return false;
-      if (m.liquidity < config.minLiquidity) return false;
-      if (m.volume < config.minVolume) return false;
-      if (!m.acceptingOrders) return false;
-      if (m.yesPrice > 0.97 || m.yesPrice < 0.03) return false;
-
-      // Market quality gate — reject low-quality markets before analysis
-      if (!this.qualityAnalyzer.passes(m)) return false;
-
-      return true;
-    });
-
-    logger.info('Engine', `[Filtro] ${markets.length} → ${filtered.length} (liq>=${config.minLiquidity/1000}K, vol>=${config.minVolume/1000}K, quality>=40, price 3%-97%).`);
-    return filtered;
-  }
-
-  // ========================================
-  // STEP 3: ANALYZE
-  // ========================================
-  // Stores signal snapshots by marketId for ensemble learning
-  private pendingSignals = new Map<string, Array<{ name: string; adjustment: number; weight: number }>>();
-
-  private async analyzeMarkets(filtered: ParsedMarket[], allMarkets: ParsedMarket[]): Promise<EdgeAnalysis[]> {
-    const edgeAnalyses: EdgeAnalysis[] = [];
-    const learnedWeights = this.ensembleTracker.getLearnedWeights();
-
-    // Pre-compute median volume once to avoid O(n²) recalculation inside the loop
-    const medianVolume = allMarkets.length > 0
-      ? [...allMarkets].sort((a, b) => a.volume - b.volume)[Math.floor(allMarkets.length / 2)].volume
-      : undefined;
-
-    for (const market of filtered) {
-      // Pre-estimate to see if consensus lookup is worthwhile (edge proxy)
-      // Only query consensus when market price shows ≥3% directional signal from 50/50.
-      const roughEdge = Math.abs(market.yesPrice - 0.5) > 0.03;
-      let consensusEstimates = undefined;
-      if (roughEdge) {
-        consensusEstimates = await this.consensusClient.getConsensus(market.question);
-        if (consensusEstimates.length === 0) consensusEstimates = undefined;
-      }
-
-      const probEstimate = this.probEstimator.estimate(market, allMarkets, medianVolume, undefined, learnedWeights, consensusEstimates);
-
-      // Store signal snapshot for ensemble learning at resolution
-      this.pendingSignals.set(market.id, probEstimate.signals.map(s => ({
-        name: s.name, adjustment: s.adjustment, weight: s.weight,
-      })));
-
-      // Apply Bayesian calibration correction (category-aware, time-weighted)
-      let calibratedProb = probEstimate.estimatedTrueProb;
-      let calibratedConf = probEstimate.confidence;
-      if (config.calibrationEnabled) {
-        const cal = this.calibrator.getCalibrationAdjustment(probEstimate.estimatedTrueProb, market.question);
-        if (cal) {
-          calibratedProb = Math.max(0.01, Math.min(0.99, probEstimate.estimatedTrueProb + cal.adjustment));
-          calibratedConf = Math.min(0.95, probEstimate.confidence + cal.confidence * 0.1);
-        }
-      }
-
-      const edgeAnalysis = this.edgeCalc.calculateEdge(
-        market.id,
-        market.question,
-        market.yesPrice,
-        calibratedProb,
-        calibratedConf,
-        market.liquidity,
-        market.yesTokenId,
-        market.noTokenId,
-        market.negRisk
-      );
-
-      edgeAnalyses.push(edgeAnalysis);
-    }
-
-    const tradeable = this.edgeCalc.filterTradeableOpportunities(edgeAnalyses);
-    this.opportunitiesFound = tradeable.length;
-
-    if (tradeable.length > 0) {
-      this.logDecision('opportunity',
-        `Encontrou ${tradeable.length} oportunidades com edge ≥ ${(config.minEdge * 100).toFixed(0)}%.`,
-        {
-          opportunities: tradeable.map(t => ({
-            question: t.question.substring(0, 60),
-            edge: `${(t.edgePercent).toFixed(1)}%`,
-            ev: `${(t.evPercent).toFixed(1)}%`,
-            side: t.side,
-          })),
-        }
-      );
-    } else {
-      this.logDecision('scan', `Nenhuma oportunidade com edge ≥ ${(config.minEdge * 100).toFixed(0)}% encontrada.`);
-    }
-
-    return tradeable;
-  }
-
-  // ========================================
-  // STEP 4: CORRELATION ANALYSIS
-  // ========================================
-  private async runCorrelationAnalysis(events: ParsedEvent[], allMarkets: ParsedMarket[]): Promise<EdgeAnalysis[]> {
-    const inconsistencies = this.correlationAnalyzer.findInconsistencies(events);
-    if (inconsistencies.length === 0) return [];
-
-    const marketMap = new Map(allMarkets.map(m => [m.id, m]));
-    const result: EdgeAnalysis[] = [];
-
-    for (const opp of inconsistencies.slice(0, 5)) {
-      const summary = this.correlationAnalyzer.summarize(opp);
-      this.logDecision('opportunity', `🔗 CORRELAÇÃO: ${summary}`);
-
-      // Skip markets already in active positions
-      if (this.activeMarketIds.has(opp.marketId)) continue;
-
-      const market = marketMap.get(opp.marketId);
-      if (!market) continue;
-
-      // fairPrice is the correlation-derived true probability
-      const estimatedTrueProb = opp.recommendation === 'BUY_YES'
-        ? opp.fairPrice
-        : 1 - opp.fairPrice;
-
-      const edgeAnalysis = this.edgeCalc.calculateEdge(
-        opp.marketId,
-        opp.question,
-        market.yesPrice,
-        estimatedTrueProb,
-        0.70, // correlation signal has good confidence
-        market.liquidity,
-        market.yesTokenId,
-        market.noTokenId,
-        market.negRisk
-      );
-
-      if (edgeAnalysis.side !== 'NO_TRADE') {
-        edgeAnalysis.reasoning = `[CORRELAÇÃO] ${edgeAnalysis.reasoning}`;
-        result.push(edgeAnalysis);
-      }
-    }
-
-    return result;
-  }
-
-  // ========================================
-  // STEP 5: EXECUTE
-  // ========================================
-  private async executeOpportunities(opportunities: EdgeAnalysis[]): Promise<void> {
-    const toExecute = opportunities.slice(0, 3);
-
-    for (const opp of toExecute) {
-      const currentBankroll = this.riskManager.getStatus().bankroll;
-
-      const kellyDiscount = this.riskManager.getCategoryKellyDiscount(opp.question);
-      const dynamicMulti = this.riskManager.getDynamicKellyMultiplier();
-      const kelly = this.kellyCalc.calculate(
-        opp.estimatedTrueProb,
-        opp.marketPrice,
-        currentBankroll,
-        opp.liquidity,
-        kellyDiscount,
-        dynamicMulti
-      );
-
-      if (kelly.finalStake < 1) {
-        this.logDecision('reject', `Stake muito pequeno para "${opp.question.substring(0, 50)}...". Kelly: $${kelly.finalStake.toFixed(2)}`);
-        continue;
-      }
-
-      // ── NEWS CHECK (per opportunity, rate-limit friendly) ────────────
-      // Fetch news for this specific market before committing capital.
-      // If news is present and aligned, confidence and stake get boosted
-      // through re-estimation; if contradicted, skip.
-      let newsHeadlines: string[] | undefined = undefined;
-      
-      if (config.newsApiKey) {
-        const newsResult = await this.newsApi.searchRelevantNews(opp.question);
-        
-        if (newsResult.hasRecentNews) {
-          newsHeadlines = newsResult.articles?.map(a => a.title).slice(0, 3);
-          
-          // If sentiment contradicts our edge direction, skip
-          const edgeBullish = opp.side === 'BUY_YES';
-          if (
-            (edgeBullish && newsResult.sentiment === 'bearish') ||
-            (!edgeBullish && newsResult.sentiment === 'bullish')
-          ) {
-            this.logDecision('reject',
-              `📰 Notícias contradizem a tese (${newsResult.sentiment}) para "${opp.question.substring(0, 40)}..." — skipping`
-            );
-            continue;
-          }
-
-          if (newsResult.sentiment) {
-            this.logDecision('opportunity',
-              `📰 Notícias confirmam (${newsResult.sentiment}) para "${opp.question.substring(0, 40)}..."`
-            );
-          }
-        }
-      }
-
-      // ── CLAUDE AI CONFIRMATION ──────────────────────────────────────
-      if (this.claudeAnalyzer && config.claudeEnabled) {
-        const market = await this.gammaApi.getMarketById(opp.marketId);
-        if (market) {
-          const claudeEst = await this.claudeAnalyzer.estimateProbability(market, newsHeadlines);
-          if (claudeEst && claudeEst.confidence >= 0.5) {
-            const claudeBullish = claudeEst.probability > market.yesPrice;
-            const ourBullish    = opp.side === 'BUY_YES';
-            if (claudeBullish !== ourBullish) {
-              this.logDecision('reject',
-                `🤖 Claude discorda (est=${(claudeEst.probability * 100).toFixed(0)}%, conf=${(claudeEst.confidence * 100).toFixed(0)}%) ` +
-                `para "${opp.question.substring(0, 40)}..." — skipping`
-              );
-              continue;
-            }
-            this.logDecision('opportunity',
-              `🤖 Claude confirma: est=${(claudeEst.probability * 100).toFixed(0)}% — "${claudeEst.reasoning}"`
-            );
-          }
-        }
-      }
-
-      // ── ORDER BOOK PRE-CHECK ─────────────────────────────────────────
-      const tokenId = opp.side === 'BUY_YES' ? opp.yesTokenId : opp.noTokenId;
-      const price   = opp.side === 'BUY_YES' ? opp.marketPrice : (1 - opp.marketPrice);
-      let   size    = kelly.finalStake / price;
-
-      // In DRY-RUN the order book is synthetic — depth checks are not meaningful.
-      // Only apply real order book checks in LIVE mode.
-      if (!config.dryRun) {
-        const orderBook = await this.clobApi.getOrderBook(tokenId, price, opp.liquidity);
-        if (orderBook) {
-          // Skip if spread is too wide (expensive to trade)
-          if (orderBook.spread > config.maxOrderSpreadPct) {
-            logger.info('Engine', `[REJECT] Spread alto (${(orderBook.spread * 100).toFixed(1)}% > ${(config.maxOrderSpreadPct * 100).toFixed(0)}%) "${opp.question.substring(0, 50)}"`);
-            this.logDecision('reject',
-              `Spread muito alto (${(orderBook.spread * 100).toFixed(1)}% > ${(config.maxOrderSpreadPct * 100).toFixed(0)}%) ` +
-              `para "${opp.question.substring(0, 40)}..."`
-            );
-            continue;
-          }
-
-          // Cap size to available depth (within maxOrderSpreadPct slippage, not 2%)
-          const slippageTolerance = 1 + config.maxOrderSpreadPct;
-          const availableShares = orderBook.asks
-            .filter(a => a.price <= price * slippageTolerance)
-            .reduce((sum, a) => sum + a.size, 0);
-
-          if (availableShares < config.minOrderBookShares) {
-            logger.info('Engine', `[REJECT] Profundidade insuficiente (${availableShares.toFixed(0)} shares < ${config.minOrderBookShares}) "${opp.question.substring(0, 50)}"`);
-            this.logDecision('reject',
-              `Profundidade insuficiente (${availableShares.toFixed(0)} shares < ${config.minOrderBookShares}) ` +
-              `para "${opp.question.substring(0, 40)}..."`
-            );
-            continue;
-          }
-
-          // Don't take more than 40% of available liquidity to avoid price impact
-          const maxSizeByDepth = availableShares * MAX_LIQUIDITY_IMPACT;
-          if (size > maxSizeByDepth) {
-            logger.info('Engine', `Reduzindo size de ${size.toFixed(0)} → ${maxSizeByDepth.toFixed(0)} shares (liquidez disponível)`);
-            size = maxSizeByDepth;
-          }
-        }
-      }
-
-      // ── RISK CHECK ───────────────────────────────────────────────────
-      const stakeAfterSizeAdjust = size * price;
-      const circuitBreakerWasActive = this.riskManager.getStatus().circuitBreaker;
-      const riskCheck = this.riskManager.checkTrade(stakeAfterSizeAdjust, opp.marketId, opp.question);
-
-      if (!riskCheck.allowed) {
-        this.logDecision('risk', riskCheck.reason);
-        if (!circuitBreakerWasActive && this.riskManager.getStatus().circuitBreaker) {
-          await this.notifications.notifyRiskAlert(riskCheck.reason);
-        }
-        continue;
-      }
-
-      // ── EXECUTE ──────────────────────────────────────────────────────
-      let executionPrice = price;
-      let modeTag = '';
-
-      if (config.tradeMode === 'MARKET_MAKER') {
-        const spreadAdvantage = 0.02; // Capturar 2% de spread em cima do preço justo
-        executionPrice = Math.max(0.01, Math.min(0.99, opp.estimatedTrueProb - spreadAdvantage));
-        modeTag = '[MM] ';
-        this.logDecision('trade', `[MARKET MAKER] Provisão restrita de Liquidez: ordem Limit postada @ $${executionPrice.toFixed(4)}`);
-      }
-
-      const result = await this.clobApi.placeLimitOrder(tokenId, 'BUY', executionPrice, size, opp.negRisk);
-
-      if (result.success) {
-        this.tradesExecuted++;
-
-        const finalStake = size * price;
-        const tradeRecord: TradeRecord = {
-          id: result.orderId || `trade-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          marketId: opp.marketId,
-          question: opp.question,
-          side: opp.side as 'BUY_YES' | 'BUY_NO',
-          entryPrice: price,
-          size,
-          stake: finalStake,
-          edge: opp.edge,
-          ev: opp.ev,
-          kellyFraction: kelly.fractionalKelly,
-          confidence: opp.confidence,
-          reasoning: opp.reasoning,
-          status: 'open',
-          dryRun: config.dryRun,
-        };
-
-        this.journal.recordTrade(tradeRecord);
-        this.riskManager.registerPosition(finalStake, tradeRecord.id, opp.question);
-        this.activeMarketIds.add(opp.marketId);
-        // Store signal snapshot for ensemble learning at resolution
-        const signals = this.pendingSignals.get(opp.marketId);
-        if (signals) this.tradeSignals.set(tradeRecord.id, signals);
-
-        this.logDecision('trade',
-          `✅ ${modeTag}${opp.side} "${opp.question.substring(0, 50)}..." @ $${executionPrice.toFixed(4)}, ` +
-          `stake $${finalStake.toFixed(2)}, edge +${(opp.edgePercent).toFixed(1)}%`
-        );
-
-        await this.notifications.notifyTradeExecuted(
-          opp.question, opp.side, price, finalStake, opp.edge, config.dryRun
-        );
-
-        this.emit('tradeExecuted', tradeRecord);
-      } else {
-        this.logDecision('reject', `Falha ao executar trade: ${result.error}`);
-      }
-    }
-  }
-
-  // ========================================
-  // STEP 6: MONITOR POSITIONS
-  // — Early exit when price target is reached
-  // — Stale order cancellation (>24h unfilled)
-  // — Market resolution detection
-  // ========================================
-  private async monitorPositions(currentMarkets: ParsedMarket[] = []): Promise<void> {
-    const openTrades = this.journal.getOpenTrades();
-    if (openTrades.length === 0) return;
-
-    logger.debug('Engine', `Monitorando ${openTrades.length} posições abertas`);
-
-    const marketMap = new Map(currentMarkets.map(m => [m.id, m]));
-
-    // Fetch open CLOB orders for stale-order detection (live only)
-    let openOrderIds: Set<string> = new Set();
-    if (!config.dryRun) {
-      const openOrders = await this.clobApi.getOpenOrders();
-      for (const order of openOrders as Array<{ id?: string; orderID?: string }>) {
-        const id = order.id || order.orderID;
-        if (id) openOrderIds.add(id);
-      }
-    }
-
-    // STALE_ORDER_MS and FORCED_EXIT_AFTER_MS are module-level constants
-    const now = Date.now();
-
-    for (const trade of openTrades) {
-      // ── STALE ORDER ─────────────────────────────────────────────────
-      if (!config.dryRun && !trade.dryRun) {
-        const tradeAge = now - new Date(trade.timestamp).getTime();
-        if (tradeAge > STALE_ORDER_MS && openOrderIds.has(trade.id)) {
-          const cancelled = await this.clobApi.cancelOrder(trade.id);
-          if (cancelled) {
-            this.journal.cancelTrade(trade.id);
-            this.riskManager.closePosition(trade.stake, 0, trade.id);
-            this.activeMarketIds.delete(trade.marketId);
-            this.positionState.delete(trade.id);
-            this.tradeSignals.delete(trade.id);
-            this.logDecision('monitor', `🚫 Ordem stale cancelada: "${trade.question.substring(0, 50)}..." (>24h)`);
-          }
-          continue;
-        }
-      }
-
-      const market = marketMap.get(trade.marketId) || await this.gammaApi.getMarketById(trade.marketId);
-      if (!market) continue;
-
-      // ── MARKET RESOLUTION ───────────────────────────────────────────
-      if (market.closed) {
-        const resolvedYes = market.yesPrice >= 0.99;
-        const resolvedNo  = market.noPrice  >= 0.99;
-
-        if (!resolvedYes && !resolvedNo) {
-          // If the market has been closed for >48h without Polymarket settling it,
-          // force-exit at current price rather than holding an unresolvable position.
-          const closedSinceMs = market.endDate
-            ? now - new Date(market.endDate).getTime()
-            : 0;
-
-          if (closedSinceMs > FORCED_EXIT_AFTER_MS) {
-            const exitPrice = trade.side === 'BUY_YES' ? market.yesPrice : market.noPrice;
-            const pnl = exitPrice * trade.size * (1 - POLYMARKET_TAKER_FEE) - trade.stake;
-            const hours = Math.round(closedSinceMs / 3_600_000);
-
-            this.journal.exitTrade(trade.id, exitPrice, pnl);
-            this.riskManager.closePosition(trade.stake, pnl, trade.id);
-            this.activeMarketIds.delete(trade.marketId);
-            this.positionState.delete(trade.id);
-            this.tradeSignals.delete(trade.id);
-            this.logDecision('monitor',
-              `⏰ SAÍDA FORÇADA: "${trade.question.substring(0, 50)}..." fechado há ${hours}h sem resolução Polymarket. ` +
-              `P&L ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`
-            );
-            await this.notifications.notifyRiskAlert(
-              `Saída forçada após ${hours}h: "${trade.question.substring(0, 60)}" não foi resolvido pela Polymarket.`
-            );
-            this.emit('tradeResolved', { trade, won: pnl >= 0, pnl });
-          } else {
-            const hours = (closedSinceMs / 3_600_000).toFixed(1);
-            this.logDecision('monitor',
-              `⚠️ Resultado ambíguo: "${trade.question.substring(0, 50)}..." — aguardando resolução (${hours}h fechado)`
-            );
-          }
-          continue;
-        }
-
-        const won = (trade.side === 'BUY_YES' && resolvedYes) || (trade.side === 'BUY_NO' && resolvedNo);
-        const exitPrice = won ? 1.0 : 0.0;
-        const pnl = won ? (trade.size * 1) - trade.stake : -trade.stake;
-
-        this.journal.resolveTrade(trade.id, won, exitPrice);
-        this.riskManager.closePosition(trade.stake, pnl, trade.id);
-        this.activeMarketIds.delete(trade.marketId);
-        this.positionState.delete(trade.id);
-        if (config.calibrationEnabled) {
-          this.calibrator.recordOutcome(trade.entryPrice, won, trade.question);
-          const signals = this.tradeSignals.get(trade.id);
-          if (signals) {
-            this.ensembleTracker.recordOutcome(signals, won, trade.side);
-            this.tradeSignals.delete(trade.id);
-          }
-        }
-
-        if (won) {
-          this.logDecision('monitor', `🎯 GANHOU: "${trade.question.substring(0, 50)}..." → +$${pnl.toFixed(2)}`);
-          await this.notifications.notifyTradeWon(trade.question, pnl);
-        } else {
-          this.logDecision('monitor', `💀 PERDEU: "${trade.question.substring(0, 50)}..." → -$${Math.abs(pnl).toFixed(2)}`);
-          await this.notifications.notifyTradeLost(trade.question, pnl);
-        }
-        this.emit('tradeResolved', { trade, won, pnl });
-        continue;
-      }
-
-      // ── ACTIVE POSITION — check exit rules ──────────────────────────
-      const currentSidePrice = trade.side === 'BUY_YES' ? market.yesPrice : market.noPrice;
-
-      // Persist current price so dashboard can show real-time VARIAÇÃO column
-      this.journal.updateCurrentPrice(trade.id, currentSidePrice);
-
-      // Update per-position state (for trailing stop + momentum)
-      const state = this.positionState.get(trade.id) ?? {
-        peakPrice: trade.entryPrice,
-        declineCount: 0,
-        lastPrice: trade.entryPrice,
-      };
-      if (currentSidePrice > state.peakPrice) state.peakPrice = currentSidePrice;
-      state.declineCount = currentSidePrice < state.lastPrice ? state.declineCount + 1 : 0;
-      state.lastPrice = currentSidePrice;
-      this.positionState.set(trade.id, state);
-
-      // Determine exit reason (priority order)
-      let exitReason: string | null = null;
-
-      // 1. PROFIT TARGET — lock in gains
-      if (currentSidePrice >= config.exitPriceTarget) {
-        exitReason = `🎯 PROFIT TARGET atingido @ ${(currentSidePrice * 100).toFixed(1)}¢ (alvo=${(config.exitPriceTarget * 100).toFixed(0)}¢)`;
-      }
-
-      // 2. TRAILING STOP — protect accumulated gains
-      if (!exitReason && state.peakPrice >= trade.entryPrice * (1 + config.trailingStopActivation)) {
-        const trailingStopPrice = state.peakPrice * (1 - config.trailingStopDistance);
-        if (currentSidePrice <= trailingStopPrice) {
-          exitReason = `📉 TRAILING STOP @ ${(currentSidePrice * 100).toFixed(1)}¢ (pico=${(state.peakPrice * 100).toFixed(1)}¢, stop=${(trailingStopPrice * 100).toFixed(1)}¢)`;
-        }
-      }
-
-      // 3. STOP-LOSS — cap catastrophic losses
-      if (!exitReason && currentSidePrice <= trade.entryPrice * (1 - config.stopLossPct)) {
-        exitReason = `🛑 STOP-LOSS: queda de ${(config.stopLossPct * 100).toFixed(0)}% do preço de entrada (${(trade.entryPrice * 100).toFixed(1)}¢ → ${(currentSidePrice * 100).toFixed(1)}¢)`;
-      }
-
-      // 4. EDGE REVERSAL — thesis invalidated (fresh consensus re-estimation)
-      // FIX: Uses LIVE consensus data (Metaculus + Manifold) instead of static entry probability.
-      // This catches macro shifts that weren't available when the position was opened.
-      if (!exitReason && config.edgeReversalEnabled) {
-        let freshProb: number | null = null;
-
-        try {
-          const consensusEstimates = await this.consensusClient.getConsensus(trade.question);
-          if (consensusEstimates.length > 0) {
-            // Weighted average by confidence
-            const totalWeight = consensusEstimates.reduce((s, e) => s + e.confidence, 0);
-            freshProb = consensusEstimates.reduce((s, e) => s + e.probability * e.confidence, 0) / totalWeight;
-          }
-        } catch (_) { /* consensus unavailable — fall back to entry estimate */ }
-
-        // Fall back to entry-time estimate if consensus returned nothing
-        const probForReversal = freshProb ?? (
-          trade.side === 'BUY_YES'
-            ? trade.entryPrice + trade.edge
-            : 1 - trade.entryPrice - trade.edge
-        );
-
-        const currentEdgeAnalysis = this.edgeCalc.calculateEdge(
-          trade.marketId, trade.question, market.yesPrice,
-          probForReversal, trade.confidence ?? 0.5,
-          market.liquidity, market.yesTokenId, market.noTokenId, market.negRisk
-        );
-
-        const REVERSAL_EDGE_THRESHOLD = config.minEdge * 2.0; // must be twice minEdge to trigger
-        const oppositeHasEdge =
-          (trade.side === 'BUY_YES' && currentEdgeAnalysis.side === 'BUY_NO'  && Math.abs(currentEdgeAnalysis.edge) > REVERSAL_EDGE_THRESHOLD) ||
-          (trade.side === 'BUY_NO'  && currentEdgeAnalysis.side === 'BUY_YES' && Math.abs(currentEdgeAnalysis.edge) > REVERSAL_EDGE_THRESHOLD);
-
-        if (oppositeHasEdge) {
-          const source = freshProb ? 'consenso externo' : 'estimativa de entrada';
-          exitReason = `🔄 EDGE REVERSAL [${source}]: mercado agora favorece o lado oposto (edge=${(currentEdgeAnalysis.edgePercent).toFixed(1)}%)`;
-        }
-      }
-
-      // 5. TIME DECAY — exit losing positions near expiry
-      if (!exitReason && market.endDate && config.timeDecayHours > 0) {
-        const hoursToExpiry = (new Date(market.endDate).getTime() - now) / (1000 * 60 * 60);
-        if (hoursToExpiry > 0 && hoursToExpiry < config.timeDecayHours && currentSidePrice < trade.entryPrice) {
-          exitReason = `⏰ TIME DECAY: ${hoursToExpiry.toFixed(1)}h até vencimento com posição no prejuízo (entrada=${(trade.entryPrice * 100).toFixed(1)}¢, atual=${(currentSidePrice * 100).toFixed(1)}¢)`;
-        }
-      }
-
-      // 6. MOMENTUM EXIT — FIX: require BOTH consecutive declines AND meaningful price drop
-      // Before: 3 cycles of decline (3 minutes) was enough — far too aggressive.
-      // Now: requires consecutive declines AND price is >=5% below peak (real trend, not noise).
-      if (!exitReason && state.declineCount >= config.momentumExitCycles && currentSidePrice < trade.entryPrice) {
-        const dropFromPeak = (state.peakPrice - currentSidePrice) / state.peakPrice;
-        const MIN_MEANINGFUL_DROP = 0.05; // 5% from peak before treating as trend reversal
-        if (dropFromPeak >= MIN_MEANINGFUL_DROP) {
-          exitReason = `📊 MOMENTUM NEGATIVO: ${state.declineCount} ciclos consecutivos + queda de ${(dropFromPeak * 100).toFixed(1)}% do pico (${(state.peakPrice * 100).toFixed(1)}¢ → ${(currentSidePrice * 100).toFixed(1)}¢)`;
-        }
-      }
-
-      if (!exitReason) continue;
-
-      // ── EXECUTE EXIT ────────────────────────────────────────────────
-      const sellTokenId = trade.side === 'BUY_YES' ? market.yesTokenId : market.noTokenId;
-      let exitSuccess = false;
-
-      if (config.dryRun || trade.dryRun) {
-        exitSuccess = true;
-        logger.info('Engine', `🏜️ [DRY-RUN] Exit simulado: ${exitReason} @ $${currentSidePrice.toFixed(3)}`);
-      } else {
-        // FIX: Try limit order first (better price), fallback to market order (guaranteed fill).
-        // This ensures positions are ALWAYS closed when an exit signal fires in LIVE mode.
-        logger.info('Engine', `Executing LIVE exit: SELL ${trade.size.toFixed(2)} shares @ $${currentSidePrice.toFixed(4)} [${sellTokenId.slice(0, 12)}...]`);
-
-        const limitResult = await this.clobApi.placeLimitOrder(
-          sellTokenId, 'SELL', currentSidePrice, trade.size, market.negRisk
-        );
-
-        if (limitResult.success) {
-          exitSuccess = true;
-          logger.info('Engine', `✅ SELL Limit Order aceita: ${limitResult.orderId}`);
-        } else {
-          // Fallback: market sell at 2% below current price to guarantee fill
-          logger.warn('Engine', `Limit SELL falhou (${limitResult.error}), tentando market sell...`);
-          const marketPrice = Math.max(0.01, currentSidePrice * 0.98);
-          const marketResult = await this.clobApi.placeLimitOrder(
-            sellTokenId, 'SELL', marketPrice, trade.size, market.negRisk
-          );
-          if (marketResult.success) {
-            exitSuccess = true;
-            logger.info('Engine', `✅ SELL Market fallback: preenchido @ $${marketPrice.toFixed(4)}`);
-          } else {
-            logger.error('Engine', `❌ SELL falhou: limit=${limitResult.error} | market=${marketResult.error}. Posição mantida aberta.`);
-          }
-        }
-      }
-
-
-      if (exitSuccess) {
-        // Deduct Polymarket taker fee (~2%) from exit proceeds to simulate real P&L
-        const exitProceeds = config.dryRun
-          ? currentSidePrice * trade.size * (1 - POLYMARKET_TAKER_FEE)
-          : currentSidePrice * trade.size;
-        const pnl = exitProceeds - trade.stake;
-        this.journal.exitTrade(trade.id, currentSidePrice, pnl);
-        this.riskManager.closePosition(trade.stake, pnl, trade.id);
-        this.activeMarketIds.delete(trade.marketId);
-        this.positionState.delete(trade.id);
-        if (config.calibrationEnabled) {
-          this.calibrator.recordOutcome(trade.entryPrice, pnl >= 0, trade.question);
-          const signals = this.tradeSignals.get(trade.id);
-          if (signals) {
-            this.ensembleTracker.recordOutcome(signals, pnl >= 0, trade.side);
-            this.tradeSignals.delete(trade.id);
-          }
-        }
-
-        this.logDecision('monitor',
-          `${pnl >= 0 ? '💰' : '💸'} SAÍDA [${exitReason}] — P&L ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`
-        );
-
-        if (pnl >= 0) {
-          await this.notifications.notifyTradeWon(trade.question, pnl);
-          this.emit('tradeResolved', { trade, won: true, pnl });
-        } else {
-          await this.notifications.notifyTradeLost(trade.question, pnl);
-          this.emit('tradeResolved', { trade, won: false, pnl });
-        }
-      }
-    }
-  }
 
   // ========================================
   // BALANCE SYNC (every 10 cycles)
