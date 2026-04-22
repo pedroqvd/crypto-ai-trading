@@ -25,21 +25,14 @@
     pnl:               $('header-pnl'),
     uptime:            $('header-uptime'),
     statMarkets:       $('stat-markets'),
-    statOpportunities: $('stat-opportunities'),
     statTrades:        $('stat-trades'),
     statWinrate:       $('stat-winrate'),
-    statCycle:         $('stat-cycle'),
-    statAvgEdge:       $('stat-avg-edge'),
-    statOpenPositions: $('stat-open-positions'),
-    footerMode:        $('footer-mode'),
     positionsList:     $('positions-list'),
     positionsCount:    $('positions-count'),
     riskDrawdown:      $('risk-drawdown'),
     riskDrawdownBar:   $('risk-drawdown-bar'),
     riskExposure:      $('risk-exposure'),
     riskExposureBar:   $('risk-exposure-bar'),
-    riskPositions:     $('risk-positions'),
-    riskDailyLoss:     $('risk-daily-loss'),
     riskCircuit:       $('risk-circuit'),
     resetCircuitBtn:   $('reset-circuit-btn'),
     resetEmergencyBtn: $('reset-emergency-btn'),
@@ -47,14 +40,10 @@
     decisionsFeed:     $('decisions-feed'),
     notificationsFeed: $('notifications-feed'),
     notifCount:        $('notif-count'),
-    // Calibration
-    calBrier:          $('cal-brier'),
-    calBrierQual:      $('cal-brier-qual'),
     toggleMmMode:      $('toggle-mm-mode'),
     modeBadge:         $('mode-badge'),
     lastScan:          $('header-last-scan'),
     liveWarningBox:    $('live-warning-box'),
-    // History
     historyBody:       $('history-body'),
     hTotalTrades:      $('h-total-trades'),
     hWinRate:          $('h-win-rate'),
@@ -522,7 +511,6 @@
           els.pnl.className = 'header-val ' + (s.totalPnl >= 0 ? 'pos' : 'neg');
         }
         if (els.uptime) els.uptime.textContent = s.uptime;
-        if (els.statCycle) els.statCycle.textContent = s.cycleCount;
         if (els.modeBadge) {
           els.modeBadge.textContent = s.dryRun ? '🧪 SIMULAÇÃO' : '🔴 AO VIVO';
           els.modeBadge.className = 'mode-badge ' + (s.dryRun ? 'mode-sim' : 'mode-live');
@@ -594,7 +582,6 @@
     function updateTradeStats(stats) {
       if (els.statTrades) els.statTrades.textContent = stats.count;
       if (els.statWinrate) els.statWinrate.textContent = (stats.winRate * 100).toFixed(1) + '%';
-      if (els.statAvgEdge) els.statAvgEdge.textContent = (stats.avgEdge * 100).toFixed(1) + '%';
     }
 
     function renderPositions(open) {
