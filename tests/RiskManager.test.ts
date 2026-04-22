@@ -208,7 +208,7 @@ describe('RiskManager', () => {
   // getStatus structure
   // ----------------------------------------
   describe('getStatus', () => {
-    it('returns all required fields', () => {
+    it('returns all required fields including emergencyStop', () => {
       const rm = makeManager();
       const status = rm.getStatus();
       expect(status).toHaveProperty('bankroll');
@@ -218,6 +218,7 @@ describe('RiskManager', () => {
       expect(status).toHaveProperty('positionCount');
       expect(status).toHaveProperty('dailyLoss');
       expect(status).toHaveProperty('circuitBreaker');
+      expect(status).toHaveProperty('emergencyStop');
       expect(status).toHaveProperty('maxExposure');
     });
 
@@ -225,6 +226,145 @@ describe('RiskManager', () => {
       const rm = makeManager(1000);
       const status = rm.getStatus();
       expect(status.maxExposure).toBeCloseTo(500, 1);
+    });
+
+    it('emergencyStop is false initially', () => {
+      const rm = makeManager();
+      expect(rm.getStatus().emergencyStop).toBe(false);
+    });
+  });
+
+  // ----------------------------------------
+  // Emergency stop (25% drawdown)
+  // ----------------------------------------
+  describe('emergency stop (25% drawdown)', () => {
+    it('activates emergencyStop at >= 25% drawdown', () => {
+      const rm = makeManager(1000);
+      rm.closePosition(0, -250); // 25% drawdown
+      rm.checkTrade(10, 'market-new'); // trigger activation
+      expect(rm.getStatus().emergencyStop).toBe(true);
+    });
+
+    it('blocks all trades once emergencyStop is active', () => {
+      const rm = makeManager(1000);
+      rm.closePosition(0, -300); // 30% drawdown → emergency
+      rm.checkTrade(1, 'trigger');
+
+      const r1 = rm.checkTrade(5, 'market-1');
+      const r2 = rm.checkTrade(5, 'market-2');
+      expect(r1.allowed).toBe(false);
+      expect(r2.allowed).toBe(false);
+    });
+
+    it('emergency stop reason mentions emergency', () => {
+      const rm = makeManager(1000);
+      rm.closePosition(0, -260);
+      const result = rm.checkTrade(1, 'trigger');
+      expect(result.reason).toMatch(/emergência|emergency/i);
+    });
+
+    it('resetEmergencyStop() clears emergencyStop and circuitBreaker flags', () => {
+      const rm = makeManager(1000);
+      rm.closePosition(0, -300);
+      rm.checkTrade(1, 'trigger');
+      expect(rm.getStatus().emergencyStop).toBe(true);
+
+      rm.resetEmergencyStop();
+      expect(rm.getStatus().emergencyStop).toBe(false);
+      expect(rm.getStatus().circuitBreaker).toBe(false);
+    });
+
+    it('emergency stop is permanent — circuit breaker reset does NOT clear it', () => {
+      const rm = makeManager(1000);
+      rm.closePosition(0, -300);
+      rm.checkTrade(1, 'trigger');
+
+      rm.resetCircuitBreaker(); // only resets circuit breaker, not emergency stop
+      expect(rm.getStatus().emergencyStop).toBe(true);
+    });
+  });
+
+  // ----------------------------------------
+  // getCategoryKellyDiscount
+  // ----------------------------------------
+  describe('getCategoryKellyDiscount', () => {
+    it('returns 1.0 with 0 positions in category', () => {
+      const rm = makeManager();
+      expect(rm.getCategoryKellyDiscount('Will Bitcoin reach $100k?')).toBe(1.0);
+    });
+
+    it('returns 0.75 with 1 position in same category', () => {
+      const rm = makeManager();
+      rm.registerPosition(30, 'trade-1', 'Will Bitcoin rally this year?');
+      expect(rm.getCategoryKellyDiscount('Will Ethereum reach $5000?')).toBe(0.75);
+    });
+
+    it('returns 0.55 with 2 positions in same category', () => {
+      const rm = makeManager();
+      rm.registerPosition(20, 'trade-1', 'Will Bitcoin rally?');
+      rm.registerPosition(20, 'trade-2', 'Will Ethereum reach $5000?');
+      expect(rm.getCategoryKellyDiscount('Will Solana break $200?')).toBe(0.55);
+    });
+
+    it('returns 0.40 with 3+ positions in same category', () => {
+      const rm = makeManager();
+      rm.registerPosition(10, 'trade-1', 'Will Bitcoin hit $100k?');
+      rm.registerPosition(10, 'trade-2', 'Will Ethereum reach $5000?');
+      rm.registerPosition(10, 'trade-3', 'Will Solana break $200?');
+      // BTC is also detected as 'Crypto' → 4th position in same category
+      expect(rm.getCategoryKellyDiscount('Will BTC drop below $50k?')).toBe(0.40);
+    });
+  });
+
+  // ----------------------------------------
+  // getDynamicKellyMultiplier
+  // ----------------------------------------
+  describe('getDynamicKellyMultiplier', () => {
+    it('returns 1.0 at 0% drawdown', () => {
+      const rm = makeManager(1000);
+      expect(rm.getDynamicKellyMultiplier()).toBe(1.0);
+    });
+
+    it('returns 0.75 at 2–5% drawdown', () => {
+      const rm = makeManager(1000);
+      rm.closePosition(0, -30); // 3% drawdown
+      expect(rm.getDynamicKellyMultiplier()).toBe(0.75);
+    });
+
+    it('returns 0.50 at 5–10% drawdown', () => {
+      const rm = makeManager(1000);
+      rm.closePosition(0, -70); // 7% drawdown
+      expect(rm.getDynamicKellyMultiplier()).toBe(0.50);
+    });
+
+    it('returns 0.25 at > 10% drawdown', () => {
+      const rm = makeManager(1000);
+      rm.closePosition(0, -120); // 12% drawdown
+      expect(rm.getDynamicKellyMultiplier()).toBe(0.25);
+    });
+  });
+
+  // ----------------------------------------
+  // Category concentration limit
+  // ----------------------------------------
+  describe('category concentration (MAX_POSITIONS_PER_CATEGORY=3)', () => {
+    it('blocks 4th trade in same category', () => {
+      const rm = makeManager();
+      rm.registerPosition(10, 'trade-1', 'Will Bitcoin hit $100k?');
+      rm.registerPosition(10, 'trade-2', 'Will Ethereum reach $5000?');
+      rm.registerPosition(10, 'trade-3', 'Will Solana break $200?');
+      // 'eth' is also Crypto → 4th position should be blocked
+      const result = rm.checkTrade(5, 'market-4', 'Will ETH hit $10k before year end?');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toMatch(/categoria|category/i);
+    });
+
+    it('allows 3rd trade in same category', () => {
+      const rm = makeManager();
+      rm.registerPosition(10, 'trade-1', 'Will Bitcoin hit $100k?');
+      rm.registerPosition(10, 'trade-2', 'Will Ethereum reach $5000?');
+      const result = rm.checkTrade(5, 'market-3', 'Will Solana break $200?');
+      expect(result.allowed).toBe(true);
     });
   });
 });
