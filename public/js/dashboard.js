@@ -42,6 +42,8 @@
     riskDailyLoss:     $('risk-daily-loss'),
     riskCircuit:       $('risk-circuit'),
     resetCircuitBtn:   $('reset-circuit-btn'),
+    resetEmergencyBtn: $('reset-emergency-btn'),
+    emergencyStopSection: $('emergency-stop-section'),
     decisionsFeed:     $('decisions-feed'),
     notificationsFeed: $('notifications-feed'),
     notifCount:        $('notif-count'),
@@ -174,6 +176,7 @@
     });
 
     socket.on('statusUpdate',   (status) => updateStatus(status));
+    socket.on('riskUpdate',     (risk) => updateRisk(risk));
     socket.on('decision',       (decision) => addDecision(decision));
     socket.on('tradeExecuted',  (trade) => {
       addPosition(trade);
@@ -387,6 +390,19 @@
       });
     }
 
+    if (els.resetEmergencyBtn) {
+      els.resetEmergencyBtn.addEventListener('click', async () => {
+        if (!confirm('Tem certeza? O emergency stop protege contra drawdown severo. Só resete se entender os riscos.')) return;
+        const res = await authFetch('/api/risk/emergency-reset', { method: 'POST' });
+        if (res.ok) {
+          alert('Emergency stop resetado. Monitore o bot com atenção.');
+        } else {
+          const err = await res.json();
+          alert('Erro: ' + (err.error || 'Falha ao resetar.'));
+        }
+      });
+    }
+
     if (els.toggleMmMode) {
       els.toggleMmMode.addEventListener('change', async (e) => {
         const mode = e.target.checked ? 'MARKET_MAKER' : 'DIRECTIONAL';
@@ -546,6 +562,9 @@
         els.riskCircuit.textContent = risk.circuitBreaker ? '🚨 ATIVO' : '● OK';
         els.riskCircuit.className = 'risk-stat-val ' + (risk.circuitBreaker ? 'danger' : 'ok');
         if (els.resetCircuitBtn) els.resetCircuitBtn.classList.toggle('hidden', !risk.circuitBreaker);
+      }
+      if (els.emergencyStopSection) {
+        els.emergencyStopSection.style.display = risk.emergencyStop ? 'flex' : 'none';
       }
     }
 

@@ -303,6 +303,7 @@ export class TradingEngine extends EventEmitter {
       this.claudeAnalyzer = (config.claudeEnabled && config.claudeApiKey)
         ? new ClaudeAnalyzer(config.claudeApiKey, config.claudeMaxCallsPerCycle)
         : null;
+      this.executor.setClaudeAnalyzer(this.claudeAnalyzer);
     }
     logger.info('Engine', `⚙️ Config atualizada: ${JSON.stringify(
       Object.fromEntries(Object.entries(updates).map(([k, v]) =>
@@ -409,6 +410,7 @@ export class TradingEngine extends EventEmitter {
     this.cycleCount++;
     this.lastScanAt = new Date().toISOString();
     this.claudeAnalyzer?.resetCycleCounter();
+    this.executor.resetClaudeCycleCounter();
     this.consensusClient.resetCycleCounter();
     logger.info('Engine', `\n--- Ciclo #${this.cycleCount} ---`);
 
@@ -527,6 +529,10 @@ export class TradingEngine extends EventEmitter {
 
   getRiskManager(): RiskManager {
     return this.riskManager;
+  }
+
+  getApiHealth() {
+    return this.healthMonitor.getHealth();
   }
 
   // ========================================

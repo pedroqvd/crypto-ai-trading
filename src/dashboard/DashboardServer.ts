@@ -234,6 +234,19 @@ export class DashboardServer {
       res.json({ success: true, message: 'Circuit breaker resetado. Trading reativado.' });
     });
 
+    // Reset emergency stop (requires manual admin action — auth protected)
+    this.app.post('/api/risk/emergency-reset', (req, res) => {
+      const riskManager = this.engine.getRiskManager();
+      const status = riskManager.getStatus();
+      if (!status.emergencyStop) {
+        res.status(400).json({ error: 'Emergency stop não está ativo.' });
+        return;
+      }
+      riskManager.resetEmergencyStop();
+      logger.warn('Dashboard', '⚠️ EMERGENCY STOP resetado manualmente via dashboard');
+      res.json({ success: true, message: 'Emergency stop resetado. Monitore com atenção.' });
+    });
+
     // Notifications
     this.app.get('/api/notifications', (req, res) => {
       const count = parseInt(req.query.count as string) || 50;
@@ -243,6 +256,11 @@ export class DashboardServer {
     // Health
     this.app.get('/api/health', (req, res) => {
       res.json({ status: 'ok', timestamp: Date.now() });
+    });
+
+    // API health status (GammaAPI, ClobAPI liveness)
+    this.app.get('/api/health/apis', (req, res) => {
+      res.json(this.engine.getApiHealth());
     });
 
     // Calibration report (Brier score, per-category stats, bucket accuracy)
@@ -426,6 +444,11 @@ export class DashboardServer {
 
     this.engine.on('scanComplete', (data) => {
       this.io.emit('scanComplete', data);
+    });
+
+    // Emit risk update whenever status changes (risk state is part of every cycle)
+    this.engine.on('statusUpdate', () => {
+      this.io.emit('riskUpdate', this.engine.getRiskManager().getStatus());
     });
 
     this.engine.getNotificationService().onNotification((notification) => {
