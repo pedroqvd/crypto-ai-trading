@@ -413,6 +413,19 @@ export class DashboardServer {
       }
     });
 
+    // Logging configuration
+    this.app.get('/api/logging/config', (req, res) => {
+      res.json({
+        jsonOutput: logger.isJsonOutput(),
+      });
+    });
+
+    this.app.post('/api/logging/json', (req, res) => {
+      const { enabled } = req.body;
+      logger.setJsonOutput(enabled === true);
+      res.json({ success: true, jsonOutput: logger.isJsonOutput() });
+    });
+
     // Learning data import — restore after redeploy
     this.app.post('/api/learning/import', (req, res) => {
       const body = req.body as { calibration?: unknown; ensemble?: unknown };
