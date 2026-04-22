@@ -47,24 +47,33 @@ export class ClaudeAnalyzer {
     if (cached) return { ...cached.estimate, cached: true };
 
     this.callsThisCycle++;
-    try {
-      const estimate = await this.callApi(market, newsHeadlines);
-      if (estimate) this.cache.set(bucketKey, { estimate, ts: Date.now() });
-      return estimate;
-    } catch (err) {
-      logger.warn('Claude', `API call failed: ${err instanceof Error ? err.message : err}`);
-      return null;
+    // Retry once on timeout — LLM API can be slow under load.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const estimate = await this.callApi(market, newsHeadlines);
+        if (estimate) this.cache.set(bucketKey, { estimate, ts: Date.now() });
+        return estimate;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isTimeout = msg.includes('timeout') || msg.includes('ETIMEDOUT');
+        if (attempt === 2 || !isTimeout) {
+          logger.warn('Claude', `API call failed: ${msg}`);
+          return null;
+        }
+        logger.warn('Claude', `API timeout on attempt ${attempt}, retrying…`);
+      }
     }
+    return null;
   }
 
-  private callApi(market: ParsedMarket, newsHeadlines?: string[]): Promise<ClaudeEstimate | null> {
+  private callApi(market: ParsedMarket, newsHeadlines?: string[]): Promise<ClaudeEstimate | null> { // rejects on timeout/network
     const body = JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 200,
       messages: [{ role: 'user', content: this.buildPrompt(market, newsHeadlines) }],
     });
 
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       const req = https.request(
         {
           hostname: 'api.anthropic.com',
@@ -98,8 +107,8 @@ export class ClaudeAnalyzer {
           });
         }
       );
-      req.on('error', () => resolve(null));
-      req.setTimeout(12000, () => { req.destroy(); resolve(null); });
+      req.on('error', (err) => { reject(err); });
+      req.setTimeout(30_000, () => { req.destroy(); reject(new Error('timeout')); });
       req.write(body);
       req.end();
     });

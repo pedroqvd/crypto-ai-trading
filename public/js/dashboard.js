@@ -128,16 +128,36 @@
     const socketOpts = { auth: { token: authToken }, query: { token: authToken } };
     const socket = backendUrl ? io(backendUrl, socketOpts) : io(socketOpts);
 
-    socket.on('connect', () => setStatus('connecting', 'Conectado'));
+    socket.on('connect', () => {
+      setStatus('connecting', 'Conectado');
+      // Refresh stale data after a reconnect (events missed while offline)
+      authFetch('/api/status').then(r => r.ok && r.json()).then(s => s && updateStatus(s)).catch(() => {});
+      authFetch('/api/trades').then(r => r.ok && r.json()).then(d => {
+        if (!d) return;
+        if (d.stats) updateTradeStats(d.stats);
+        if (d.open) { renderPositions(d.open); renderActivePositions(d.open); }
+        if (d.risk) updateRisk(d.risk);
+      }).catch(() => {});
+      fetchPerformance();
+    });
     socket.on('connect_error', (err) => {
       if (err.message === 'Autenticação necessária') {
         localStorage.removeItem('auth_token');
         window.location.href = '/login';
         return;
       }
-      setStatus('stopped', 'Erro de Conexão');
+      setStatus('stopped', 'Reconectando...');
     });
-    socket.on('disconnect', () => setStatus('stopped', 'Desconectado'));
+    socket.on('disconnect', (reason) => {
+      setStatus('stopped', reason === 'io server disconnect' ? 'Desconectado' : 'Reconectando...');
+    });
+
+    // Periodic heartbeat refresh every 30 s — guards against missed WebSocket events
+    setInterval(() => {
+      if (!socket.connected) return;
+      authFetch('/api/status').then(r => r.ok && r.json()).then(s => s && updateStatus(s)).catch(() => {});
+      fetchPerformance();
+    }, 30_000);
 
     socket.on('init', (data) => {
       if (data.status)        updateStatus(data.status);

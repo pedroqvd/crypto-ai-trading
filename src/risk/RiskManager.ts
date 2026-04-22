@@ -18,6 +18,15 @@ export interface RiskCheck {
 // Maximum positions per category to prevent over-concentration
 const MAX_POSITIONS_PER_CATEGORY = 3;
 
+// Drawdown thresholds
+const DRAWDOWN_CIRCUIT_BREAK_PCT  = 15;  // trigger circuit breaker
+const DRAWDOWN_EMERGENCY_STOP_PCT = 25;  // permanent hard stop — never auto-resets
+const DRAWDOWN_AUTO_RESET_PCT     = 5;   // circuit breaker auto-clears below this
+const DRAWDOWN_COOLDOWN_RESET_PCT = 10;  // cooldown check: only release if below this
+
+// Daily loss limit as fraction of bankroll
+const DAILY_LOSS_LIMIT_PCT = 0.10;
+
 // Circuit breaker cooldown: 2 hours. If no positions close to push drawdown below 5%,
 // auto-release after this period so the bot is not stuck indefinitely.
 const CIRCUIT_BREAKER_COOLDOWN_MS = 2 * 60 * 60 * 1000;
@@ -31,6 +40,7 @@ export class RiskManager {
   private lastDayReset: string = '';
   private circuitBreakerActive: boolean = false;
   private circuitBreakerActivatedAt: number = 0;
+  private emergencyStopActive: boolean = false; // permanent — never auto-resets
   // category → stake exposure
   private categoryExposure = new Map<string, number>();
   // tradeId → category (to deregister correctly on close)
@@ -77,10 +87,33 @@ export class RiskManager {
   checkTrade(stakeAmount: number, marketId: string, question?: string): RiskCheck {
     this.resetDailyIfNeeded();
 
+    // Emergency hard stop — triggered at DRAWDOWN_EMERGENCY_STOP_PCT, never auto-resets.
+    if (this.emergencyStopActive) {
+      return {
+        allowed: false,
+        reason: `🛑 PARADA DE EMERGÊNCIA: drawdown >= ${DRAWDOWN_EMERGENCY_STOP_PCT}%. Requer intervenção manual.`,
+        currentExposure: this.totalExposure,
+        maxExposure: this.currentBankroll * config.maxTotalExposurePct,
+        drawdownPct: this.getDrawdownPct(),
+      };
+    }
+
+    if (this.getDrawdownPct() >= DRAWDOWN_EMERGENCY_STOP_PCT) {
+      this.emergencyStopActive = true;
+      logger.error('RiskMgr', `🛑 EMERGÊNCIA: Drawdown de ${this.getDrawdownPct().toFixed(1)}% >= ${DRAWDOWN_EMERGENCY_STOP_PCT}%. Bot parado permanentemente.`);
+      return {
+        allowed: false,
+        reason: `🛑 PARADA DE EMERGÊNCIA: drawdown atingiu ${this.getDrawdownPct().toFixed(1)}%. Requer intervenção manual.`,
+        currentExposure: this.totalExposure,
+        maxExposure: this.currentBankroll * config.maxTotalExposurePct,
+        drawdownPct: this.getDrawdownPct(),
+      };
+    }
+
     // Auto-release circuit breaker after cooldown period when drawdown recovered enough.
     if (this.circuitBreakerActive) {
       const elapsed = Date.now() - this.circuitBreakerActivatedAt;
-      if (elapsed > CIRCUIT_BREAKER_COOLDOWN_MS && this.getDrawdownPct() < 10) {
+      if (elapsed > CIRCUIT_BREAKER_COOLDOWN_MS && this.getDrawdownPct() < DRAWDOWN_COOLDOWN_RESET_PCT) {
         this.circuitBreakerActive = false;
         logger.info('RiskMgr', `🔄 Circuit breaker auto-liberado após ${(elapsed / 3_600_000).toFixed(1)}h (drawdown=${this.getDrawdownPct().toFixed(1)}%).`);
       }
@@ -97,13 +130,13 @@ export class RiskManager {
     }
 
     const drawdown = this.getDrawdownPct();
-    if (drawdown >= 15) {
+    if (drawdown >= DRAWDOWN_CIRCUIT_BREAK_PCT) {
       this.circuitBreakerActive = true;
       this.circuitBreakerActivatedAt = Date.now();
       logger.warn('RiskMgr', `🚨 CIRCUIT BREAKER: Drawdown de ${drawdown.toFixed(1)}% atingido. Trading pausado.`);
       return {
         allowed: false,
-        reason: `🚨 Drawdown de ${drawdown.toFixed(1)}% excedeu limite de 15%. Circuit breaker ativado.`,
+        reason: `🚨 Drawdown de ${drawdown.toFixed(1)}% excedeu limite de ${DRAWDOWN_CIRCUIT_BREAK_PCT}%. Circuit breaker ativado.`,
         currentExposure: this.totalExposure,
         maxExposure: this.currentBankroll * config.maxTotalExposurePct,
         drawdownPct: drawdown,
@@ -132,7 +165,7 @@ export class RiskManager {
       };
     }
 
-    const dailyLossLimit = this.currentBankroll * 0.10;
+    const dailyLossLimit = this.currentBankroll * DAILY_LOSS_LIMIT_PCT;
     if (this.dailyLoss >= dailyLossLimit) {
       return {
         allowed: false,
@@ -202,9 +235,9 @@ export class RiskManager {
     }
 
     // Auto-reset circuit breaker quando drawdown se recupera abaixo de 5%
-    if (this.circuitBreakerActive && this.getDrawdownPct() < 5) {
+    if (this.circuitBreakerActive && this.getDrawdownPct() < DRAWDOWN_AUTO_RESET_PCT) {
       this.circuitBreakerActive = false;
-      logger.info('RiskMgr', '🔄 Circuit breaker auto-resetado: drawdown se recuperou abaixo de 5%.');
+      logger.info('RiskMgr', `🔄 Circuit breaker auto-resetado: drawdown se recuperou abaixo de ${DRAWDOWN_AUTO_RESET_PCT}%.`);
     }
 
     logger.debug('RiskMgr', `Posição fechada. P&L: $${pnl.toFixed(2)}. Bankroll: $${this.currentBankroll.toFixed(2)}`);
@@ -228,6 +261,7 @@ export class RiskManager {
     positionCount: number;
     dailyLoss: number;
     circuitBreaker: boolean;
+    emergencyStop: boolean;
     maxExposure: number;
     categoryExposure: Record<string, number>;
   } {
@@ -239,9 +273,16 @@ export class RiskManager {
       positionCount: this.positionCount,
       dailyLoss: this.dailyLoss,
       circuitBreaker: this.circuitBreakerActive,
+      emergencyStop: this.emergencyStopActive,
       maxExposure: this.currentBankroll * config.maxTotalExposurePct,
       categoryExposure: Object.fromEntries(this.categoryExposure),
     };
+  }
+
+  resetEmergencyStop(): void {
+    this.emergencyStopActive = false;
+    this.circuitBreakerActive = false;
+    logger.warn('RiskMgr', '⚠️ Emergency stop resetado manualmente. Monitore com atenção.');
   }
 
   updateBankroll(newBankroll: number): void {

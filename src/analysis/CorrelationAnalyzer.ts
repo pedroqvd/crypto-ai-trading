@@ -40,8 +40,10 @@ export interface CorrelationOpportunity {
   recommendation: 'BUY_YES' | 'BUY_NO'; // Action to take to exploit the mispricing
 }
 
-// Only flag inconsistencies that exceed this threshold
-const BOOK_DEVIATION_THRESHOLD = 0.05; // 5% deviation from 1.0
+// Only flag inconsistencies that exceed this threshold (10% reduces false-positive noise)
+const BOOK_DEVIATION_THRESHOLD = 0.10;
+// Require at least this many markets in an event before flagging (3+ = truly correlated set)
+const MIN_MARKETS_IN_EVENT = 3;
 
 export class CorrelationAnalyzer {
 
@@ -76,13 +78,17 @@ export class CorrelationAnalyzer {
    */
   private analyzeEvent(event: ParsedEvent): CorrelationOpportunity[] {
     const markets = event.markets.filter(m => m.active && !m.closed);
-    if (markets.length < 2) return []; // Need at least 2 to compare
+    if (markets.length < MIN_MARKETS_IN_EVENT) return [];
 
     // Only analyse events where markets look mutually exclusive:
     // Each market is a binary "Will X happen?" question.
-    // Heuristic: all YES prices are < 0.95 (no clear winner yet)
-    const allActive = markets.every(m => m.yesPrice < 0.95);
-    if (!allActive) return [];
+    // Heuristic: all YES prices are < 0.90 (no dominant winner, prices still contested)
+    const allContested = markets.every(m => m.yesPrice < 0.90 && m.yesPrice > 0.02);
+    if (!allContested) return [];
+
+    // Require each market to have meaningful liquidity (yesPrice implies real trading)
+    const allLiquid = markets.every(m => m.liquidity == null || m.liquidity > 1_000);
+    if (!allLiquid) return [];
 
     const bookSum = markets.reduce((sum, m) => sum + m.yesPrice, 0);
     const deviation = bookSum - 1.0;

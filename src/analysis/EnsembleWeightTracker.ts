@@ -31,14 +31,38 @@ const MAX_HISTORY = 100;
 const MIN_SAMPLES = 15;
 const WEIGHT_MIN = 0.4;
 const WEIGHT_MAX = 2.0;
+// Signals that are correct less than this fraction after MIN_SAMPLES have their history purged
+const POISON_ACCURACY_THRESHOLD = 0.30;
 
 export class EnsembleWeightTracker {
   private history: Record<string, SignalRecord[]> = {};
   private dataPath: string;
+  private outcomesSinceLastPurge = 0;
 
   constructor(dataPath = path.join(process.cwd(), 'data', 'ensemble-weights.json')) {
     this.dataPath = dataPath;
     this.load();
+  }
+
+  /**
+   * Resets history for any signal whose accuracy has fallen below
+   * POISON_ACCURACY_THRESHOLD after accumulating at least MIN_SAMPLES.
+   * Prevents a poisoned/broken signal from permanently depressing the ensemble.
+   * Returns the names of purged signals.
+   */
+  purgeUnreliableSignals(): string[] {
+    const purged: string[] = [];
+    for (const [name, records] of Object.entries(this.history)) {
+      if (records.length < MIN_SAMPLES) continue;
+      const accuracy = records.filter(r => r.won).length / records.length;
+      if (accuracy < POISON_ACCURACY_THRESHOLD) {
+        delete this.history[name];
+        purged.push(name);
+        logger.warn('Ensemble', `Purged unreliable signal "${name}" (accuracy=${(accuracy * 100).toFixed(1)}% < ${(POISON_ACCURACY_THRESHOLD * 100).toFixed(0)}% over ${records.length} samples)`);
+      }
+    }
+    if (purged.length > 0) this.save();
+    return purged;
   }
 
   // Call once per resolved trade, with the signals that led to it
@@ -60,6 +84,11 @@ export class EnsembleWeightTracker {
       if (this.history[signal.name].length > MAX_HISTORY) {
         this.history[signal.name] = this.history[signal.name].slice(-MAX_HISTORY);
       }
+    }
+    this.outcomesSinceLastPurge++;
+    if (this.outcomesSinceLastPurge >= 50) {
+      this.outcomesSinceLastPurge = 0;
+      this.purgeUnreliableSignals();
     }
     this.save();
   }

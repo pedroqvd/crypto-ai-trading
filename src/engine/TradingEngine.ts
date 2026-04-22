@@ -24,6 +24,7 @@ import { EnsembleWeightTracker } from '../analysis/EnsembleWeightTracker';
 import { ConsensusClient } from '../services/ConsensusClient';
 import { MarketQualityAnalyzer } from '../analysis/MarketQualityAnalyzer';
 import { PerformanceMetrics } from '../utils/PerformanceMetrics';
+import { HealthMonitor } from './HealthMonitor';
 
 // File used to persist settings changes between process restarts.
 // Mounted via Fly Volumes on /data for real persistence.
@@ -31,6 +32,12 @@ const SETTINGS_FILE = '/data/settings.json';
 
 // Fields that must never be loaded from disk — always come from env vars.
 const SENSITIVE_FIELDS = new Set(['privateKey', 'claudeApiKey', 'newsApiKey']);
+
+// Monitoring constants
+const STALE_ORDER_MS        = 24 * 60 * 60 * 1000; // cancel unfilled orders after 24h
+const FORCED_EXIT_AFTER_MS  = 48 * 60 * 60 * 1000; // force-exit unresolved closed markets after 48h
+const MAX_LIQUIDITY_IMPACT  = 0.40;                 // never take more than 40% of order-book depth
+const POLYMARKET_TAKER_FEE  = 0.02;                 // 2% Polymarket taker fee
 
 function loadPersistedSettings(): void {
   try {
@@ -131,6 +138,7 @@ export class TradingEngine extends EventEmitter {
   private consensusClient: ConsensusClient;
   private qualityAnalyzer: MarketQualityAnalyzer;
   private performanceMetrics: PerformanceMetrics;
+  private healthMonitor: HealthMonitor;
   // In-memory signal snapshots for ensemble learning (tradeId → signals)
   private tradeSignals = new Map<string, Array<{ name: string; adjustment: number; weight: number }>>();
 
@@ -173,6 +181,12 @@ export class TradingEngine extends EventEmitter {
     this.consensusClient = new ConsensusClient();
     this.qualityAnalyzer = new MarketQualityAnalyzer();
     this.performanceMetrics = new PerformanceMetrics();
+    this.healthMonitor = new HealthMonitor(!config.dryRun, (health) => {
+      const icon = health.status === 'up' ? '✅' : '🔴';
+      this.logDecision('system', `${icon} API ${health.name} → ${health.status.toUpperCase()}${health.lastError ? ': ' + health.lastError : ''}`);
+      this.notifications.notifySystemEvent(`${icon} ${health.name} ${health.status.toUpperCase()}`)
+        .catch(() => {/* non-blocking */});
+    });
     if (config.claudeEnabled && config.claudeApiKey) {
       this.claudeAnalyzer = new ClaudeAnalyzer(config.claudeApiKey, config.claudeMaxCallsPerCycle);
       logger.info('Engine', '🤖 Claude AI analysis enabled');
@@ -217,6 +231,8 @@ export class TradingEngine extends EventEmitter {
 
     this.logDecision('system', `Engine iniciado em modo ${mode}. Bankroll: $${config.bankroll}`);
     await this.notifications.notifySystemEvent(`Bot iniciado em modo ${mode}. Bankroll: $${config.bankroll}`);
+
+    this.healthMonitor.start();
 
     // Initialize CLOB client
     const clobReady = await this.clobApi.initialize();
@@ -342,6 +358,7 @@ export class TradingEngine extends EventEmitter {
 
   stop(): void {
     this.running = false;
+    this.healthMonitor.stop();
     logger.info('Engine', '🛑 Engine stopped');
     this.logDecision('system', 'Engine parado');
   }
@@ -730,7 +747,7 @@ export class TradingEngine extends EventEmitter {
           }
 
           // Don't take more than 40% of available liquidity to avoid price impact
-          const maxSizeByDepth = availableShares * 0.4;
+          const maxSizeByDepth = availableShares * MAX_LIQUIDITY_IMPACT;
           if (size > maxSizeByDepth) {
             logger.info('Engine', `Reduzindo size de ${size.toFixed(0)} → ${maxSizeByDepth.toFixed(0)} shares (liquidez disponível)`);
             size = maxSizeByDepth;
@@ -833,7 +850,7 @@ export class TradingEngine extends EventEmitter {
       }
     }
 
-    const STALE_ORDER_MS = 24 * 60 * 60 * 1000;
+    // STALE_ORDER_MS and FORCED_EXIT_AFTER_MS are module-level constants
     const now = Date.now();
 
     for (const trade of openTrades) {
@@ -847,6 +864,7 @@ export class TradingEngine extends EventEmitter {
             this.riskManager.closePosition(trade.stake, 0, trade.id);
             this.activeMarketIds.delete(trade.marketId);
             this.positionState.delete(trade.id);
+            this.tradeSignals.delete(trade.id);
             this.logDecision('monitor', `🚫 Ordem stale cancelada: "${trade.question.substring(0, 50)}..." (>24h)`);
           }
           continue;
@@ -864,21 +882,20 @@ export class TradingEngine extends EventEmitter {
         if (!resolvedYes && !resolvedNo) {
           // If the market has been closed for >48h without Polymarket settling it,
           // force-exit at current price rather than holding an unresolvable position.
-          const FORCED_EXIT_AFTER_MS = 48 * 60 * 60 * 1000;
           const closedSinceMs = market.endDate
             ? now - new Date(market.endDate).getTime()
             : 0;
 
           if (closedSinceMs > FORCED_EXIT_AFTER_MS) {
             const exitPrice = trade.side === 'BUY_YES' ? market.yesPrice : market.noPrice;
-            const TAKER_FEE = 0.02;
-            const pnl = exitPrice * trade.size * (1 - TAKER_FEE) - trade.stake;
+            const pnl = exitPrice * trade.size * (1 - POLYMARKET_TAKER_FEE) - trade.stake;
             const hours = Math.round(closedSinceMs / 3_600_000);
 
             this.journal.exitTrade(trade.id, exitPrice, pnl);
             this.riskManager.closePosition(trade.stake, pnl, trade.id);
             this.activeMarketIds.delete(trade.marketId);
             this.positionState.delete(trade.id);
+            this.tradeSignals.delete(trade.id);
             this.logDecision('monitor',
               `⏰ SAÍDA FORÇADA: "${trade.question.substring(0, 50)}..." fechado há ${hours}h sem resolução Polymarket. ` +
               `P&L ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`
@@ -1060,9 +1077,8 @@ export class TradingEngine extends EventEmitter {
 
       if (exitSuccess) {
         // Deduct Polymarket taker fee (~2%) from exit proceeds to simulate real P&L
-        const TAKER_FEE = 0.02;
         const exitProceeds = config.dryRun
-          ? currentSidePrice * trade.size * (1 - TAKER_FEE)
+          ? currentSidePrice * trade.size * (1 - POLYMARKET_TAKER_FEE)
           : currentSidePrice * trade.size;
         const pnl = exitProceeds - trade.stake;
         this.journal.exitTrade(trade.id, currentSidePrice, pnl);
