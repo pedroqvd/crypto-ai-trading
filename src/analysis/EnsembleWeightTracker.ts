@@ -99,7 +99,19 @@ export class EnsembleWeightTracker {
   importData(data: unknown): void {
     try {
       if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid format');
-      this.history = data as Record<string, SignalRecord[]>;
+      const raw = data as Record<string, unknown>;
+      const validated: Record<string, SignalRecord[]> = {};
+      for (const [key, val] of Object.entries(raw)) {
+        if (!Array.isArray(val)) throw new Error(`Signal "${key}" is not an array`);
+        validated[key] = val.map((r, i) => {
+          if (typeof r !== 'object' || r === null) throw new Error(`Signal "${key}"[${i}] is not an object`);
+          const rec = r as Record<string, unknown>;
+          if (typeof rec.adjustment !== 'number' || typeof rec.won !== 'boolean')
+            throw new Error(`Signal "${key}"[${i}] missing required fields`);
+          return { adjustment: rec.adjustment, won: rec.won };
+        });
+      }
+      this.history = validated;
       this.save();
       logger.info('Ensemble', `✅ Import: ${Object.keys(this.history).length} signals carregados`);
     } catch (err) {

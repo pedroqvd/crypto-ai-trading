@@ -35,6 +35,8 @@ export class RiskManager {
   private categoryExposure = new Map<string, number>();
   // tradeId → category (to deregister correctly on close)
   private tradeCategories = new Map<string, string>();
+  // category → open position count (O(1) lookup, avoids spread+filter on hot path)
+  private categoryCount = new Map<string, number>();
 
   constructor(private journal: TradeJournal) {
     this.currentBankroll = config.bankroll;
@@ -52,7 +54,7 @@ export class RiskManager {
    */
   getCategoryKellyDiscount(question: string): number {
     const cat = detectMarketCategory(question);
-    const positionsInCat = [...this.tradeCategories.values()].filter(c => c === cat).length;
+    const positionsInCat = this.categoryCount.get(cat) ?? 0;
 
     if (positionsInCat === 0) return 1.0;
     if (positionsInCat === 1) return 0.75;
@@ -144,7 +146,7 @@ export class RiskManager {
     // Category concentration check
     if (question) {
       const cat = detectMarketCategory(question);
-      const positionsInCat = [...this.tradeCategories.values()].filter(c => c === cat).length;
+      const positionsInCat = this.categoryCount.get(cat) ?? 0;
       if (positionsInCat >= MAX_POSITIONS_PER_CATEGORY) {
         return {
           allowed: false,
@@ -172,6 +174,7 @@ export class RiskManager {
       const cat = detectMarketCategory(question);
       this.tradeCategories.set(tradeId, cat);
       this.categoryExposure.set(cat, (this.categoryExposure.get(cat) ?? 0) + stake);
+      this.categoryCount.set(cat, (this.categoryCount.get(cat) ?? 0) + 1);
     }
     logger.debug('RiskMgr', `Posição registrada: +$${stake.toFixed(2)}. Exposição total: $${this.totalExposure.toFixed(2)}`);
   }
@@ -184,6 +187,7 @@ export class RiskManager {
       if (cat) {
         const prev = this.categoryExposure.get(cat) ?? 0;
         this.categoryExposure.set(cat, Math.max(0, prev - stake));
+        this.categoryCount.set(cat, Math.max(0, (this.categoryCount.get(cat) ?? 1) - 1));
         this.tradeCategories.delete(tradeId);
       }
     }

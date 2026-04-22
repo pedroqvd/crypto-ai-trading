@@ -13,6 +13,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../engine/Config';
 import { logger } from '../utils/Logger';
+import { extractKeywords } from '../utils/keywordExtractor';
 
 export interface NewsArticle {
   title: string;
@@ -121,7 +122,7 @@ export class NewsApiClient {
     }
 
     try {
-      const keywords = this.extractKeywords(question);
+      const keywords = extractKeywords(question);
       if (keywords.length === 0) return { ...NO_NEWS_RESULT };
 
       const query = keywords.slice(0, 4).join(' AND ');
@@ -179,35 +180,6 @@ export class NewsApiClient {
   // HELPERS
   // ========================================
 
-  /**
-   * Extract the most meaningful search keywords from a prediction market question.
-   * Strips common question words and focuses on proper nouns and key verbs.
-   */
-  private extractKeywords(question: string): string[] {
-    const stopWords = new Set([
-      'will', 'the', 'a', 'an', 'be', 'is', 'are', 'was', 'were',
-      'in', 'on', 'at', 'by', 'for', 'of', 'to', 'and', 'or', 'but',
-      'if', 'that', 'this', 'which', 'who', 'what', 'when', 'where',
-      'how', 'than', 'with', 'from', 'has', 'have', 'had', 'do', 'does',
-      'did', 'not', 'no', 'more', 'than', 'its', 'their', 'any',
-    ]);
-
-    const words = question
-      .replace(/[?.,!()]/g, '')
-      .split(/\s+/)
-      .filter(w => w.length > 2 && !stopWords.has(w.toLowerCase()))
-      .map(w => w.replace(/['"]/g, ''));
-
-    // Prioritize capitalized words (proper nouns) and longer words
-    const scored = words.map(w => ({
-      word: w,
-      score: (w[0] === w[0].toUpperCase() ? 2 : 0) + (w.length > 6 ? 1 : 0),
-    }));
-
-    scored.sort((a, b) => b.score - a.score);
-
-    return scored.slice(0, 6).map(s => s.word);
-  }
 
   /**
    * Analyze the sentiment of articles relative to the YES outcome.
