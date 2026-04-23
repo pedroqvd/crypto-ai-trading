@@ -1,24 +1,13 @@
 """
-Robustness tests — three mandatory checks before accepting any backtest result.
-
-1. Threshold sensitivity   — skill score should be STABLE as threshold rises 0.75→0.90.
-                             If skill collapses above 0.80 → edge is driven by weak matches.
-
-2. Shuffle test (null model) — randomly permute market outcomes, rerun backtest.
-                             Resulting skill score should be ≈ 0 (±noise).
-                             If positive and significant → structural bias or bug.
-
-3. Ablation — remove Metaculus, remove Manifold, remove negRisk.
-              Identifies which component is load-bearing.
-              If removing one source makes skill → 0 → all eggs in one basket (risk).
-
-All tests run on the SAME signal set and test split used by the main backtest,
-ensuring comparability.
-
-Interpretation guide:
-  Threshold test: stable skill (< 20% drop from 0.75 to 0.90) → robust matching
-  Shuffle test: |shuffle_mean_skill| < 0.02 → no structural bias
-  Ablation: skill positive with both sources individually → not fragile
+Robustness suite (8 checks):
+  1) Threshold sensitivity
+  2) Shuffle null-model
+  3) Ablation by source/strategy
+  4) Placebo matching (shuffle p_true)
+  5) Noise injection
+  6) Execution stress
+  7) Latency stress
+  8) Edge-decay diagnostics
 """
 
 import logging
@@ -462,5 +451,55 @@ def print_robustness_report(report: dict) -> None:
     for r in ab["by_config"]:
         print(f"  {r['config']:<22}  N={r['n_trades']:>4}  skill={r['skill_score']:>+.4f}")
     print(f"  {ab['interpretation']}")
+
+    pl = report.get("placebo_matching", {})
+    if pl:
+        print()
+        print("  4. PLACEBO MATCHING")
+        print(f"  {sep}")
+        if pl.get("valid", True):
+            print(f"  Real skill:    {pl.get('real_skill'):+.4f}")
+            print(f"  Placebo skill: {pl.get('placebo_skill'):+.4f}")
+            print(f"  Collapsed:     {'YES' if pl.get('collapsed') else 'NO'}")
+        else:
+            print(f"  {pl.get('reason', 'N/A')}")
+
+    ns = report.get("noise_injection", {})
+    if ns:
+        print()
+        print("  5. NOISE INJECTION")
+        print(f"  {sep}")
+        print(f"  Base skill: {ns.get('base_skill', 0):+.4f}")
+        for r in ns.get("by_noise", []):
+            print(f"  sigma={r['sigma']:.2%}  skill={r['skill_score']:+.4f}  WR_excess={r['wr_excess']:+.4f}")
+
+    ex = report.get("execution_stress", {})
+    if ex:
+        print()
+        print("  6. EXECUTION STRESS")
+        print(f"  {sep}")
+        for r in ex.get("by_stress", []):
+            print(f"  x{r['stress_mult']:.1f}  N={r['n_trades']:>4}  skill={r['skill_score']:+.4f}  "
+                  f"PnL={r['total_pnl']:+.2f}  unfilled={r['n_unfilled']}")
+
+    lt = report.get("latency_stress", {})
+    if lt:
+        print()
+        print("  7. LATENCY STRESS")
+        print(f"  {sep}")
+        for r in lt.get("by_latency", []):
+            print(f"  {r['latency_sec']:>3}s  N={r['n_trades']:>4}  WR_excess={r['wr_excess']:+.4f}  "
+                  f"PnL={r['total_pnl']:+.2f}  unfilled={r['n_unfilled']}")
+
+    ed = report.get("edge_decay", {})
+    if ed:
+        print()
+        print("  8. EDGE DECAY")
+        print(f"  {sep}")
+        if ed.get("valid"):
+            print(f"  Median horizon (days): {ed['median_horizon_days']}")
+            print(f"  P75 horizon (days):    {ed['p75_horizon_days']}")
+        else:
+            print(f"  {ed.get('reason', 'N/A')}")
     print("=" * width)
     print()
