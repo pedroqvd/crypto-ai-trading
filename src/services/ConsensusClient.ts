@@ -16,6 +16,25 @@ import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/Logger';
 import { extractKeywords } from '../utils/keywordExtractor';
 
+const CONSENSUS_TRANSIENT_PATTERNS = ['timeout', 'ECONNRESET', 'ECONNREFUSED', '503', '502', '429'];
+
+async function withConsensusRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  const delays = [3_000, 6_000];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTransient = CONSENSUS_TRANSIENT_PATTERNS.some(p => msg.toLowerCase().includes(p.toLowerCase()));
+      if (!isTransient || attempt === 3) throw err;
+      const delay = delays[attempt - 1] ?? delays[delays.length - 1];
+      logger.debug('Consensus', `${label} transient error (attempt ${attempt}/3), retrying in ${delay / 1000}s…`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error(`${label}: max retries exceeded`);
+}
+
 export interface ConsensusEstimate {
   source: 'metaculus' | 'manifold';
   probability: number;    // 0-1
@@ -95,15 +114,10 @@ export class ConsensusClient {
       const keywords = extractKeywords(question).slice(0, 4).map(w => w.toLowerCase()).join(' ');
       if (!keywords) return [];
 
-      const resp = await this.metaculusClient.get('/questions/', {
-        params: {
-          search: keywords,
-          status: 'open',
-          type: 'forecast',
-          limit: 5,
-          order_by: '-activity',
-        },
-      });
+      const resp = await withConsensusRetry(
+        () => this.metaculusClient.get('/questions/', { params: { search: keywords, status: 'open', type: 'forecast', limit: 5, order_by: '-activity' } }),
+        'fetchMetaculus'
+      );
 
       const results = resp.data?.results ?? [];
       const estimates: ConsensusEstimate[] = [];
@@ -147,15 +161,10 @@ export class ConsensusClient {
       const keywords = extractKeywords(question).slice(0, 4).map(w => w.toLowerCase()).join(' ');
       if (!keywords) return [];
 
-      const resp = await this.manifoldClient.get('/search-markets', {
-        params: {
-          term: keywords,
-          filter: 'open',
-          sort: 'score',
-          contractType: 'BINARY',
-          limit: 5,
-        },
-      });
+      const resp = await withConsensusRetry(
+        () => this.manifoldClient.get('/search-markets', { params: { term: keywords, filter: 'open', sort: 'score', contractType: 'BINARY', limit: 5 } }),
+        'fetchManifold'
+      );
 
       const markets: Array<Record<string, unknown>> = resp.data ?? [];
       const estimates: ConsensusEstimate[] = [];

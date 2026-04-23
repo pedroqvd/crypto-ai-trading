@@ -40,6 +40,7 @@ export interface TradingConfig {
   backendUrl: string;
   allowedOrigins: string[];
   logLevel: 'debug' | 'info' | 'warn';
+  circuitBreakerCooldownMs: number;
 }
 
 export function loadConfig(): TradingConfig {
@@ -80,6 +81,7 @@ export function loadConfig(): TradingConfig {
       ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
       : [],
     logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn') || 'info',
+    circuitBreakerCooldownMs: parseInt(process.env.CIRCUIT_BREAKER_COOLDOWN_MIN || '120') * 60_000,
   };
 }
 

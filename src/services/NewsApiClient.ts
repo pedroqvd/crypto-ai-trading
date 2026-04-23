@@ -15,6 +15,25 @@ import { config } from '../engine/Config';
 import { logger } from '../utils/Logger';
 import { extractKeywords } from '../utils/keywordExtractor';
 
+const NEWS_TRANSIENT_PATTERNS = ['timeout', 'ECONNRESET', 'ECONNREFUSED', '503', '502', '429'];
+
+async function withNewsRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+  const delays = [3_000, 6_000];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTransient = NEWS_TRANSIENT_PATTERNS.some(p => msg.toLowerCase().includes(p.toLowerCase()));
+      if (!isTransient || attempt === 3) throw err;
+      const delay = delays[attempt - 1] ?? delays[delays.length - 1];
+      logger.warn('NewsApi', `${label} failed (attempt ${attempt}/3), retrying in ${delay / 1000}s…`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error(`${label}: max retries exceeded`);
+}
+
 export interface NewsArticle {
   title: string;
   description: string;
@@ -139,15 +158,10 @@ export class NewsApiClient {
       const query = keywords.slice(0, 4).join(' AND ');
       const from = new Date(Date.now() - config.newsRelevanceHours * 60 * 60 * 1000).toISOString();
 
-      const response = await this.client.get('/everything', {
-        params: {
-          q: query,
-          from,
-          sortBy: 'publishedAt',
-          language: 'en',
-          pageSize: 5,
-        },
-      });
+      const response = await withNewsRetry(
+        () => this.client!.get('/everything', { params: { q: query, from, sortBy: 'publishedAt', language: 'en', pageSize: 5 } }),
+        `searchNews("${question.substring(0, 30)}")`
+      );
 
       const rawArticles = response.data?.articles || [];
 

@@ -3,6 +3,7 @@
 // Wraps @polymarket/clob-client SDK
 // ================================================
 
+import type { ClobClient } from '@polymarket/clob-client';
 import { config } from '../engine/Config';
 import { logger } from '../utils/Logger';
 
@@ -62,7 +63,7 @@ export interface PositionInfo {
 
 export class ClobApiClient {
   private initialized = false;
-  private client: unknown = null;
+  private client: ClobClient | null = null;
   // Cached to avoid recreating on every getBalance() call (prevents memory leak)
   private cachedProvider: unknown = null;
   private cachedWalletAddress = '';
@@ -139,7 +140,7 @@ export class ClobApiClient {
     }
     try {
       return await withRetry(async () => {
-        const book = await (this.client as any).getOrderBook(tokenId);
+        const book = await this.client!.getOrderBook(tokenId);
         const bids: OrderBookEntry[] = (book.bids || []).map((b: { price: string; size: string }) => ({ price: parseFloat(b.price), size: parseFloat(b.size) }));
         const asks: OrderBookEntry[] = (book.asks || []).map((a: { price: string; size: string }) => ({ price: parseFloat(a.price), size: parseFloat(a.size) }));
         const bestBid = bids.length > 0 ? bids[0].price : 0;
@@ -173,7 +174,7 @@ export class ClobApiClient {
       return await withRetry(async () => {
         const { Side, OrderType } = await import('@polymarket/clob-client');
         const orderSide = side === 'BUY' ? Side.BUY : Side.SELL;
-        const response = await (this.client as any).createAndPostOrder(
+        const response = await this.client!.createAndPostOrder(
           { tokenID: tokenId, price, size, side: orderSide },
           { tickSize: '0.01', negRisk },
           OrderType.GTC
@@ -194,7 +195,7 @@ export class ClobApiClient {
       return true;
     }
     try {
-      await (this.client as any).cancelOrder(orderId);
+      await this.client!.cancelOrder({ orderID: orderId });
       logger.info('ClobApi', `Order cancelled: ${orderId}`);
       return true;
     } catch (err) {
@@ -206,7 +207,7 @@ export class ClobApiClient {
   async getOpenOrders(): Promise<unknown[]> {
     if (config.dryRun || !this.client) return [];
     try {
-      return await (this.client as any).getOpenOrders();
+      return await this.client!.getOpenOrders();
     } catch (err) {
       logger.error('ClobApi', 'Failed to get open orders', err instanceof Error ? err.message : err);
       return [];

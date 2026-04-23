@@ -617,6 +617,8 @@
       try {
         if (els.botStatus) setStatus(s.running ? 'running' : 'stopped', s.running ? 'Operando' : 'Pausado');
         if (els.bankroll) els.bankroll.textContent = '$' + formatNumber(s.bankroll || 0);
+        if (els.statMarkets) els.statMarkets.textContent = s.marketsScanned || 0;
+        if (els.statTrades) els.statTrades.textContent = s.tradesExecuted || 0;
         
         const bToggle = $('bot-toggle-btn');
         if (bToggle) {
@@ -649,6 +651,10 @@
     // Feed filter state
     let feedFilter = 'important'; // 'all' | 'important'
     const IMPORTANT_TYPES = ['opportunity', 'trade', 'risk'];
+
+    // Dedup map: msgKey → {el, count, ts} — prevents identical messages from flooding the feed
+    const decisionDedupMap = new Map();
+    const DEDUP_WINDOW_MS = 10 * 60 * 1000; // collapse same message if it repeats within 10 min
 
     function setupFeedFilter() {
       const feed = els.decisionsFeed && els.decisionsFeed.parentElement;
@@ -687,8 +693,8 @@
     function renderDecisions(decisions) {
       if (!els.decisionsFeed) return;
       setupFeedFilter();
-      const visible = feedFilter === 'all' ? decisions : decisions.filter(d => IMPORTANT_TYPES.includes(d.type));
-      els.decisionsFeed.innerHTML = visible.length === 0
+      decisionDedupMap.clear();
+      els.decisionsFeed.innerHTML = decisions.length === 0
         ? '<div class="empty-state">Aguardando oportunidades...</div>'
         : '';
       decisions.forEach(d => addDecision(d, false));
@@ -699,17 +705,48 @@
       setupFeedFilter();
       const iconMap = { scan: '🔍', opportunity: '🎯', trade: '✅', reject: '⛔', risk: '🚨', monitor: '📡', system: '⚙️' };
       const type = decision.type || 'system';
-      const hidden = feedFilter === 'important' && !IMPORTANT_TYPES.includes(type);
-      const html = `<div class="dec-line type-${type}" style="${hidden ? 'display:none' : ''}">
-        <span class="dec-ts">${formatTime(decision.timestamp).split(' ')[1]}</span>
-        <span class="dec-icon">${iconMap[type] || '📋'}</span>
-        <span class="dec-msg">${escapeHtml(decision.message)}</span>
-      </div>`;
+
+      // Deduplication: collapse repeated messages into a counter badge
       if (prepend) {
-        els.decisionsFeed.insertAdjacentHTML('afterbegin', html);
-        if (els.decisionsFeed.children.length > 200) els.decisionsFeed.removeChild(els.decisionsFeed.lastChild);
+        const msgKey = type + '|' + (decision.message || '').trim().substring(0, 120);
+        const existing = decisionDedupMap.get(msgKey);
+        if (existing && existing.el.parentElement && (Date.now() - existing.ts) < DEDUP_WINDOW_MS) {
+          existing.count++;
+          existing.ts = Date.now();
+          let badge = existing.el.querySelector('.dec-repeat-badge');
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'dec-repeat-badge';
+            existing.el.appendChild(badge);
+          }
+          badge.textContent = '×' + existing.count;
+          // Refresh timestamp
+          const tsEl = existing.el.querySelector('.dec-ts');
+          if (tsEl) tsEl.textContent = formatTime(decision.timestamp).split(' ')[1];
+          // Move to top so user can see it updated
+          els.decisionsFeed.insertBefore(existing.el, els.decisionsFeed.firstChild);
+          return;
+        }
+        // Prune stale entries from map periodically
+        if (decisionDedupMap.size > 200) {
+          const cutoff = Date.now() - DEDUP_WINDOW_MS;
+          for (const [k, v] of decisionDedupMap) { if (v.ts < cutoff) decisionDedupMap.delete(k); }
+        }
+      }
+
+      const hidden = feedFilter === 'important' && !IMPORTANT_TYPES.includes(type);
+      const el = document.createElement('div');
+      el.className = `dec-line type-${type}`;
+      if (hidden) el.style.display = 'none';
+      el.innerHTML = `<span class="dec-ts">${formatTime(decision.timestamp).split(' ')[1]}</span><span class="dec-icon">${iconMap[type] || '📋'}</span><span class="dec-msg">${escapeHtml(decision.message)}</span>`;
+
+      if (prepend) {
+        els.decisionsFeed.insertBefore(el, els.decisionsFeed.firstChild);
+        const msgKey = type + '|' + (decision.message || '').trim().substring(0, 120);
+        decisionDedupMap.set(msgKey, { el, count: 1, ts: Date.now() });
+        while (els.decisionsFeed.children.length > 200) els.decisionsFeed.removeChild(els.decisionsFeed.lastChild);
       } else {
-        els.decisionsFeed.insertAdjacentHTML('beforeend', html);
+        els.decisionsFeed.appendChild(el);
       }
     }
 
@@ -752,8 +789,10 @@
     }
 
     function updateTradeStats(stats) {
-      if (els.statTrades) els.statTrades.textContent = stats.count;
-      if (els.statWinrate) els.statWinrate.textContent = (stats.winRate * 100).toFixed(1) + '%';
+      // Note: statTrades and statMarkets are also kept in sync via updateStatus (from engine status).
+      // Here we only update winRate since winRate doesn't come from the status object.
+      // stats.winRate is already 0–100 from TradeJournal.getStats()
+      if (els.statWinrate) els.statWinrate.textContent = (stats.winRate || 0).toFixed(1) + '%';
     }
 
     function renderPositions(open) {

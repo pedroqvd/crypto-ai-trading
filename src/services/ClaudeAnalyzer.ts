@@ -79,20 +79,27 @@ export class ClaudeAnalyzer {
     if (cached) return { ...cached.estimate, cached: true };
 
     this.callsThisCycle++;
-    // Retry once on timeout — LLM API can be slow under load.
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    // Retry on timeout or 529 (overloaded) — LLM API can be slow under load.
+    const DELAYS_MS = [5_000, 10_000]; // backoff between attempts
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const estimate = await this.callApi(market, newsHeadlines);
         if (estimate) this.cache.set(bucketKey, { estimate, ts: Date.now() });
         return estimate;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        const isTimeout = msg.includes('timeout') || msg.includes('ETIMEDOUT');
-        if (attempt === 2 || !isTimeout) {
+        const isRetryable =
+          msg.includes('timeout') ||
+          msg.includes('ETIMEDOUT') ||
+          msg.includes('529') ||
+          msg.includes('overloaded');
+        if (attempt === 3 || !isRetryable) {
           logger.warn('Claude', `API call failed: ${msg}`);
           return null;
         }
-        logger.warn('Claude', `API timeout on attempt ${attempt}, retrying…`);
+        const delay = DELAYS_MS[attempt - 1] ?? DELAYS_MS[DELAYS_MS.length - 1];
+        logger.warn('Claude', `Attempt ${attempt}/3 failed (${msg}), retrying in ${delay / 1000}s…`);
+        await new Promise(r => setTimeout(r, delay));
       }
     }
     return null;
@@ -140,7 +147,7 @@ export class ClaudeAnalyzer {
         }
       );
       req.on('error', (err) => { reject(err); });
-      req.setTimeout(30_000, () => { req.destroy(); reject(new Error('timeout')); });
+      req.setTimeout(45_000, () => { req.destroy(); reject(new Error('timeout')); });
       req.write(body);
       req.end();
     });

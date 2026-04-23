@@ -16,10 +16,13 @@
   const btnLoading = document.getElementById('btn-loading');
 
   // Toggle password visibility
+  const eyeOpen = document.getElementById('eye-open');
+  const eyeClosed = document.getElementById('eye-closed');
   toggleBtn.addEventListener('click', () => {
-    const type = passwordInput.type === 'password' ? 'text' : 'password';
-    passwordInput.type = type;
-    toggleBtn.textContent = type === 'password' ? '👁️' : '🙈';
+    const isPassword = passwordInput.type === 'password';
+    passwordInput.type = isPassword ? 'text' : 'password';
+    if (eyeOpen) eyeOpen.style.display = isPassword ? 'none' : '';
+    if (eyeClosed) eyeClosed.style.display = isPassword ? '' : 'none';
   });
 
   // Handle Enter key

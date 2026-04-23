@@ -39,6 +39,11 @@ export interface EdgeAnalysis {
 // Polymarket fee: ~2% for takers (200 bps), makers can get rebates
 const TAKER_FEE = 0.02;
 
+// Slippage model: assumes a ~$100 reference trade and linear CLOB market impact.
+// Slippage ≈ (stake / liquidity) × 0.5. At $10k liquidity this is ~0.5%.
+const SLIPPAGE_REFERENCE_STAKE = 100;
+const SLIPPAGE_IMPACT_FACTOR = 0.5;
+
 export class EdgeCalculator {
 
   /**
@@ -74,11 +79,17 @@ export class EdgeCalculator {
     // Calculate edge for NO side
     const noEdge = (1 - pTrue) - noPrice;
 
-    // Calculate EV for buying YES
-    const evYes = pTrue * ((1 / yesPrice) - 1) * (1 - TAKER_FEE) - (1 - pTrue);
+    // Slippage cost (per $1 bet): scales inversely with liquidity.
+    // Represents market impact from entering a position.
+    const slippage = liquidity > 0
+      ? (SLIPPAGE_REFERENCE_STAKE / liquidity) * SLIPPAGE_IMPACT_FACTOR
+      : 0.005; // 0.5% fallback when no liquidity data
 
-    // Calculate EV for buying NO
-    const evNo = (1 - pTrue) * ((1 / noPrice) - 1) * (1 - TAKER_FEE) - pTrue;
+    // Calculate EV for buying YES (includes taker fee + estimated slippage)
+    const evYes = pTrue * ((1 / yesPrice) - 1) * (1 - TAKER_FEE) - (1 - pTrue) - slippage;
+
+    // Calculate EV for buying NO (includes taker fee + estimated slippage)
+    const evNo = (1 - pTrue) * ((1 / noPrice) - 1) * (1 - TAKER_FEE) - pTrue - slippage;
 
     // Determine best side
     let side: 'BUY_YES' | 'BUY_NO' | 'NO_TRADE';
@@ -103,8 +114,11 @@ export class EdgeCalculator {
       recommendedPrice = 0;
     }
 
-    // Adjust confidence — reduce if edge is marginal
-    const adjustedConfidence = confidence * Math.min(1, Math.abs(edge) / config.minEdge);
+    // Penalize confidence for edges near the minimum threshold.
+    // At exactly minEdge the factor is 0.5; it reaches 1.0 at 2× minEdge.
+    // This compresses Kelly sizing on borderline trades even when they clear the filter.
+    const edgeRatio = Math.abs(edge) / config.minEdge;
+    const adjustedConfidence = confidence * Math.min(1, edgeRatio / 2);
 
     const reasoning = this.buildReasoning(
       question, side, edge, ev, yesPrice, pTrue, confidence

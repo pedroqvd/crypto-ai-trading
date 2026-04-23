@@ -77,20 +77,22 @@ export class CorrelationAnalyzer {
    * (e.g., "Will X win?", "Will Y win?", "Will Z win?").
    */
   private analyzeEvent(event: ParsedEvent): CorrelationOpportunity[] {
-    const markets = event.markets.filter(m => m.active && !m.closed);
+    // Exclude negRisk markets: their YES prices do not sum to 1 like standard mutually
+    // exclusive binary outcomes, so the bookSum logic does not apply to them.
+    const markets = event.markets.filter(m => m.active && !m.closed && !m.negRisk);
     if (markets.length < MIN_MARKETS_IN_EVENT) return [];
 
+    // Require explicit, non-zero liquidity on every market to avoid including dead markets
+    // that haven't been traded (their prices may be stale and distort the bookSum).
+    const liquidMarkets = markets.filter(m => m.liquidity > 1_000);
+    if (liquidMarkets.length < MIN_MARKETS_IN_EVENT) return [];
+
     // Only analyse events where markets look mutually exclusive:
-    // Each market is a binary "Will X happen?" question.
-    // Heuristic: all YES prices are < 0.90 (no dominant winner, prices still contested)
-    const allContested = markets.every(m => m.yesPrice < 0.90 && m.yesPrice > 0.02);
+    // Heuristic: all YES prices are in the contested range (2–90%)
+    const allContested = liquidMarkets.every(m => m.yesPrice < 0.90 && m.yesPrice > 0.02);
     if (!allContested) return [];
 
-    // Require each market to have meaningful liquidity (yesPrice implies real trading)
-    const allLiquid = markets.every(m => m.liquidity == null || m.liquidity > 1_000);
-    if (!allLiquid) return [];
-
-    const bookSum = markets.reduce((sum, m) => sum + m.yesPrice, 0);
+    const bookSum = liquidMarkets.reduce((sum, m) => sum + m.yesPrice, 0);
     const deviation = bookSum - 1.0;
 
     // No meaningful inconsistency
@@ -99,7 +101,7 @@ export class CorrelationAnalyzer {
     const type: InconsistencyType = deviation > 0 ? 'over_book' : 'under_book';
     const opportunities: CorrelationOpportunity[] = [];
 
-    for (const market of markets) {
+    for (const market of liquidMarkets) {
       // Fair price = yesPrice / bookSum (normalise to sum to 1)
       const fairPrice = market.yesPrice / bookSum;
       const mispricing = market.yesPrice - fairPrice;
@@ -120,7 +122,7 @@ export class CorrelationAnalyzer {
         fairPrice,
         mispricing,
         bookSum,
-        siblingCount: markets.length,
+        siblingCount: liquidMarkets.length,
         recommendation,
       });
     }
