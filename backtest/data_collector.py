@@ -11,7 +11,6 @@ Key anti-lookahead design:
 import sqlite3
 import time
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Optional
 import requests

@@ -81,44 +81,6 @@ def snapshot_prices(conn: sqlite3.Connection) -> int:
     log.info("Snapshot: recorded %d prices at %s", recorded, now)
     return recorded
 
-
-def get_price_at(conn: sqlite3.Connection, market_id: str, as_of: str) -> Optional[float]:
-    """
-    Return the YES price for market_id that was observed no later than as_of.
-    This is the lookahead-safe price lookup used by the backtester.
-    """
-    row = conn.execute("""
-        SELECT yes_price FROM poly_prices
-        WHERE market_id = ? AND recorded_at <= ?
-        ORDER BY recorded_at DESC
-        LIMIT 1
-    """, (market_id, as_of)).fetchone()
-    return float(row["yes_price"]) if row else None
-
-
-def get_price_series(
-    conn: sqlite3.Connection,
-    market_id: str,
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-) -> list[dict]:
-    """
-    Return the full price series for a market within an optional time range.
-    Each row: {recorded_at, yes_price, no_price}
-    """
-    query = "SELECT recorded_at, yes_price, no_price FROM poly_prices WHERE market_id = ?"
-    params: list = [market_id]
-    if start:
-        query += " AND recorded_at >= ?"
-        params.append(start)
-    if end:
-        query += " AND recorded_at <= ?"
-        params.append(end)
-    query += " ORDER BY recorded_at ASC"
-    rows = conn.execute(query, params).fetchall()
-    return [dict(r) for r in rows]
-
-
 def run_daemon(db_path: str, interval_seconds: int) -> None:
     """Continuously snapshot prices at the given interval."""
     import sqlite3 as _sqlite3

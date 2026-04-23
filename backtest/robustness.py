@@ -24,11 +24,9 @@ Interpretation guide:
 import logging
 import random
 import sqlite3
-from typing import Optional
-
 import numpy as np
 
-from backtest import Backtester, BacktestResult
+from backtest import Backtester
 from strategy import Signal, generate_all_signals
 from question_matcher import match_polymarket_to_metaculus, match_polymarket_to_manifold
 
