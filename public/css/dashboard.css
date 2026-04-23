@@ -375,7 +375,7 @@ body::before {
   min-width: 300px;
 }
 
-.terminal-body { background: #04040a; font-family: 'JetBrains Mono', monospace; padding: 16px; }
+.terminal-body { background: #04040a; font-family: 'JetBrains Mono', monospace; padding: 16px; flex: 1; min-height: 0; overflow-y: auto; }
 .glow-violet { border-bottom: 2px solid var(--violet); }
 .glow-amber { border-bottom: 2px solid var(--amber); }
 .glow-emerald { border-bottom: 2px solid var(--emerald); }
