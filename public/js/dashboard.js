@@ -681,7 +681,13 @@
         if (els.decisionsFeed) {
           els.decisionsFeed.querySelectorAll('.dec-line').forEach(item => {
             const type = (item.className.match(/type-(\w+)/) || [])[1];
-            item.style.display = (feedFilter === 'all' || IMPORTANT_TYPES.includes(type)) ? '' : 'none';
+            const show = feedFilter === 'all' || IMPORTANT_TYPES.includes(type);
+            if (show) {
+              item.style.animation = 'none'; // suppress slideIn re-trigger on un-hide
+              item.style.display = '';
+            } else {
+              item.style.display = 'none';
+            }
           });
         }
       });
@@ -696,12 +702,13 @@
         els.decisionsFeed.innerHTML = '<div class="empty-state">Aguardando oportunidades...</div>';
         return;
       }
-      // Prepend each in chronological order → newest lands at top, matching live-event behavior.
-      // Using prepend=true also populates the dedup map so live duplicates collapse correctly.
-      decisions.forEach(d => addDecision(d, true));
+      // Prepend in chronological order → newest lands at top, matching live-event behavior.
+      // animate=false suppresses slideIn on bulk load so 30 items don't all fade in at once.
+      decisions.forEach(d => addDecision(d, true, false));
     }
 
-    function addDecision(decision, prepend = true) {
+    // animate=false on initial bulk load; true (default) on live socket events
+    function addDecision(decision, prepend = true, animate = true) {
       if (!els.decisionsFeed) return;
       setupFeedFilter();
       const iconMap = { scan: '🔍', opportunity: '🎯', trade: '✅', reject: '⛔', risk: '🚨', monitor: '📡', system: '⚙️' };
@@ -723,6 +730,8 @@
           badge.textContent = '×' + existing.count;
           const tsEl = existing.el.querySelector('.dec-ts');
           if (tsEl) tsEl.textContent = formatTime(decision.timestamp).split(' ')[1] || '—';
+          // Suppress slideIn re-trigger: insertBefore on an existing node detaches+reattaches it
+          existing.el.style.animation = 'none';
           els.decisionsFeed.insertBefore(existing.el, els.decisionsFeed.firstChild);
           return;
         }
@@ -739,6 +748,7 @@
       const hidden = feedFilter === 'important' && !IMPORTANT_TYPES.includes(type);
       const el = document.createElement('div');
       el.className = `dec-line type-${type}`;
+      if (!animate) el.style.animation = 'none'; // no fade-in during bulk load
       if (hidden) el.style.display = 'none';
       const timeStr = decision.timestamp ? (formatTime(decision.timestamp).split(' ')[1] || '—') : '—';
       el.innerHTML = `<span class="dec-ts">${timeStr}</span><span class="dec-icon">${iconMap[type] || '📋'}</span><span class="dec-msg">${escapeHtml(decision.message)}</span>`;
