@@ -6,6 +6,29 @@
 import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/Logger';
 
+const GAMMA_TRANSIENT_PATTERNS = ['timeout', 'ECONNRESET', 'ECONNREFUSED', '503', '502', '429', 'network'];
+
+async function fetchWithRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxAttempts = 3,
+  delays = [3_000, 6_000]
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTransient = GAMMA_TRANSIENT_PATTERNS.some(p => msg.toLowerCase().includes(p.toLowerCase()));
+      if (!isTransient || attempt === maxAttempts) throw err;
+      const delay = delays[attempt - 1] ?? delays[delays.length - 1];
+      logger.warn('GammaApi', `${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay / 1000}s…`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error(`${label}: max retries exceeded`);
+}
+
 export interface GammaMarket {
   id: string;
   question: string;
@@ -87,9 +110,10 @@ export class GammaApiClient {
     if (cached) return cached;
 
     try {
-      const response = await this.client.get('/markets', {
-        params: { active: true, closed: false, limit, order: 'volume', ascending: false },
-      });
+      const response = await fetchWithRetry(
+        () => this.client.get('/markets', { params: { active: true, closed: false, limit, order: 'volume', ascending: false } }),
+        'getActiveMarkets'
+      );
       const rawMarkets: GammaMarket[] = response.data || [];
       const parsed = rawMarkets
         .filter(m => m.active && !m.closed && m.acceptingOrders)
@@ -112,9 +136,10 @@ export class GammaApiClient {
     const allMarkets: ParsedMarket[] = [];
     try {
       for (let page = 0; page < maxPages; page++) {
-        const response = await this.client.get('/markets', {
-          params: { active: true, closed: false, limit: 100, offset: page * 100, order: 'volume', ascending: false },
-        });
+        const response = await fetchWithRetry(
+          () => this.client.get('/markets', { params: { active: true, closed: false, limit: 100, offset: page * 100, order: 'volume', ascending: false } }),
+          `getAllActiveMarkets(page=${page})`
+        );
         const rawMarkets: GammaMarket[] = response.data || [];
         if (rawMarkets.length === 0) break;
         const parsed = rawMarkets
@@ -142,9 +167,10 @@ export class GammaApiClient {
 
     try {
       for (let page = 0; page < maxPages; page++) {
-        const response = await this.client.get('/events', {
-          params: { active: true, closed: false, limit: 50, offset: page * 50, order: 'volume', ascending: false },
-        });
+        const response = await fetchWithRetry(
+          () => this.client.get('/events', { params: { active: true, closed: false, limit: 50, offset: page * 50, order: 'volume', ascending: false } }),
+          `getActiveEventsWithMarkets(page=${page})`
+        );
         const rawEvents: GammaEvent[] = response.data || [];
         if (rawEvents.length === 0) break;
 
@@ -175,7 +201,10 @@ export class GammaApiClient {
     if (cached) return cached;
 
     try {
-      const response = await this.client.get(`/markets/${marketId}`);
+      const response = await fetchWithRetry(
+        () => this.client.get(`/markets/${marketId}`),
+        `getMarketById(${marketId.slice(0, 12)})`
+      );
       if (!response.data) return null;
       const market = this.parseMarket(response.data);
       // Closed markets don't change — cache them longer

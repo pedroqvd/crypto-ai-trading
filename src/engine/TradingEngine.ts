@@ -4,9 +4,8 @@
 // ================================================
 
 import { EventEmitter } from 'events';
-import * as fs from 'fs';
-import * as path from 'path';
 import { config } from './Config';
+import { SettingsService } from '../services/SettingsService';
 import { logger } from '../utils/Logger';
 import { TradeJournal, TradeRecord } from '../utils/TradeJournal';
 import { GammaApiClient, ParsedMarket, ParsedEvent } from '../services/GammaApiClient';
@@ -33,70 +32,6 @@ import { TradeExecutor } from './TradeExecutor';
 import { PositionMonitor } from './PositionMonitor';
 import { SignalSnapshot, PositionTrackState, LogDecisionFn, EmitFn } from './engine-types';
 
-// File used to persist settings changes between process restarts.
-// Mounted via Fly Volumes on /data for real persistence.
-const SETTINGS_FILE = '/data/settings.json';
-
-// Fields that must never be loaded from disk — always come from env vars.
-const SENSITIVE_FIELDS = new Set(['privateKey', 'claudeApiKey', 'newsApiKey']);
-
-function loadPersistedSettings(): void {
-  try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
-      const saved = JSON.parse(raw);
-
-      // Strip any sensitive keys that may exist in old files (migration safety).
-      for (const key of SENSITIVE_FIELDS) delete saved[key];
-
-      const restoredKeys = Object.keys(saved).join(', ');
-      Object.assign(config, saved);
-      logger.info('Engine', `💾 [PERSISTÊNCIA] Settings restauradas com sucesso: ${SETTINGS_FILE}`);
-      logger.info('Engine', `📝 [PERSISTÊNCIA] Campos carregados do disco: ${restoredKeys}`);
-    } else {
-      logger.info('Engine', `ℹ️ [PERSISTÊNCIA] Nenhum arquivo de settings encontrado em ${SETTINGS_FILE}. Usando defaults.`);
-    }
-  } catch (e) {
-    logger.error('Engine', `❌ [PERSISTÊNCIA] Erro crítico ao carregar settings: ${e instanceof Error ? e.message : e}`);
-  }
-}
-
-function saveSettingsToDisk(): void {
-  try {
-    // Ensure directory exists (Fly usually handles mount points, but good for safety)
-    const dir = path.dirname(SETTINGS_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    const toSave = {
-      dryRun: config.dryRun,
-      bankroll: config.bankroll,
-      kellyFraction: config.kellyFraction,
-      minEdge: config.minEdge,
-      maxPositionPct: config.maxPositionPct,
-      maxTotalExposurePct: config.maxTotalExposurePct,
-      scanIntervalMs: config.scanIntervalMs,
-      exitPriceTarget: config.exitPriceTarget,
-      stopLossPct: config.stopLossPct,
-      trailingStopActivation: config.trailingStopActivation,
-      trailingStopDistance: config.trailingStopDistance,
-      timeDecayHours: config.timeDecayHours,
-      edgeReversalEnabled: config.edgeReversalEnabled,
-      momentumExitCycles: config.momentumExitCycles,
-      correlationEnabled: config.correlationEnabled,
-      claudeEnabled: config.claudeEnabled,
-      tradeMode: config.tradeMode,
-      discordWebhookUrl: config.discordWebhookUrl,
-      // NOTE: secrets (privateKey, claudeApiKey, newsApiKey) are intentionally
-      // NOT persisted here — they must come from environment variables only.
-    };
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
-    logger.info('Engine', `✅ [PERSISTÊNCIA] Configurações salvas fisicamente no Volume.`);
-  } catch (e) {
-    logger.error('Engine', `❌ [PERSISTÊNCIA] Falha ao gravar no disco: ${e instanceof Error ? e.message : e}`);
-  }
-}
 
 export interface EngineStatus {
   running: boolean;
@@ -147,6 +82,7 @@ export class TradingEngine extends EventEmitter {
 
   // State
   private running = false;
+  private cycleRunning = false; // guard against concurrent cycles (e.g. slow Claude retries)
   private cycleCount = 0;
   private startTime = 0;
   private marketsScanned = 0;
@@ -171,8 +107,7 @@ export class TradingEngine extends EventEmitter {
 
   constructor() {
     super();
-    // Restore settings saved from a previous session (survives process restart within same machine)
-    loadPersistedSettings();
+    SettingsService.load();
     this.gammaApi = new GammaApiClient();
     this.clobApi = new ClobApiClient();
     this.notifications = new NotificationService();
@@ -300,7 +235,7 @@ export class TradingEngine extends EventEmitter {
     tradeMode: string;
   }>): void {
     Object.assign(config, updates);
-    saveSettingsToDisk();
+    SettingsService.save();
     if (updates.bankroll !== undefined) {
       this.riskManager.updateBankroll(updates.bankroll);
     }
@@ -413,6 +348,19 @@ export class TradingEngine extends EventEmitter {
   // SINGLE CYCLE
   // ========================================
   private async runCycle(): Promise<void> {
+    if (this.cycleRunning) {
+      logger.warn('Engine', 'Previous cycle still running — skipping this tick.');
+      return;
+    }
+    this.cycleRunning = true;
+    try {
+      await this.runCycleInner();
+    } finally {
+      this.cycleRunning = false;
+    }
+  }
+
+  private async runCycleInner(): Promise<void> {
     this.cycleCount++;
     this.lastScanAt = new Date().toISOString();
     this.claudeAnalyzer?.resetCycleCounter();

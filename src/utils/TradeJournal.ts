@@ -8,6 +8,10 @@ import { logger } from './Logger';
 
 // Cap the number of closed trades kept in memory. Open trades are always retained.
 const MAX_CLOSED_IN_MEMORY = 5_000;
+
+// Polymarket charges a protocol fee on winning resolution payouts (~2%).
+// This is separate from the taker fee already embedded in the entry price.
+const RESOLUTION_PROTOCOL_FEE = 0.02;
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export interface TradeRecord {
@@ -119,9 +123,11 @@ export class TradeJournal {
 
     trade.status = won ? 'won' : 'lost';
     trade.exitPrice = exitPrice;
+    // Won: payout = size × exitPrice, minus protocol fee on gross payout, minus original stake.
+    // Lost: lose the full stake (tokens expire worthless).
     trade.pnl = won
-      ? (trade.size * 1) - trade.stake  // Won: receive $1 per share minus stake
-      : -trade.stake;                     // Lost: lose entire stake
+      ? (trade.size * exitPrice * (1 - RESOLUTION_PROTOCOL_FEE)) - trade.stake
+      : -trade.stake;
     trade.resolvedAt = new Date().toISOString();
 
     this.statsCache = null;

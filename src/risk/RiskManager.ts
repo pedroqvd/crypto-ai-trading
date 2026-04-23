@@ -27,9 +27,8 @@ const DRAWDOWN_COOLDOWN_RESET_PCT = 10;  // cooldown check: only release if belo
 // Daily loss limit as fraction of bankroll
 const DAILY_LOSS_LIMIT_PCT = 0.10;
 
-// Circuit breaker cooldown: 2 hours. If no positions close to push drawdown below 5%,
-// auto-release after this period so the bot is not stuck indefinitely.
-const CIRCUIT_BREAKER_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+// Circuit breaker cooldown: configurable via CIRCUIT_BREAKER_COOLDOWN_MIN (default 120 min).
+// Auto-release after this period so the bot is not stuck indefinitely.
 
 export class RiskManager {
   private peakBankroll: number;
@@ -113,7 +112,7 @@ export class RiskManager {
     // Auto-release circuit breaker after cooldown period when drawdown recovered enough.
     if (this.circuitBreakerActive) {
       const elapsed = Date.now() - this.circuitBreakerActivatedAt;
-      if (elapsed > CIRCUIT_BREAKER_COOLDOWN_MS && this.getDrawdownPct() < DRAWDOWN_COOLDOWN_RESET_PCT) {
+      if (elapsed > config.circuitBreakerCooldownMs && this.getDrawdownPct() < DRAWDOWN_COOLDOWN_RESET_PCT) {
         this.circuitBreakerActive = false;
         logger.info('RiskMgr', `🔄 Circuit breaker auto-liberado após ${(elapsed / 3_600_000).toFixed(1)}h (drawdown=${this.getDrawdownPct().toFixed(1)}%).`);
       }
