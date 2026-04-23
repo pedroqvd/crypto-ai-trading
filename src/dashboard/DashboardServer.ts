@@ -292,6 +292,17 @@ export class DashboardServer {
       res.json({ status: 'ok', timestamp: Date.now() });
     });
 
+    // Connection tests (manual trigger)
+    this.app.post('/api/config/test', async (req, res) => {
+      try {
+        const results = await this.engine.testAllConnections();
+        res.json({ success: true, results });
+      } catch (err) {
+        logger.error('Dashboard', 'Connection test error', err);
+        res.status(500).json({ error: 'Falha ao executar testes de conexão' });
+      }
+    });
+
     // API health status (GammaAPI, ClobAPI liveness)
     this.app.get('/api/health/apis', (req, res) => {
       res.json(this.engine.getApiHealth());

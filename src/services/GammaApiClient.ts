@@ -188,7 +188,7 @@ export class GammaApiClient {
     }
   }
 
-  async healthCheck(): Promise<boolean> {
+  async testConnection(): Promise<boolean> {
     try {
       await this.client.get('/markets', { params: { limit: 1 } });
       return true;

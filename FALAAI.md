@@ -1,9 +1,24 @@
-# FALAAI.md — Histórico de Sessões entre IAs
+## Sessão Atual — 2026-04-23 (Otimização de Sinais & Validação de Infra)
 
-> Este arquivo é o canal de comunicação entre sessões de IA.
-> Sempre leia antes de começar. Sempre atualize ao terminar.
+**Branch:** `main`
+**Status:** Motor de análise consolidado. Interface de validação de conectividade operacional no Dashboard.
+
+### Melhorias de Engenharia (V3.1)
+
+**1. Consolidação de Sinais Heurísticos** (`src/analysis/ProbabilityEstimator.ts`)
+- Removida a redundância entre sinais de volume e liquidez.
+- Implementado o `liquidityDynamicsSignal`: uma métrica unificada que evita a diluição por "zeros" neutros.
+- Introduzido o **Calibration Dampening** para ajustar a agressividade da IA em mercados de alta eficiência.
+
+**2. Sistema de Validação de API (Anti-Crash)**
+- Adicionado endpoint `POST /api/config/test` e métodos de `testConnection()` em todos os serviços (Gamma, CLOB, Claude, News, Discord).
+- Previne que o bot falhe silenciosamente no meio de um ciclo por chaves expiradas.
+
+**3. Atualização do Diagnóstico e Framework**
+- O arquivo `diagnostico_trades.md` foi gerado/atualizado detalhando o pipeline de 6 camadas (Scanner -> Estimator -> Edge -> Risk -> Executor -> Monitor).
 
 ---
+
 
 ## Sessão Atual — 2026-04-19 (Fase 2 Institucional & Market Maker)
 

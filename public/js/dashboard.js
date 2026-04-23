@@ -493,7 +493,72 @@
         } catch (err) { console.error('Failed to load settings', err); }
       })();
 
-      settingsForm.addEventListener('submit', async (e) => {
+      // ========================================
+    // CONNECTION TESTS
+    // ========================================
+    const testBtn = $('test-connections-btn');
+    if (testBtn) {
+      testBtn.addEventListener('click', async () => {
+        const testItems = document.querySelectorAll('.test-item');
+        const summaryMsg = $('test-summary-msg');
+        
+        testBtn.disabled = true;
+        testBtn.textContent = '🔄 Testando...';
+        summaryMsg.textContent = '';
+        
+        // Reset indicators
+        testItems.forEach(item => {
+          const indicator = item.querySelector('.test-indicator');
+          indicator.textContent = 'Testando...';
+          indicator.className = 'test-indicator indicator-loading';
+        });
+
+        try {
+          const res = await authFetch('/api/config/test', { method: 'POST' });
+          if (!res.ok) throw new Error('Falha na resposta do servidor');
+          
+          const data = await res.json();
+          const results = data.results;
+          
+          let successCount = 0;
+          let totalCount = 0;
+
+          Object.keys(results).forEach(key => {
+            const item = document.querySelector(`.test-item[data-test="${key}"]`);
+            if (item) {
+              totalCount++;
+              const indicator = item.querySelector('.test-indicator');
+              const success = results[key];
+              if (success) successCount++;
+              
+              indicator.textContent = success ? 'Sucesso' : 'Falhou';
+              indicator.className = 'test-indicator ' + (success ? 'indicator-success' : 'indicator-failed');
+            }
+          });
+
+          if (successCount === totalCount) {
+            summaryMsg.textContent = '✅ Todas as conexões estão operacionais!';
+            summaryMsg.className = 'msg-success';
+          } else if (successCount === 0) {
+            summaryMsg.textContent = '❌ Todas as conexões falharam. Verifique suas chaves.';
+            summaryMsg.className = 'msg-failed';
+          } else {
+            summaryMsg.textContent = `⚠️ ${successCount}/${totalCount} conexões bem-sucedidas.`;
+            summaryMsg.className = 'msg-partial';
+          }
+
+        } catch (err) {
+          console.error('Test connections failed:', err);
+          summaryMsg.textContent = '❌ Erro ao executar testes.';
+          summaryMsg.className = 'msg-failed';
+        } finally {
+          testBtn.disabled = false;
+          testBtn.textContent = '🔍 Testar Todas as Conexões';
+        }
+      });
+    }
+
+    settingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(settingsForm);
         const data = {};

@@ -560,6 +560,36 @@ export class TradingEngine extends EventEmitter {
     return this.riskManager;
   }
 
+  async testAllConnections(): Promise<Record<string, boolean>> {
+    const results: Record<string, boolean> = {
+      gamma: false,
+      clob: false,
+      news: false,
+      claude: false,
+      notifications: false
+    };
+
+    try {
+      const tests = await Promise.allSettled([
+        this.gammaApi.testConnection(),
+        this.clobApi.testConnection(),
+        this.newsApi.testConnection(),
+        this.claudeAnalyzer ? this.claudeAnalyzer.testConnection() : Promise.resolve(false),
+        this.notifications.testConnection()
+      ]);
+
+      if (tests[0].status === 'fulfilled') results.gamma = tests[0].value;
+      if (tests[1].status === 'fulfilled') results.clob = tests[1].value;
+      if (tests[2].status === 'fulfilled') results.news = tests[2].value;
+      if (tests[3].status === 'fulfilled') results.claude = tests[3].value;
+      if (tests[4].status === 'fulfilled') results.notifications = tests[4].value;
+    } catch (err) {
+      logger.error('Engine', 'Error during connection tests', err);
+    }
+
+    return results;
+  }
+
   getApiHealth() {
     return this.healthMonitor.getHealth();
   }

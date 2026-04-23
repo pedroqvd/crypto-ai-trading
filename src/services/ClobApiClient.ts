@@ -267,6 +267,18 @@ export class ClobApiClient {
     }
   }
 
+  async testConnection(): Promise<boolean> {
+    if (config.dryRun) return true;
+    if (!this.initialized) await this.initialize();
+    if (!this.initialized) return false;
+    try {
+      const balance = await this.getBalance();
+      return balance >= 0;
+    } catch {
+      return false;
+    }
+  }
+
   isInitialized(): boolean {
     return this.initialized;
   }

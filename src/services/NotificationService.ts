@@ -109,6 +109,16 @@ export class NotificationService {
     });
   }
 
+  async testConnection(): Promise<boolean> {
+    if (!config.discordWebhookUrl && !config.telegramBotToken) return false;
+    try {
+      await this.notifySystemEvent('🔔 Teste de conexão das notificações bem-sucedido.');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ========================================
   // CORE SEND
   // ========================================

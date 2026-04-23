@@ -31,6 +31,38 @@ export class ClaudeAnalyzer {
     this.maxCallsPerCycle = maxCallsPerCycle;
   }
 
+  async testConnection(): Promise<boolean> {
+    if (!this.apiKey) return false;
+    // Tiny no-op style request to verify key
+    const body = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'Ping' }],
+    });
+    return new Promise((resolve) => {
+      const req = https.request(
+        {
+          hostname: 'api.anthropic.com',
+          path: '/v1/messages',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': this.apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Length': Buffer.byteLength(body),
+          },
+        },
+        res => {
+          resolve(res.statusCode === 200);
+        }
+      );
+      req.on('error', () => resolve(false));
+      req.setTimeout(5000, () => { req.destroy(); resolve(false); });
+      req.write(body);
+      req.end();
+    });
+  }
+
   resetCycleCounter(): void {
     this.callsThisCycle = 0;
   }

@@ -42,8 +42,8 @@ export class ProbabilityEstimator {
    *
    * Final adjustment is gated by:
    *  - Consensus ratio: only applies strongly when ≥70% of signal weight agrees on direction
-   *  - Liquidity dampening: high-liquidity markets get smaller adjustments (0.35×–1.0×)
-   *  - Hard cap: |adjustment| ≤ 0.05 (max 5 percentage-point shift from market price)
+   *  - Calibration dampening: highly efficient markets get smaller adjustments (0.3×–1.0×)
+   *  - Hard cap: |adjustment| ≤ 0.10 (max 10 percentage-point shift from market price)
    *
    * Optional news boost: when newsResult is provided and has fresh articles,
    * confidence is raised to reflect the increased certainty of our estimate.
@@ -60,13 +60,11 @@ export class ProbabilityEstimator {
     const marketPrice = market.yesPrice;
 
     // Collect all signals
-    signals.push(this.volumeLiquiditySignal(market));
+    signals.push(this.liquidityDynamicsSignal(market));
     signals.push(this.priceExtremitySignal(market));
     signals.push(this.timeDecaySignal(market));
     signals.push(this.spreadInefficiencySignal(market));
     signals.push(this.volumeSignificanceSignal(market, allMarkets, medianVolume));
-    signals.push(this.liquidityMeanReversionSignal(market));
-    signals.push(this.marketCalibrationSignal(market));
     signals.push(this.marketAgeSignal(market));
 
     // Signal 9: External consensus (Metaculus + Manifold)
@@ -122,10 +120,22 @@ export class ProbabilityEstimator {
       market.liquidity >=  20_000 ? 0.80 :
                                     1.00;
 
+    // ── CALIBRATION DAMPENING (New) ──────────────────────────────────────
+    // Highly efficient markets (high vol/liq + tight spread) should be trusted more.
+    const volLiqRatio = market.liquidity > 0 ? market.volume / market.liquidity : 0;
+    const spread = Math.abs((market.yesPrice + market.noPrice) - 1.0);
+    let calibrationDampening = 1.0;
+
+    if (volLiqRatio > 15 && spread < 0.02 && market.liquidity > 50_000) {
+      calibrationDampening = 0.30; // Strong dampening: market is likely very efficient
+    } else if (volLiqRatio > 5 && spread < 0.03) {
+      calibrationDampening = 0.70; // Moderate dampening
+    }
+
     // ── FINAL ADJUSTMENT ────────────────────────────────────────────────
     // Combine and cap at ±10% to prevent large false-positive edges while still giving room for >= 1% edge.
     const finalAdjustment = Math.max(-0.10, Math.min(0.10,
-      avgAdjustment * consensusMultiplier * liquidityDampening
+      avgAdjustment * consensusMultiplier * liquidityDampening * calibrationDampening
     ));
 
     let estimatedTrueProb = marketPrice + finalAdjustment;
@@ -156,26 +166,36 @@ export class ProbabilityEstimator {
   // ========================================
   // SIGNAL 1: Volume/Liquidity Ratio
   // ========================================
-  private volumeLiquiditySignal(market: ParsedMarket): SignalResult {
-    const ratio = market.liquidity > 0 ? market.volume / market.liquidity : 0;
+  private liquidityDynamicsSignal(market: ParsedMarket): SignalResult {
+    const volLiq = market.liquidity > 0 ? market.volume / market.liquidity : 0;
+    const distFrom50 = Math.abs(market.yesPrice - 0.5);
+    const direction = Math.sign(0.5 - market.yesPrice);
 
     let adjustment = 0;
     let reasoning = '';
 
-    if (ratio > 20) {
-      adjustment = -0.015 * (market.yesPrice - 0.5);
-      reasoning = `Volume/Liquidez extremo (${ratio.toFixed(0)}x). Mercado provavelmente eficiente, leve reversão.`;
-    } else if (ratio > 5) {
-      adjustment = 0.01 * Math.sign(market.yesPrice - 0.5);
-      reasoning = `Volume/Liquidez moderado (${ratio.toFixed(0)}x). Confirmação da direção.`;
-    } else if (ratio < 1) {
-      adjustment = 0.04 * (0.5 - market.yesPrice);
-      reasoning = `Volume/Liquidez baixo (${ratio.toFixed(1)}x). Mercado estagnado — possível mispricing.`;
-    } else {
-      reasoning = `Volume/Liquidez normal (${ratio.toFixed(1)}x). Sem sinal forte.`;
+    // Factor A: Relative Volume Inefficiency
+    if (volLiq < 1.0) {
+      adjustment += 0.03 * direction;
+      reasoning = `Volume baixo (${volLiq.toFixed(1)}x liq). `;
+    } else if (volLiq > 20.0) {
+      adjustment -= 0.015 * (market.yesPrice - 0.5);
+      reasoning = `Volume extremo (${volLiq.toFixed(0)}x liq). `;
     }
 
-    return { name: 'Volume/Liquidity', weight: 1.5, adjustment, reasoning };
+    // Factor B: Liquidity Mean Reversion
+    if (market.liquidity < 15000 && distFrom50 > 0.1) {
+      adjustment += 0.035 * direction;
+      reasoning += `Baixa liquidez com preço desviado.`;
+    } else if (market.liquidity < 50000 && distFrom50 > 0.25) {
+      adjustment += 0.015 * direction;
+      reasoning += `Liquidez moderada em preço extremo.`;
+    }
+
+    if (!reasoning) reasoning = 'Dinâmica de volume e liquidez dentro da normalidade.';
+
+    // Weighted combination capped to reasonable range
+    return { name: 'Liquidity Dynamics', weight: 2.5, adjustment: Math.max(-0.06, Math.min(0.06, adjustment)), reasoning };
   }
 
   // ========================================
@@ -296,63 +316,6 @@ export class ProbabilityEstimator {
   // ========================================
   // SIGNAL 6: Liquidity Mean Reversion
   // ========================================
-  private liquidityMeanReversionSignal(market: ParsedMarket): SignalResult {
-    const distFrom50 = Math.abs(market.yesPrice - 0.5);
-    const direction = Math.sign(0.5 - market.yesPrice);
-
-    let adjustment = 0;
-    let reasoning = '';
-
-    if (market.liquidity < 15000 && distFrom50 > 0.1) {
-      adjustment = 0.04 * direction;
-      reasoning = `Baixa liquidez ($${(market.liquidity / 1000).toFixed(0)}K) com preço ${(market.yesPrice * 100).toFixed(0)}%. Forte sinal de mispricing.`;
-    } else if (market.liquidity < 30000 && distFrom50 > 0.15) {
-      adjustment = 0.025 * direction;
-      reasoning = `Liquidez moderada ($${(market.liquidity / 1000).toFixed(0)}K) com preço ${(market.yesPrice * 100).toFixed(0)}%. Possível mispricing.`;
-    } else if (market.liquidity < 50000 && distFrom50 > 0.25) {
-      adjustment = 0.015 * direction;
-      reasoning = `Liquidez ok ($${(market.liquidity / 1000).toFixed(0)}K) mas preço extremo (${(market.yesPrice * 100).toFixed(0)}%). Leve oportunidade.`;
-    } else {
-      reasoning = `Liquidez e preço dentro do normal. Sem sinal de mean-reversion.`;
-    }
-
-    return { name: 'Liquidity Mean Reversion', weight: 2.5, adjustment, reasoning };
-  }
-
-  // ========================================
-  // SIGNAL 7: Market Calibration
-  // Well-traded markets with tight spreads are efficiently priced.
-  // Adds diluting weight with zero adjustment to trust market price.
-  // ========================================
-  private marketCalibrationSignal(market: ParsedMarket): SignalResult {
-    const volLiqRatio = market.liquidity > 0 ? market.volume / market.liquidity : 0;
-    const spread = Math.abs((market.yesPrice + market.noPrice) - 1.0);
-
-    if (volLiqRatio > 15 && spread < 0.02 && market.liquidity > 50_000) {
-      return {
-        name: 'Market Calibration',
-        weight: 3.0,
-        adjustment: 0.0,
-        reasoning: `Mercado altamente eficiente (vol/liq=${volLiqRatio.toFixed(0)}x, spread=${(spread * 100).toFixed(1)}%, liq=$${(market.liquidity / 1000).toFixed(0)}K). Confiar no preço de mercado.`,
-      };
-    }
-
-    if (volLiqRatio > 5 && spread < 0.03) {
-      return {
-        name: 'Market Calibration',
-        weight: 1.5,
-        adjustment: 0.0,
-        reasoning: `Mercado razoavelmente eficiente (vol/liq=${volLiqRatio.toFixed(0)}x, spread=${(spread * 100).toFixed(1)}%). Preço provavelmente calibrado.`,
-      };
-    }
-
-    return {
-      name: 'Market Calibration',
-      weight: 0.5,
-      adjustment: 0.0,
-      reasoning: `Mercado pouco calibrado (vol/liq=${volLiqRatio.toFixed(1)}x, spread=${(spread * 100).toFixed(1)}%). Outros sinais têm mais influência.`,
-    };
-  }
 
   // ========================================
   // SIGNAL 8: Market Age (NEW)

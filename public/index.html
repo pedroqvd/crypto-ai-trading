@@ -603,6 +603,45 @@
                   <span class="cfg-save-hint">As configurações são aplicadas imediatamente ao próximo ciclo do bot.</span>
                 </div>
 
+                <!-- BLOCO 6: Validação (NOVO) -->
+                <div class="cfg-group connection-test-group" style="margin-top:2rem; border-top:1px solid var(--border-color); padding-top:1.5rem;">
+                  <h3>Validação de Conexão</h3>
+                  <p class="cfg-group-desc">Verifique se as suas APIs e chaves estão operacionais antes de iniciar as operações.</p>
+                  
+                  <div class="test-status-list">
+                    <div class="test-item" data-test="gamma">
+                      <span class="test-icon">🌐</span>
+                      <span class="test-label">Polymarket (Gamma)</span>
+                      <span class="test-indicator">Aguardando...</span>
+                    </div>
+                    <div class="test-item" data-test="clob">
+                      <span class="test-icon">🔑</span>
+                      <span class="test-label">Carteira & Trading (CLOB)</span>
+                      <span class="test-indicator">Aguardando...</span>
+                    </div>
+                    <div class="test-item" data-test="claude">
+                      <span class="test-icon">🤖</span>
+                      <span class="test-label">Claude AI</span>
+                      <span class="test-indicator">Aguardando...</span>
+                    </div>
+                    <div class="test-item" data-test="news">
+                      <span class="test-icon">📰</span>
+                      <span class="test-label">News API</span>
+                      <span class="test-indicator">Aguardando...</span>
+                    </div>
+                    <div class="test-item" data-test="notifications">
+                      <span class="test-icon">🔔</span>
+                      <span class="test-label">Notificações</span>
+                      <span class="test-indicator">Aguardando...</span>
+                    </div>
+                  </div>
+
+                  <div class="test-actions" style="margin-top:1.5rem">
+                    <button id="test-connections-btn" type="button" class="btn-outline" style="width:auto">🔍 Testar Todas as Conexões</button>
+                    <span id="test-summary-msg" style="margin-left:1rem; font-size:0.9rem"></span>
+                  </div>
+                </div>
+
               </div>
             </form>
 

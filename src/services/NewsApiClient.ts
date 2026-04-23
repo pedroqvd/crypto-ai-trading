@@ -102,8 +102,19 @@ export class NewsApiClient {
         },
       });
       logger.info('NewsApi', '✅ NewsAPI client initialized');
-    } else {
-      logger.info('NewsApi', 'NEWS_API_KEY not set — news boost disabled');
+    }
+  }
+
+  async testConnection(): Promise<boolean> {
+    if (!this.enabled || !this.client) return false;
+    try {
+      // Test the API key with a simple query
+      await this.client.get('/everything', {
+        params: { q: 'ping', pageSize: 1 },
+      });
+      return true;
+    } catch {
+      return false;
     }
   }
 
