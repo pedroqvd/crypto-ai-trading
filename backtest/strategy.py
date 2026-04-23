@@ -1,25 +1,38 @@
 """
-Strategy engines — generate trade signals from validated signals.
+Strategy engines — generate signals from empirically validated inputs only.
 
-Two strategies:
-  1. ConsensusArbitrage  — bet when external consensus diverges from market price
-  2. NegRiskArbitrage    — bet when the complementary set of outcomes is mispriced
+ConsensusArbitrage:
+  edge = cp - market_price
+  No blending. cp comes from get_consensus_for_market() which uses
+  a lookahead-safe prob snapshot strictly before the price observation date.
 
-All formulas are documented with source references.
-No heuristics that aren't derived from the data.
+  Entry filters (ALL must pass):
+    |edge| > MIN_EDGE (6%)
+    N_forecasters ≥ 20 (Metaculus) / unfiltered for Manifold (no N available)
+    days_to_resolution > 7 (avoid near-expiry pricing noise)
+    market liquidity ≥ 5000
+    consensus snapshot exists before price_date (no lookahead)
+
+NegRiskArbitrage:
+  Groups markets by neg_risk_group_id (NOT end_date — end_date conflates events).
+  book_sum < 1 - TAKER_FEE → underpriced book → buy the SINGLE cheapest YES only.
+  book_sum > 1 + TAKER_FEE → overpriced book → buy NO on the most expensive YES only.
+  Never generate multiple correlated signals for the same event.
 """
 
 import logging
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 
 log = logging.getLogger(__name__)
 
-TAKER_FEE = 0.02          # 200 bps — Polymarket taker fee (documented)
-MIN_EDGE = 0.03           # 3% minimum edge to generate a signal
-MIN_FORECASTERS = 10      # Metaculus questions below this are excluded
-MAX_BOOK_SUM_DEVIATION = 0.05  # negRisk: flag when sum of YES prices deviates from 1.0 by >5%
+TAKER_FEE      = 0.02
+MIN_EDGE       = 0.06    # 6% minimum — increased from 3% after audit
+MIN_FORECASTERS = 20     # Metaculus only; Manifold has no reliable N
+MIN_LIQUIDITY  = 5_000
+MIN_DAYS_TO_RESOLUTION = 7
 
 
 @dataclass
@@ -27,51 +40,54 @@ class Signal:
     market_id: str
     question: str
     side: str              # 'BUY_YES' | 'BUY_NO'
-    market_price: float    # observed market price of the side we're buying
-    p_true: float          # our estimated true probability
+    market_price: float
+    p_true: float          # direct consensus prob, no blending
     edge: float            # p_true - market_price
-    ev: float              # EV formula (see below)
-    kelly_f: float         # full Kelly fraction
+    ev: float
+    kelly_f: float
     strategy: str          # 'consensus' | 'neg_risk'
-    confidence: float      # [0,1] — how much we trust the estimate
-    source: str            # 'metaculus' | 'manifold' | 'neg_risk'
+    confidence: float      # based on N_forecasters, not similarity
+    source: str
+    liquidity: float = 0.0
     num_forecasters: Optional[int] = None
-    similarity: Optional[float] = None
+    price_date: str = ""   # timestamp of the price snapshot used
 
 
 def _ev(p_true: float, market_price: float) -> float:
-    """
-    EV_yes = P_true × (1/q - 1) × (1 - fee) - (1 - P_true)
-    where q = market_price (the YES price).
-
-    Source: standard parimutuel EV formula adjusted for Polymarket fee schedule.
-    """
+    """EV per unit stake for a binary bet at market_price."""
     if market_price <= 0 or market_price >= 1:
         return -999.0
-    gross_payout = (1 / market_price - 1)
-    return p_true * gross_payout * (1 - TAKER_FEE) - (1 - p_true)
+    return p_true * (1 / market_price - 1) * (1 - TAKER_FEE) - (1 - p_true)
 
 
 def _kelly(p_true: float, market_price: float) -> float:
-    """
-    f* = (p - q) / (1 - q)  for a binary bet that pays 1/q - 1 on a win.
-    Kelly (1956). Returns 0 if edge is negative.
-    """
+    """Full Kelly fraction. f* = (p - q) / (1 - q). Kelly (1956)."""
     if market_price >= 1:
         return 0.0
-    f = (p_true - market_price) / (1 - market_price)
-    return max(0.0, f)
+    return max(0.0, (p_true - market_price) / (1 - market_price))
 
 
-def _confidence_from_forecasters(n: Optional[int]) -> float:
+def _confidence(n_forecasters: Optional[int]) -> float:
     """
-    Scale confidence by forecaster count.
-    0 → 0.5, 10 → 0.6, 50 → 0.8, 200+ → 1.0 (logistic-ish mapping).
+    Data-driven confidence based on forecaster count only.
+    formula: min(1.0, N / 100)
+    0 → 0.0, 20 → 0.20, 100 → 1.0.
+    Not calibrated as a probability — used for sorting only.
     """
-    if n is None:
-        return 0.6
-    import math
-    return min(1.0, 0.5 + 0.5 * (1 - math.exp(-n / 60)))
+    if n_forecasters is None:
+        return 0.3   # Manifold: lower default, no N available
+    return min(1.0, n_forecasters / 100)
+
+
+def _days_to_resolution(end_date: Optional[str]) -> Optional[float]:
+    if not end_date:
+        return None
+    try:
+        end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        return (end - now).total_seconds() / 86400
+    except Exception:
+        return None
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -79,209 +95,257 @@ def _confidence_from_forecasters(n: Optional[int]) -> float:
 # ──────────────────────────────────────────────────────────────────────────
 
 class ConsensusArbitrage:
-    """
-    Signal when the external consensus probability (Metaculus/Manifold) diverges
-    from the Polymarket price by more than MIN_EDGE.
-
-    P_true is taken directly from the external consensus — we trust Metaculus
-    calibration over Polymarket heuristics. Karger et al. (2022) showed that
-    Metaculus systematically outperforms prediction markets on hard questions.
-
-    The weight applied to P_true is scaled by the similarity score:
-        P_final = similarity × P_consensus + (1 - similarity) × P_market
-    At similarity 1.0, pure consensus. At threshold 0.75, 75% consensus weight.
-    """
-
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
     def generate_signals(self) -> list[Signal]:
         from question_matcher import get_consensus_for_market
 
-        # Load all markets that have resolutions (for backtesting)
-        # In live mode this would be unresolved markets
+        # Use the EARLIEST recorded price for each market (anti-lookahead).
         rows = self.conn.execute("""
-            SELECT pm.id, pm.question, pm.neg_risk,
-                   pp.yes_price
+            SELECT
+                pm.id, pm.question, pm.end_date, pm.liquidity,
+                pp.yes_price, pp.recorded_at AS price_date
             FROM poly_markets pm
             JOIN poly_prices pp ON pp.market_id = pm.id
-            -- Use the earliest recorded price to avoid lookahead
             WHERE pp.recorded_at = (
                 SELECT MIN(recorded_at) FROM poly_prices WHERE market_id = pm.id
             )
-        """).fetchall()
+            AND pm.liquidity >= ?
+        """, (MIN_LIQUIDITY,)).fetchall()
 
         signals: list[Signal] = []
 
         for row in rows:
-            market_id = row["id"]
-            question = row["question"]
-            market_yes = float(row["yes_price"])
-            market_no = 1 - market_yes
+            market_id   = row["id"]
+            question    = row["question"]
+            market_yes  = float(row["yes_price"])
+            price_date  = row["price_date"]
+            liquidity   = float(row["liquidity"] or 0)
 
-            consensus = get_consensus_for_market(self.conn, market_id)
+            # Days-to-resolution filter
+            days = _days_to_resolution(row["end_date"])
+            if days is not None and days < MIN_DAYS_TO_RESOLUTION:
+                continue
+
+            # Consensus from snapshot strictly before price_date (no lookahead)
+            consensus = get_consensus_for_market(self.conn, market_id, price_date)
             if consensus is None:
+                # No pre-price snapshot available → cannot trade without lookahead
                 continue
 
-            sim = consensus["similarity"]
-            cp = consensus["probability"]          # consensus probability of YES
-            n_forecasters = consensus.get("num_forecasters")
+            cp              = consensus["probability"]  # raw consensus, no blending
+            n_forecasters   = consensus.get("num_forecasters")
+            source          = consensus["source"]
 
-            if n_forecasters is not None and n_forecasters < MIN_FORECASTERS:
-                continue
+            # Forecaster count filter (Metaculus only)
+            if source == "metaculus" and n_forecasters is not None:
+                if n_forecasters < MIN_FORECASTERS:
+                    continue
 
-            # Weighted blend: sim × consensus + (1-sim) × market
-            p_true = sim * cp + (1 - sim) * market_yes
-
-            # YES side
-            edge_yes = p_true - market_yes
+            # ── YES side ──────────────────────────────────────────────────
+            edge_yes = cp - market_yes
             if edge_yes >= MIN_EDGE:
-                ev = _ev(p_true, market_yes)
+                ev = _ev(cp, market_yes)
                 if ev > 0:
                     signals.append(Signal(
                         market_id=market_id,
                         question=question,
                         side="BUY_YES",
                         market_price=market_yes,
-                        p_true=p_true,
+                        p_true=cp,
                         edge=edge_yes,
                         ev=ev,
-                        kelly_f=_kelly(p_true, market_yes),
+                        kelly_f=_kelly(cp, market_yes),
                         strategy="consensus",
-                        confidence=_confidence_from_forecasters(n_forecasters),
-                        source=consensus["source"],
+                        confidence=_confidence(n_forecasters),
+                        source=source,
+                        liquidity=liquidity,
                         num_forecasters=n_forecasters,
-                        similarity=sim,
+                        price_date=price_date,
                     ))
 
-            # NO side — p_true for NO is (1 - p_true_yes)
-            p_true_no = 1 - p_true
-            edge_no = p_true_no - market_no
+            # ── NO side: consensus NO probability = 1 - cp ────────────────
+            cp_no      = 1 - cp
+            market_no  = 1 - market_yes
+            edge_no    = cp_no - market_no
             if edge_no >= MIN_EDGE:
-                ev = _ev(p_true_no, market_no)
+                ev = _ev(cp_no, market_no)
                 if ev > 0:
                     signals.append(Signal(
                         market_id=market_id,
                         question=question,
                         side="BUY_NO",
                         market_price=market_no,
-                        p_true=p_true_no,
+                        p_true=cp_no,
                         edge=edge_no,
                         ev=ev,
-                        kelly_f=_kelly(p_true_no, market_no),
+                        kelly_f=_kelly(cp_no, market_no),
                         strategy="consensus",
-                        confidence=_confidence_from_forecasters(n_forecasters),
-                        source=consensus["source"],
+                        confidence=_confidence(n_forecasters),
+                        source=source,
+                        liquidity=liquidity,
                         num_forecasters=n_forecasters,
-                        similarity=sim,
+                        price_date=price_date,
                     ))
 
-        log.info("ConsensusArbitrage: %d signals generated", len(signals))
+        log.info("ConsensusArbitrage: %d signals", len(signals))
         return signals
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# STRATEGY 2: NEG-RISK ARBITRAGE
+# STRATEGY 2: NEGRISK ARBITRAGE
 # ──────────────────────────────────────────────────────────────────────────
 
 class NegRiskArbitrage:
     """
-    Polymarket negRisk markets represent mutually exclusive, exhaustive outcomes
-    (e.g., "Who wins the election?" with one YES per candidate).
+    Groups markets by neg_risk_group_id — the actual Polymarket event identifier,
+    NOT end_date (which can alias unrelated events).
 
-    In a well-priced market: Σ(YES_prices) = 1.0
-    When Σ > 1 + MAX_BOOK_SUM_DEVIATION: systematic over-pricing of YES outcomes
-    When Σ < 1 - MAX_BOOK_SUM_DEVIATION: systematic under-pricing (book discount)
+    A negRisk group is mutually exclusive and exhaustive: exactly one outcome
+    resolves YES, rest resolve NO. Sum of YES prices should equal 1.0.
 
-    The cheapest YES in an underpriced book is the best bet:
-      P_true_i = YES_i / Σ(YES_i)          (correct for book mispricing)
-      Edge_i    = P_true_i - market_price_i
+    Underpriced book (sum < 1 - TAKER_FEE):
+      → Buy YES on the SINGLE cheapest outcome (highest normalized edge).
+      → One signal per group maximum.
 
-    We ONLY use negRisk=True markets (correcting the previous inverted filter).
+    Overpriced book (sum > 1 + TAKER_FEE):
+      → Buy NO on the SINGLE most expensive YES (highest raw price / most overpriced).
+      → One signal per group maximum.
+      → The NO side of outcome i has price ≈ 1 - YES_i and pays off if i does NOT win.
+
+    Rationale for single signal per group:
+      Multiple outcomes in the same negRisk event are perfectly correlated
+      (exactly one wins). Kelly criterion requires independent bets. Betting
+      all outcomes simultaneously is equivalent to buying the entire book at
+      a discounted/premium price — which is a different and riskier trade.
     """
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
     def generate_signals(self) -> list[Signal]:
-        # Group negRisk markets by their common question stem (approximated by
-        # markets that share the same end_date and neg_risk=1)
         rows = self.conn.execute("""
-            SELECT pm.id, pm.question, pm.end_date, pp.yes_price
+            SELECT
+                pm.id, pm.question, pm.end_date, pm.liquidity,
+                pm.neg_risk_group_id,
+                pp.yes_price, pp.recorded_at AS price_date
             FROM poly_markets pm
             JOIN poly_prices pp ON pp.market_id = pm.id
             WHERE pm.neg_risk = 1
+              AND pm.neg_risk_group_id IS NOT NULL
+              AND pm.liquidity >= ?
               AND pp.recorded_at = (
-                SELECT MIN(recorded_at) FROM poly_prices WHERE market_id = pm.id
+                  SELECT MIN(recorded_at) FROM poly_prices WHERE market_id = pm.id
               )
-            ORDER BY pm.end_date, pm.id
-        """).fetchall()
+            ORDER BY pm.neg_risk_group_id, pm.id
+        """, (MIN_LIQUIDITY,)).fetchall()
 
         if not rows:
             return []
 
-        # Group by end_date (proxy for same negRisk event)
+        # Group by the actual event identifier
         groups: dict[str, list] = {}
         for row in rows:
-            key = row["end_date"] or "unknown"
+            key = row["neg_risk_group_id"]
             groups.setdefault(key, []).append(row)
 
         signals: list[Signal] = []
 
-        for group_key, group in groups.items():
+        for group_id, group in groups.items():
             if len(group) < 2:
                 continue
 
             book_sum = sum(float(r["yes_price"]) for r in group)
-
-            # Only act when there's a detectable mispricing
             deviation = book_sum - 1.0
-            if abs(deviation) < MAX_BOOK_SUM_DEVIATION:
-                continue
 
-            for row in group:
-                market_price = float(row["yes_price"])
-                # Normalize to get consistent probability estimate
+            # Underpriced: sum < 1 - fee → buy cheapest YES
+            if deviation < -(TAKER_FEE):
+                # Sort by YES price ascending — cheapest is highest relative edge
+                cheapest = min(group, key=lambda r: float(r["yes_price"]))
+                market_price = float(cheapest["yes_price"])
+                # Normalized probability: market_price / book_sum
                 p_true = market_price / book_sum
                 edge = p_true - market_price
 
-                if edge < MIN_EDGE:
-                    continue
+                if edge >= MIN_EDGE:
+                    ev = _ev(p_true, market_price)
+                    if ev > 0:
+                        signals.append(Signal(
+                            market_id=cheapest["id"],
+                            question=cheapest["question"],
+                            side="BUY_YES",
+                            market_price=market_price,
+                            p_true=p_true,
+                            edge=edge,
+                            ev=ev,
+                            kelly_f=_kelly(p_true, market_price),
+                            strategy="neg_risk",
+                            confidence=0.75,
+                            source="neg_risk",
+                            liquidity=float(cheapest["liquidity"] or 0),
+                            price_date=cheapest["price_date"],
+                        ))
 
-                ev = _ev(p_true, market_price)
-                if ev <= 0:
-                    continue
+            # Overpriced: sum > 1 + fee → buy NO on most expensive YES
+            elif deviation > TAKER_FEE:
+                most_expensive = max(group, key=lambda r: float(r["yes_price"]))
+                yes_price = float(most_expensive["yes_price"])
+                # NO price ≈ 1 - yes_price (binary market)
+                no_price = 1 - yes_price
+                # True NO probability: (1 - yes_price/book_sum)
+                p_true_no = 1 - (yes_price / book_sum)
+                edge = p_true_no - no_price
 
-                signals.append(Signal(
-                    market_id=row["id"],
-                    question=row["question"],
-                    side="BUY_YES",
-                    market_price=market_price,
-                    p_true=p_true,
-                    edge=edge,
-                    ev=ev,
-                    kelly_f=_kelly(p_true, market_price),
-                    strategy="neg_risk",
-                    confidence=0.85,  # negRisk is mechanical, high confidence
-                    source="neg_risk",
-                ))
+                if edge >= MIN_EDGE:
+                    ev = _ev(p_true_no, no_price)
+                    if ev > 0:
+                        signals.append(Signal(
+                            market_id=most_expensive["id"],
+                            question=most_expensive["question"],
+                            side="BUY_NO",
+                            market_price=no_price,
+                            p_true=p_true_no,
+                            edge=edge,
+                            ev=ev,
+                            kelly_f=_kelly(p_true_no, no_price),
+                            strategy="neg_risk",
+                            confidence=0.75,
+                            source="neg_risk",
+                            liquidity=float(most_expensive["liquidity"] or 0),
+                            price_date=most_expensive["price_date"],
+                        ))
 
-        log.info("NegRiskArbitrage: %d signals generated", len(signals))
+        log.info("NegRiskArbitrage: %d signals (%d groups)", len(signals), len(groups))
         return signals
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# COMBINED SIGNAL GENERATOR
+# COMBINED — with source filtering for ablation tests
 # ──────────────────────────────────────────────────────────────────────────
 
-def generate_all_signals(conn: sqlite3.Connection) -> list[Signal]:
-    """Run all strategies and return a deduplicated, ranked signal list."""
-    consensus = ConsensusArbitrage(conn).generate_signals()
-    neg_risk = NegRiskArbitrage(conn).generate_signals()
+def generate_all_signals(
+    conn: sqlite3.Connection,
+    use_consensus: bool = True,
+    use_neg_risk: bool = True,
+    consensus_sources: Optional[set[str]] = None,   # None = all sources
+) -> list[Signal]:
+    """
+    Generate and deduplicate signals from all enabled strategies.
+    consensus_sources: restrict to {'metaculus'} or {'manifold'} for ablation.
+    """
+    all_signals: list[Signal] = []
 
-    all_signals = consensus + neg_risk
+    if use_consensus:
+        raw = ConsensusArbitrage(conn).generate_signals()
+        if consensus_sources:
+            raw = [s for s in raw if s.source in consensus_sources]
+        all_signals.extend(raw)
 
-    # Deduplicate: keep highest EV signal per market
+    if use_neg_risk:
+        all_signals.extend(NegRiskArbitrage(conn).generate_signals())
+
+    # One signal per (market, side) — keep highest EV
     seen: dict[tuple[str, str], Signal] = {}
     for s in all_signals:
         key = (s.market_id, s.side)

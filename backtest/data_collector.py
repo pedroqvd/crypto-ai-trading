@@ -1,11 +1,17 @@
 """
 Data collection from Polymarket (Gamma API), Metaculus, and Manifold.
-Stores everything in SQLite — no lookahead bias by recording fetch timestamps.
+
+Key anti-lookahead design:
+  - metaculus_prob_history: timestamped snapshots of community_prob for OPEN questions
+  - get_prob_at(question_id, as_of): returns the latest prob strictly before as_of
+  - Resolved questions are NEVER used as consensus signal sources
+  - neg_risk_group_id: the shared event identifier for negRisk outcome sets
 """
 
 import sqlite3
 import time
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 import requests
@@ -16,6 +22,7 @@ GAMMA_BASE = "https://gamma-api.polymarket.com"
 METACULUS_BASE = "https://www.metaculus.com/api2"
 MANIFOLD_BASE = "https://api.manifold.markets/v0"
 
+
 # ──────────────────────────────────────────────
 # DATABASE
 # ──────────────────────────────────────────────
@@ -25,13 +32,14 @@ def init_db(path: str = "backtest.db") -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS poly_markets (
-            id              TEXT PRIMARY KEY,
-            question        TEXT NOT NULL,
-            end_date        TEXT,
-            neg_risk        INTEGER DEFAULT 0,
-            liquidity       REAL,
-            volume          REAL,
-            fetched_at      TEXT NOT NULL
+            id                  TEXT PRIMARY KEY,
+            question            TEXT NOT NULL,
+            end_date            TEXT,
+            neg_risk            INTEGER DEFAULT 0,
+            neg_risk_group_id   TEXT,           -- shared ID for the negRisk event set
+            liquidity           REAL,
+            volume              REAL,
+            fetched_at          TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS poly_prices (
@@ -48,14 +56,22 @@ def init_db(path: str = "backtest.db") -> sqlite3.Connection:
             resolved_at     TEXT NOT NULL
         );
 
+        -- Open-question snapshots only. Never store resolved-question final probs.
         CREATE TABLE IF NOT EXISTS metaculus_questions (
             id              INTEGER PRIMARY KEY,
             title           TEXT NOT NULL,
-            community_prob  REAL,            -- latest community prediction [0,1]
-            num_forecasters INTEGER,
             resolve_time    TEXT,
-            resolution      REAL,            -- 1=yes 0=no NULL=unresolved
+            num_forecasters INTEGER,
             fetched_at      TEXT NOT NULL
+        );
+
+        -- Timestamped probability history — the ONLY valid consensus source.
+        -- Each row is a snapshot of community_prob at recorded_at for an OPEN question.
+        CREATE TABLE IF NOT EXISTS metaculus_prob_history (
+            question_id     INTEGER NOT NULL,
+            community_prob  REAL    NOT NULL,
+            recorded_at     TEXT    NOT NULL,
+            PRIMARY KEY (question_id, recorded_at)
         );
 
         CREATE TABLE IF NOT EXISTS manifold_markets (
@@ -68,11 +84,21 @@ def init_db(path: str = "backtest.db") -> sqlite3.Connection:
             fetched_at      TEXT NOT NULL
         );
 
+        -- Timestamped Manifold probability history for open markets
+        CREATE TABLE IF NOT EXISTS manifold_prob_history (
+            market_id       TEXT NOT NULL,
+            probability     REAL NOT NULL,
+            recorded_at     TEXT NOT NULL,
+            PRIMARY KEY (market_id, recorded_at)
+        );
+
         CREATE TABLE IF NOT EXISTS matched_pairs (
             poly_id         TEXT NOT NULL,
-            source          TEXT NOT NULL,   -- 'metaculus' | 'manifold'
+            source          TEXT NOT NULL,
             source_id       TEXT NOT NULL,
             similarity      REAL NOT NULL,
+            date_compatible INTEGER DEFAULT 0,
+            entity_overlap  INTEGER DEFAULT 0,
             created_at      TEXT NOT NULL,
             PRIMARY KEY (poly_id, source, source_id)
         );
@@ -86,7 +112,7 @@ def init_db(path: str = "backtest.db") -> sqlite3.Connection:
 # ──────────────────────────────────────────────
 
 SESSION = requests.Session()
-SESSION.headers.update({"User-Agent": "polymarket-backtest/1.0"})
+SESSION.headers.update({"User-Agent": "polymarket-backtest/2.0"})
 
 def _get(url: str, params: Optional[dict] = None, retries: int = 3) -> Optional[dict]:
     for attempt in range(retries):
@@ -96,7 +122,8 @@ def _get(url: str, params: Optional[dict] = None, retries: int = 3) -> Optional[
             return r.json()
         except requests.RequestException as e:
             wait = 2 ** attempt
-            log.warning("GET %s failed (attempt %d/%d): %s — retrying in %ds", url, attempt + 1, retries, e, wait)
+            log.warning("GET %s failed (attempt %d/%d): %s — retrying in %ds",
+                        url, attempt + 1, retries, e, wait)
             time.sleep(wait)
     return None
 
@@ -116,7 +143,6 @@ class PolymarketCollector:
         min_volume: float = 10_000,
         closed: bool = False,
     ) -> int:
-        """Fetch active or recently-closed markets and store them."""
         stored = 0
         offset = 0
         now = datetime.now(timezone.utc).isoformat()
@@ -147,21 +173,29 @@ class PolymarketCollector:
                 yes_price = float(m.get("bestAsk") or m.get("lastTradePrice") or 0)
                 no_price = round(1 - yes_price, 6)
 
+                # negRisk group: prefer negRiskMarketID, fall back to conditionId grouping
+                neg_risk = 1 if m.get("negRisk") else 0
+                neg_risk_group_id = (
+                    m.get("negRiskMarketID") or
+                    m.get("negRiskId") or
+                    (m.get("conditionId") if neg_risk else None)
+                )
+
                 self.conn.execute("""
                     INSERT OR REPLACE INTO poly_markets
-                        (id, question, end_date, neg_risk, liquidity, volume, fetched_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (id, question, end_date, neg_risk, neg_risk_group_id, liquidity, volume, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     str(m["id"]),
                     m.get("question", ""),
                     m.get("endDate"),
-                    1 if m.get("negRisk") else 0,
+                    neg_risk,
+                    neg_risk_group_id,
                     liq,
                     vol,
                     now,
                 ))
 
-                # Record price snapshot with fetch timestamp (no lookahead)
                 if yes_price > 0:
                     self.conn.execute("""
                         INSERT OR IGNORE INTO poly_prices (market_id, yes_price, no_price, recorded_at)
@@ -175,11 +209,10 @@ class PolymarketCollector:
                 break
             offset += 100
 
-        log.info("Polymarket: stored %d markets (offset=%d)", stored, offset)
+        log.info("Polymarket: stored %d markets", stored)
         return stored
 
     def fetch_resolutions(self) -> int:
-        """Check stored markets for resolved status and record outcomes."""
         rows = self.conn.execute(
             "SELECT id FROM poly_markets WHERE id NOT IN (SELECT market_id FROM poly_resolutions)"
         ).fetchall()
@@ -190,11 +223,7 @@ class PolymarketCollector:
         for row in rows:
             mid = row["id"]
             data = _get(f"{GAMMA_BASE}/markets/{mid}")
-            if not data:
-                continue
-
-            # Resolved when one side is at 1.0 and closed is true
-            if not data.get("closed"):
+            if not data or not data.get("closed"):
                 continue
 
             last_price = float(data.get("lastTradePrice") or 0)
@@ -211,7 +240,7 @@ class PolymarketCollector:
                 VALUES (?, ?, ?)
             """, (mid, outcome, resolved_at))
             resolved += 1
-            time.sleep(0.1)  # rate limit
+            time.sleep(0.1)
 
         self.conn.commit()
         log.info("Polymarket: recorded %d resolutions", resolved)
@@ -219,25 +248,30 @@ class PolymarketCollector:
 
 
 # ──────────────────────────────────────────────
-# METACULUS
+# METACULUS — OPEN QUESTIONS ONLY
 # ──────────────────────────────────────────────
 
 class MetaculusCollector:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def fetch_questions(self, pages: int = 20) -> int:
-        """Fetch binary questions with community predictions."""
-        stored = 0
+    def snapshot_open_questions(self, pages: int = 20) -> int:
+        """
+        Fetch OPEN binary questions and store a timestamped probability snapshot.
+
+        CRITICAL: only open questions are stored. Resolved questions have community_prob
+        that reflects near-resolution consensus — using that as P_true is lookahead.
+        """
         next_url: Optional[str] = f"{METACULUS_BASE}/questions/"
         params = {
             "type": "forecast",
-            "status": "resolved",
-            "order_by": "-close_time",
+            "status": "open",           # OPEN ONLY — never resolved
+            "order_by": "-activity",
             "limit": 100,
         }
         page = 0
         now = datetime.now(timezone.utc).isoformat()
+        snapshots = 0
 
         while next_url and page < pages:
             data = _get(next_url, params=(params if page == 0 else None))
@@ -246,60 +280,62 @@ class MetaculusCollector:
                 break
 
             for q in data.get("results", []):
-                # Only binary questions (probability ∈ [0,1])
+                # Only binary questions
                 pred = q.get("community_prediction", {})
                 cp = pred.get("full", {}).get("q2") if isinstance(pred, dict) else None
                 if cp is None:
                     continue
 
-                # Resolution: 1=yes, 0=no, ambiguous→skip
-                resolution = q.get("resolution")
-                if resolution not in (0, 1, 0.0, 1.0):
-                    resolution = None
+                qid = q["id"]
 
+                # Upsert question metadata (title, resolve_time, num_forecasters)
                 self.conn.execute("""
                     INSERT OR REPLACE INTO metaculus_questions
-                        (id, title, community_prob, num_forecasters, resolve_time, resolution, fetched_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (id, title, resolve_time, num_forecasters, fetched_at)
+                    VALUES (?, ?, ?, ?, ?)
                 """, (
-                    q["id"],
+                    qid,
                     q.get("title", ""),
-                    float(cp),
+                    q.get("resolve_time") or q.get("close_time"),
                     q.get("number_of_forecasters", 0),
-                    q.get("close_time"),
-                    float(resolution) if resolution is not None else None,
                     now,
                 ))
-                stored += 1
+
+                # Append to probability history
+                self.conn.execute("""
+                    INSERT OR IGNORE INTO metaculus_prob_history (question_id, community_prob, recorded_at)
+                    VALUES (?, ?, ?)
+                """, (qid, float(cp), now))
+                snapshots += 1
 
             self.conn.commit()
             next_url = data.get("next")
             if next_url:
-                time.sleep(0.3)  # respectful rate limit
+                time.sleep(0.3)
 
-        log.info("Metaculus: stored %d questions", stored)
-        return stored
+        log.info("Metaculus: %d probability snapshots stored at %s", snapshots, now)
+        return snapshots
 
 
 # ──────────────────────────────────────────────
-# MANIFOLD
+# MANIFOLD — OPEN MARKETS ONLY
 # ──────────────────────────────────────────────
 
 class ManifoldCollector:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def fetch_markets(self, limit: int = 1000) -> int:
-        """Fetch resolved binary markets from Manifold."""
-        stored = 0
-        before: Optional[str] = None
+    def snapshot_open_markets(self, limit: int = 500) -> int:
+        """Fetch open Manifold markets and store timestamped probability snapshots."""
         now = datetime.now(timezone.utc).isoformat()
+        before: Optional[str] = None
+        snapshots = 0
         fetched = 0
 
         while fetched < limit:
             params: dict = {
                 "limit": 100,
-                "isResolved": "true",
+                "isResolved": "false",
                 "outcomeType": "BINARY",
                 "sort": "liquidity",
                 "order": "desc",
@@ -315,20 +351,18 @@ class ManifoldCollector:
                 prob = m.get("probability")
                 if prob is None:
                     continue
+
                 self.conn.execute("""
                     INSERT OR REPLACE INTO manifold_markets
                         (id, question, probability, is_resolved, resolution, close_time, fetched_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    m["id"],
-                    m.get("question", ""),
-                    float(prob),
-                    1 if m.get("isResolved") else 0,
-                    m.get("resolution"),
-                    m.get("closeTime"),
-                    now,
-                ))
-                stored += 1
+                    VALUES (?, ?, ?, 0, NULL, ?, ?)
+                """, (m["id"], m.get("question", ""), float(prob), m.get("closeTime"), now))
+
+                self.conn.execute("""
+                    INSERT OR IGNORE INTO manifold_prob_history (market_id, probability, recorded_at)
+                    VALUES (?, ?, ?)
+                """, (m["id"], float(prob), now))
+                snapshots += 1
 
             self.conn.commit()
             fetched += len(data)
@@ -337,5 +371,45 @@ class ManifoldCollector:
             before = data[-1]["id"]
             time.sleep(0.2)
 
-        log.info("Manifold: stored %d markets", stored)
-        return stored
+        log.info("Manifold: %d open-market probability snapshots stored", snapshots)
+        return snapshots
+
+
+# ──────────────────────────────────────────────
+# LOOKAHEAD-SAFE PROBABILITY LOOKUP
+# ──────────────────────────────────────────────
+
+def get_metaculus_prob_at(
+    conn: sqlite3.Connection,
+    question_id: int,
+    as_of: str,
+) -> Optional[float]:
+    """
+    Return the Metaculus community probability for question_id that was recorded
+    STRICTLY BEFORE as_of. Returns None if no snapshot exists before that time.
+
+    This is the only valid way to read consensus probability in the backtester.
+    Never call this with as_of after the question's resolve_time.
+    """
+    row = conn.execute("""
+        SELECT community_prob FROM metaculus_prob_history
+        WHERE question_id = ? AND recorded_at < ?
+        ORDER BY recorded_at DESC
+        LIMIT 1
+    """, (question_id, as_of)).fetchone()
+    return float(row["community_prob"]) if row else None
+
+
+def get_manifold_prob_at(
+    conn: sqlite3.Connection,
+    market_id: str,
+    as_of: str,
+) -> Optional[float]:
+    """Return the Manifold probability recorded strictly before as_of."""
+    row = conn.execute("""
+        SELECT probability FROM manifold_prob_history
+        WHERE market_id = ? AND recorded_at < ?
+        ORDER BY recorded_at DESC
+        LIMIT 1
+    """, (market_id, as_of)).fetchone()
+    return float(row["probability"]) if row else None
