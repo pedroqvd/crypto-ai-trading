@@ -33,6 +33,7 @@ DEFAULT_THRESHOLD = 0.80        # conservative starting point
 MAX_DATE_DELTA_DAYS = 45        # resolution dates must be within 45 days
 MIN_CONCORDANCE = 0.70          # below this → system is invalid
 MIN_CONCORDANCE_N = 30          # minimum resolved pairs to trust concordance estimate
+MIN_ENTITY_OVERLAP = 2          # aggressive rejection of weak entity overlap
 
 _model = None
 
@@ -78,9 +79,9 @@ def _parse_date(s: Optional[str]) -> Optional[datetime]:
 
 
 def dates_compatible(poly_end_date: Optional[str], meta_resolve_time: Optional[str]) -> bool:
-    """True if dates are within MAX_DATE_DELTA_DAYS, or if either is missing."""
+    """True only if both dates exist and are within MAX_DATE_DELTA_DAYS."""
     if not poly_end_date or not meta_resolve_time:
-        return True  # can't check; allow but flag later
+        return False
     a = _parse_date(poly_end_date)
     b = _parse_date(meta_resolve_time)
     if a is None or b is None:
@@ -119,8 +120,45 @@ def entities_compatible(poly_q: str, meta_q: str, min_overlap: int = 1) -> bool:
     pt = _key_tokens(poly_q)
     mt = _key_tokens(meta_q)
     if not pt or not mt:
-        return True
+        return False
     return len(pt & mt) >= min_overlap
+
+
+def structural_compatible(poly_q: str, ext_q: str) -> bool:
+    """
+    Hard structural gate:
+      - Same polarity (contains/doesn't contain explicit negation tokens)
+      - Same question form family (who/what/when/will/can)
+      - If numeric targets exist, they must overlap
+    """
+    neg_tokens = {"not", "n't", "no", "never", "sem"}
+    pq = poly_q.lower()
+    eq = ext_q.lower()
+
+    poly_neg = any(t in pq for t in neg_tokens)
+    ext_neg = any(t in eq for t in neg_tokens)
+    if poly_neg != ext_neg:
+        return False
+
+    def family(q: str) -> str:
+        if q.startswith("will ") or " will " in q:
+            return "will"
+        if q.startswith("who ") or " who " in q:
+            return "who"
+        if q.startswith("when ") or " when " in q:
+            return "when"
+        if q.startswith("can ") or " can " in q:
+            return "can"
+        return "other"
+
+    if family(pq) != family(eq):
+        return False
+
+    nums_a = set(re.findall(r"\b\d{1,4}\b", pq))
+    nums_b = set(re.findall(r"\b\d{1,4}\b", eq))
+    if nums_a and nums_b and not (nums_a & nums_b):
+        return False
+    return True
 
 
 # ──────────────────────────────────────────────
@@ -165,8 +203,14 @@ def _run_matching(
             continue
 
         # Entity check
-        entity_ok = entities_compatible(poly_row["question"], ext_questions[best_j])
+        entity_ok = entities_compatible(
+            poly_row["question"], ext_questions[best_j], min_overlap=MIN_ENTITY_OVERLAP
+        )
         if not entity_ok:
+            continue
+
+        structural_ok = structural_compatible(poly_row["question"], ext_questions[best_j])
+        if not structural_ok:
             continue
 
         source_id = str(ext_row["id"])
@@ -175,7 +219,10 @@ def _run_matching(
                 INSERT OR IGNORE INTO matched_pairs
                     (poly_id, source, source_id, similarity, date_compatible, entity_overlap, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (poly_row["id"], source, source_id, best_sim, int(date_ok), int(entity_ok), now))
+            """, (
+                poly_row["id"], source, source_id, best_sim,
+                int(date_ok), int(entity_ok and structural_ok), now
+            ))
             added += 1
         except sqlite3.Error as e:
             log.error("DB error: %s", e)

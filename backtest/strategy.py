@@ -23,7 +23,7 @@ NegRiskArbitrage:
 import logging
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -51,6 +51,7 @@ class Signal:
     liquidity: float = 0.0
     num_forecasters: Optional[int] = None
     price_date: str = ""   # timestamp of the price snapshot used
+    event_group_id: str = ""  # correlation bucket (event-level exposure control)
 
 
 def _ev(p_true: float, market_price: float) -> float:
@@ -79,13 +80,13 @@ def _confidence(n_forecasters: Optional[int]) -> float:
     return min(1.0, n_forecasters / 100)
 
 
-def _days_to_resolution(end_date: Optional[str]) -> Optional[float]:
-    if not end_date:
+def _days_to_resolution(end_date: Optional[str], as_of: Optional[str]) -> Optional[float]:
+    if not end_date or not as_of:
         return None
     try:
         end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        return (end - now).total_seconds() / 86400
+        ref = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        return (end - ref).total_seconds() / 86400
     except Exception:
         return None
 
@@ -124,7 +125,7 @@ class ConsensusArbitrage:
             liquidity   = float(row["liquidity"] or 0)
 
             # Days-to-resolution filter
-            days = _days_to_resolution(row["end_date"])
+            days = _days_to_resolution(row["end_date"], price_date)
             if days is not None and days < MIN_DAYS_TO_RESOLUTION:
                 continue
 
@@ -163,6 +164,7 @@ class ConsensusArbitrage:
                         liquidity=liquidity,
                         num_forecasters=n_forecasters,
                         price_date=price_date,
+                        event_group_id=market_id,
                     ))
 
             # ── NO side: consensus NO probability = 1 - cp ────────────────
@@ -187,6 +189,7 @@ class ConsensusArbitrage:
                         liquidity=liquidity,
                         num_forecasters=n_forecasters,
                         price_date=price_date,
+                        event_group_id=market_id,
                     ))
 
         log.info("ConsensusArbitrage: %d signals", len(signals))
@@ -285,6 +288,7 @@ class NegRiskArbitrage:
                             source="neg_risk",
                             liquidity=float(cheapest["liquidity"] or 0),
                             price_date=cheapest["price_date"],
+                            event_group_id=str(group_id),
                         ))
 
             # Overpriced: sum > 1 + fee → buy NO on most expensive YES
@@ -314,6 +318,7 @@ class NegRiskArbitrage:
                             source="neg_risk",
                             liquidity=float(most_expensive["liquidity"] or 0),
                             price_date=most_expensive["price_date"],
+                            event_group_id=str(group_id),
                         ))
 
         log.info("NegRiskArbitrage: %d signals (%d groups)", len(signals), len(groups))

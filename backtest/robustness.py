@@ -24,11 +24,11 @@ Interpretation guide:
 import logging
 import random
 import sqlite3
-from typing import Optional
-
+from dataclasses import replace
+from datetime import datetime
 import numpy as np
 
-from backtest import Backtester, BacktestResult
+from backtest import Backtester
 from strategy import Signal, generate_all_signals
 from question_matcher import match_polymarket_to_metaculus, match_polymarket_to_manifold
 
@@ -249,6 +249,126 @@ def ablation_test(
     }
 
 
+def placebo_matching_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+) -> dict:
+    """Shuffle p_true across signals while keeping outcomes fixed."""
+    if len(signals) < 20:
+        return {"valid": False, "reason": "too_few_signals"}
+    rng = random.Random(123)
+    shuffled_probs = [s.p_true for s in signals]
+    rng.shuffle(shuffled_probs)
+    placebo = [
+        replace(
+            s,
+            p_true=max(0.001, min(0.999, p)),
+            ev=s.ev + (p - s.p_true),
+            kelly_f=max(0.0, s.kelly_f * 0.5),
+        )
+        for s, p in zip(signals, shuffled_probs)
+    ]
+    base = backtester.run(signals, train_ratio=train_ratio)
+    test = backtester.run(placebo, train_ratio=train_ratio)
+    return {
+        "real_skill": round(base.skill_score, 4),
+        "placebo_skill": round(test.skill_score, 4),
+        "collapsed": test.skill_score < base.skill_score * 0.5,
+    }
+
+
+def noise_injection_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+    noise_levels: list[float] = [0.01, 0.02, 0.03],
+) -> dict:
+    rng = np.random.default_rng(7)
+    base = backtester.run(signals, train_ratio=train_ratio)
+    by_noise = []
+    for sigma in noise_levels:
+        noisy_signals = [
+            replace(
+                s,
+                p_true=float(max(0.001, min(0.999, s.p_true + rng.normal(0, sigma)))),
+            )
+            for s in signals
+        ]
+        r = backtester.run(noisy_signals, train_ratio=train_ratio)
+        by_noise.append({
+            "sigma": sigma,
+            "skill_score": round(r.skill_score, 4),
+            "wr_excess": round(r.wr_excess, 4),
+        })
+    return {"base_skill": round(base.skill_score, 4), "by_noise": by_noise}
+
+
+def execution_stress_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+    stress_levels: list[float] = [1.0, 2.0, 3.0],
+) -> dict:
+    out = []
+    for s in stress_levels:
+        r = backtester.run(signals, train_ratio=train_ratio, execution_stress_mult=s)
+        out.append({
+            "stress_mult": s,
+            "n_trades": r.n_trades,
+            "skill_score": round(r.skill_score, 4),
+            "total_pnl": round(r.total_pnl, 2),
+            "n_unfilled": r.n_unfilled,
+        })
+    return {"by_stress": out}
+
+
+def latency_stress_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+    latencies_sec: list[int] = [1, 5, 30, 60],
+) -> dict:
+    out = []
+    for sec in latencies_sec:
+        r = backtester.run(
+            signals,
+            train_ratio=train_ratio,
+            latency_signal_to_order_sec=sec,
+            latency_order_to_fill_sec=sec,
+        )
+        out.append({
+            "latency_sec": sec,
+            "n_trades": r.n_trades,
+            "wr_excess": round(r.wr_excess, 4),
+            "total_pnl": round(r.total_pnl, 2),
+            "n_unfilled": r.n_unfilled,
+        })
+    return {"by_latency": out}
+
+
+def edge_decay_test(signals: list[Signal], backtester: Backtester, train_ratio: float = 0.6) -> dict:
+    base = backtester.run(signals, train_ratio=train_ratio)
+    if not base.trades:
+        return {"valid": False, "reason": "no_trades"}
+    # proxy: signal-to-resolution horizon as durability indicator
+    horizons = []
+    for t in base.trades:
+        try:
+            sdt = datetime.fromisoformat(t.signal_date.replace("Z", "+00:00"))
+            rdt = datetime.fromisoformat(t.resolution_date.replace("Z", "+00:00"))
+            horizons.append((rdt - sdt).total_seconds() / 86400)
+        except Exception:
+            pass
+    if len(horizons) < 10:
+        return {"valid": False, "reason": "insufficient_horizon_data"}
+    return {
+        "valid": True,
+        "median_horizon_days": round(float(np.median(horizons)), 2),
+        "p75_horizon_days": round(float(np.percentile(horizons, 75)), 2),
+    }
+
+
 # ──────────────────────────────────────────────
 # COMBINED REPORT
 # ──────────────────────────────────────────────
@@ -271,10 +391,22 @@ def run_all_robustness_tests(
     log.info("--- 3/3 Ablation test ---")
     ablation_result = ablation_test(conn, backtester, train_ratio)
 
+    log.info("--- 4/8 Placebo matching ---")
+    placebo_result = placebo_matching_test(signals, backtester, train_ratio)
+    log.info("--- 5/8 Noise injection ---")
+    noise_result = noise_injection_test(signals, backtester, train_ratio)
+    log.info("--- 6/8 Execution stress ---")
+    execution_result = execution_stress_test(signals, backtester, train_ratio)
+    log.info("--- 7/8 Latency stress ---")
+    latency_result = latency_stress_test(signals, backtester, train_ratio)
+    log.info("--- 8/8 Edge decay ---")
+    decay_result = edge_decay_test(signals, backtester, train_ratio)
+
     all_pass = (
         threshold_result["stable"] and
         shuffle_result.get("significant", False) and
-        not ablation_result["fragile"]
+        not ablation_result["fragile"] and
+        placebo_result.get("collapsed", False)
     )
 
     return {
@@ -282,6 +414,11 @@ def run_all_robustness_tests(
         "threshold_sensitivity": threshold_result,
         "shuffle_test": shuffle_result,
         "ablation": ablation_result,
+        "placebo_matching": placebo_result,
+        "noise_injection": noise_result,
+        "execution_stress": execution_result,
+        "latency_stress": latency_result,
+        "edge_decay": decay_result,
     }
 
 
