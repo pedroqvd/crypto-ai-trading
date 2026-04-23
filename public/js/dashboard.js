@@ -648,41 +648,38 @@
       }
     }
 
-    // Feed filter state
-    let feedFilter = 'important'; // 'all' | 'important'
+    // Feed filter state — default 'all' so every scan/reject/monitor message is visible
+    let feedFilter = 'all'; // 'all' | 'important'
     const IMPORTANT_TYPES = ['opportunity', 'trade', 'risk'];
 
-    // Dedup map: msgKey → {el, count, ts} — prevents identical messages from flooding the feed
+    // Dedup map: msgKey → {el, count, ts} — collapses identical messages within DEDUP_WINDOW_MS
     const decisionDedupMap = new Map();
-    const DEDUP_WINDOW_MS = 10 * 60 * 1000; // collapse same message if it repeats within 10 min
+    const DEDUP_WINDOW_MS = 10 * 60 * 1000;
 
     function setupFeedFilter() {
-      const feed = els.decisionsFeed && els.decisionsFeed.parentElement;
-      if (!feed) return;
-      const existing = document.getElementById('feed-filter-bar');
-      if (existing) return;
+      if (!els.decisionsFeed || !els.decisionsFeed.parentElement) return;
+      if (document.getElementById('feed-filter-bar')) return;
 
       const bar = document.createElement('div');
       bar.id = 'feed-filter-bar';
       bar.style.cssText = 'display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.06);';
+      // 'Todos' is the active default, matching feedFilter = 'all'
       bar.innerHTML = `
-        <button id="ff-important" class="feed-filter-btn active" style="font-size:11px;padding:3px 10px;border-radius:20px;border:none;cursor:pointer;background:rgba(139,92,246,0.25);color:#a78bfa;font-weight:700;">Importantes</button>
-        <button id="ff-all" class="feed-filter-btn" style="font-size:11px;padding:3px 10px;border-radius:20px;border:none;cursor:pointer;background:transparent;color:var(--text3);font-weight:600;">Todos</button>
+        <button id="ff-all" class="feed-filter-btn" style="font-size:11px;padding:3px 10px;border-radius:20px;border:none;cursor:pointer;background:rgba(139,92,246,0.25);color:#a78bfa;font-weight:700;">Todos</button>
+        <button id="ff-important" class="feed-filter-btn" style="font-size:11px;padding:3px 10px;border-radius:20px;border:none;cursor:pointer;background:transparent;color:var(--text3);font-weight:600;">Importantes</button>
       `;
       els.decisionsFeed.before(bar);
 
       bar.addEventListener('click', (e) => {
         const btn = e.target.closest('.feed-filter-btn');
         if (!btn) return;
-        feedFilter = btn.id === 'ff-all' ? 'all' : 'important';
+        feedFilter = btn.id === 'ff-important' ? 'important' : 'all';
         bar.querySelectorAll('.feed-filter-btn').forEach(b => {
           b.style.background = b === btn ? 'rgba(139,92,246,0.25)' : 'transparent';
           b.style.color = b === btn ? '#a78bfa' : 'var(--text3)';
         });
-        // Re-render feed with new filter
         if (els.decisionsFeed) {
-          const items = els.decisionsFeed.querySelectorAll('.dec-line');
-          items.forEach(item => {
+          els.decisionsFeed.querySelectorAll('.dec-line').forEach(item => {
             const type = (item.className.match(/type-(\w+)/) || [])[1];
             item.style.display = (feedFilter === 'all' || IMPORTANT_TYPES.includes(type)) ? '' : 'none';
           });
@@ -694,10 +691,14 @@
       if (!els.decisionsFeed) return;
       setupFeedFilter();
       decisionDedupMap.clear();
-      els.decisionsFeed.innerHTML = decisions.length === 0
-        ? '<div class="empty-state">Aguardando oportunidades...</div>'
-        : '';
-      decisions.forEach(d => addDecision(d, false));
+      els.decisionsFeed.innerHTML = '';
+      if (decisions.length === 0) {
+        els.decisionsFeed.innerHTML = '<div class="empty-state">Aguardando oportunidades...</div>';
+        return;
+      }
+      // Prepend each in chronological order → newest lands at top, matching live-event behavior.
+      // Using prepend=true also populates the dedup map so live duplicates collapse correctly.
+      decisions.forEach(d => addDecision(d, true));
     }
 
     function addDecision(decision, prepend = true) {
@@ -720,25 +721,27 @@
             existing.el.appendChild(badge);
           }
           badge.textContent = '×' + existing.count;
-          // Refresh timestamp
           const tsEl = existing.el.querySelector('.dec-ts');
-          if (tsEl) tsEl.textContent = formatTime(decision.timestamp).split(' ')[1];
-          // Move to top so user can see it updated
+          if (tsEl) tsEl.textContent = formatTime(decision.timestamp).split(' ')[1] || '—';
           els.decisionsFeed.insertBefore(existing.el, els.decisionsFeed.firstChild);
           return;
         }
-        // Prune stale entries from map periodically
         if (decisionDedupMap.size > 200) {
           const cutoff = Date.now() - DEDUP_WINDOW_MS;
           for (const [k, v] of decisionDedupMap) { if (v.ts < cutoff) decisionDedupMap.delete(k); }
         }
       }
 
+      // Always remove the empty-state placeholder when real data arrives
+      const emptyEl = els.decisionsFeed.querySelector('.empty-state');
+      if (emptyEl) emptyEl.remove();
+
       const hidden = feedFilter === 'important' && !IMPORTANT_TYPES.includes(type);
       const el = document.createElement('div');
       el.className = `dec-line type-${type}`;
       if (hidden) el.style.display = 'none';
-      el.innerHTML = `<span class="dec-ts">${formatTime(decision.timestamp).split(' ')[1]}</span><span class="dec-icon">${iconMap[type] || '📋'}</span><span class="dec-msg">${escapeHtml(decision.message)}</span>`;
+      const timeStr = decision.timestamp ? (formatTime(decision.timestamp).split(' ')[1] || '—') : '—';
+      el.innerHTML = `<span class="dec-ts">${timeStr}</span><span class="dec-icon">${iconMap[type] || '📋'}</span><span class="dec-msg">${escapeHtml(decision.message)}</span>`;
 
       if (prepend) {
         els.decisionsFeed.insertBefore(el, els.decisionsFeed.firstChild);
