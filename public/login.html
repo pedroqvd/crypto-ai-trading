@@ -3,34 +3,45 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login — Polymarket AI Trader</title>
-  <meta name="description" content="Autenticação segura para o Polymarket AI Trader">
+  <title>Poly AI — Acesso</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/login.css">
 </head>
 <body>
-  <div class="login-container">
-    <!-- Background effects -->
-    <div class="bg-orb bg-orb-1"></div>
-    <div class="bg-orb bg-orb-2"></div>
-    <div class="bg-orb bg-orb-3"></div>
 
-    <div class="login-card glass">
-      <div class="login-header">
-        <div class="login-logo">🤖</div>
-        <h1>Polymarket AI Trader</h1>
-        <p class="login-subtitle">Acesso restrito — Apenas proprietário autorizado</p>
+  <!-- Animated grid background -->
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow-1" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow-2" aria-hidden="true"></div>
+
+  <div class="login-wrap">
+
+    <!-- Brand mark -->
+    <div class="brand-lockup">
+      <div class="brand-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+            stroke="#00e5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="brand-name">POLY AI</span>
+    </div>
+
+    <!-- Card -->
+    <div class="login-card">
+
+      <div class="card-header">
+        <h1>Entrar na conta</h1>
+        <p>Acesso exclusivo ao painel de operações</p>
       </div>
 
-      <form id="login-form" autocomplete="off">
-        <div class="form-group">
-          <label for="email">
-            <span class="label-icon">📧</span>
-            E-mail
-          </label>
+      <form id="login-form" autocomplete="off" novalidate>
+
+        <div class="field-group">
+          <label for="email">E-mail</label>
           <input
             type="email"
             id="email"
@@ -42,12 +53,9 @@
           >
         </div>
 
-        <div class="form-group">
-          <label for="password">
-            <span class="label-icon">🔑</span>
-            Senha
-          </label>
-          <div class="password-wrapper">
+        <div class="field-group">
+          <label for="password">Senha</label>
+          <div class="pass-wrap">
             <input
               type="password"
               id="password"
@@ -55,37 +63,42 @@
               required
               autocomplete="current-password"
               placeholder="••••••••"
-              minlength="8"
+              minlength="6"
             >
-            <button type="button" id="toggle-password" class="toggle-password" tabindex="-1" aria-label="Toggle password visibility">
-              👁️
+            <button type="button" id="toggle-password" class="pass-toggle" tabindex="-1" aria-label="Mostrar/ocultar senha">
+              <svg id="eye-open" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg id="eye-closed" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
             </button>
           </div>
         </div>
 
-        <div id="error-message" class="error-message" hidden>
-          <span class="error-icon">⚠️</span>
-          <span id="error-text"></span>
+        <!-- Error message — shown only when there's an error -->
+        <div id="error-message" class="error-box" hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="error-text">Credenciais inválidas</span>
         </div>
 
-        <button type="submit" id="login-btn" class="login-btn">
+        <button type="submit" id="login-btn" class="submit-btn">
           <span id="btn-text">Entrar</span>
-          <span id="btn-loading" class="loading-spinner" hidden></span>
+          <span id="btn-loading" hidden>
+            <svg class="spin-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+          </span>
         </button>
+
       </form>
 
-      <div class="login-footer">
-        <div class="security-badges">
-          <span class="security-badge">🔒 Criptografia AES-256</span>
-          <span class="security-badge">🛡️ Sessão JWT</span>
-          <span class="security-badge">⏱️ Rate Limiting</span>
-        </div>
+      <div class="card-footer">
+        <span class="sec-tag">🔒 AES-256</span>
+        <span class="sep">·</span>
+        <span class="sec-tag">🛡️ JWT</span>
+        <span class="sep">·</span>
+        <span class="sec-tag">⏱️ Rate Limiting</span>
       </div>
+
     </div>
 
-    <div class="login-warning">
-      <p>⚠️ Este sistema é de uso exclusivo. Tentativas não autorizadas são registradas.</p>
-    </div>
+    <p class="bottom-note">Sistema de uso exclusivo. Tentativas não autorizadas são registradas.</p>
+
   </div>
 
   <script src="/js/ui-helpers.js"></script>

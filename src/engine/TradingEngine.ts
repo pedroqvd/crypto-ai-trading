@@ -416,7 +416,6 @@ export class TradingEngine extends EventEmitter {
     await this.maybeSendDailyReport();
 
     this.emit('statusUpdate', this.getStatus());
-    this.emit('decisionsUpdate', this.getRecentDecisions(20));
   }
 
 
