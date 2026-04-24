@@ -18,7 +18,7 @@ import requests
 log = logging.getLogger(__name__)
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
-METACULUS_BASE = "https://www.metaculus.com/api2"
+METACULUS_BASE = "https://www.metaculus.com/api"   # v3 API (v2 returns 403)
 MANIFOLD_BASE = "https://api.manifold.markets/v0"
 
 
@@ -263,7 +263,7 @@ class MetaculusCollector:
         """
         next_url: Optional[str] = f"{METACULUS_BASE}/questions/"
         params = {
-            "type": "forecast",
+            "type": "binary",           # v3: "binary" (v2 used "forecast")
             "status": "open",           # OPEN ONLY — never resolved
             "order_by": "-activity",
             "limit": 100,
@@ -279,9 +279,21 @@ class MetaculusCollector:
                 break
 
             for q in data.get("results", []):
-                # Only binary questions
+                # Extract community probability — handle v2 and v3 response shapes
+                cp = None
                 pred = q.get("community_prediction", {})
-                cp = pred.get("full", {}).get("q2") if isinstance(pred, dict) else None
+                if isinstance(pred, dict):
+                    # v2: community_prediction.full.q2
+                    cp = pred.get("full", {}).get("q2")
+                    # v3 flat: community_prediction.q2
+                    if cp is None:
+                        cp = pred.get("q2")
+                # v3 aggregations path
+                if cp is None:
+                    agg = q.get("aggregations", {})
+                    latest = agg.get("recency_weighted", {}).get("latest") or {}
+                    means = latest.get("means") or []
+                    cp = means[0] if means else None
                 if cp is None:
                     continue
 
@@ -334,10 +346,9 @@ class ManifoldCollector:
         while fetched < limit:
             params: dict = {
                 "limit": 100,
-                "isResolved": "false",
+                "filter": "open",       # v0 API: "open" | "closed" | "resolved" | "all"
                 "outcomeType": "BINARY",
                 "sort": "liquidity",
-                "order": "desc",
             }
             if before:
                 params["before"] = before
