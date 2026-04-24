@@ -147,7 +147,7 @@ def main() -> int:
     log.info("─── Step 8: Backtesting ───")
     from backtest import Backtester
     backtester = Backtester(conn, bankroll=args.bankroll)
-    result = backtester.run(signals, train_ratio=args.train_ratio)
+    result = backtester.run(signals, train_ratio=args.train_ratio, embargo_days=14)
 
     # ── 7. ROBUSTNESS ──────────────────────────────────────────────────────
     robustness = None

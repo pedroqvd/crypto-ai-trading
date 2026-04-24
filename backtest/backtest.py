@@ -67,6 +67,7 @@ class BacktestResult:
     brier_score_strategy: float
     brier_score_baseline: float
     skill_score: float
+    skill_score_ci: tuple[float, float]   # (2.5th, 97.5th) bootstrap percentiles
     observed_wr: float
     expected_wr: float
     wr_excess: float
@@ -80,6 +81,7 @@ class BacktestResult:
     pnl_p05: float
     mean_abs_error: float
     n_unfilled: int
+    n_embargo_excluded: int               # signals dropped by the embargo filter
     trades: list[TradeResult] = field(default_factory=list)
     by_strategy: dict = field(default_factory=dict)
     by_source: dict = field(default_factory=dict)
@@ -220,9 +222,10 @@ class Backtester:
         execution_stress_mult: float = 1.0,
         latency_signal_to_order_sec: int = 5,
         latency_order_to_fill_sec: int = 10,
+        embargo_days: int = 14,
     ) -> BacktestResult:
         _empty = BacktestResult(
-            0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0
+            0, 1.0, 1.0, 0.0, (0.0, 0.0), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0
         )
 
         if not signals:
@@ -244,9 +247,30 @@ class Backtester:
         split_idx = int(len(resolvable) * train_ratio)
         test_set = resolvable[split_idx:]
 
+        # Embargo: drop test signals whose signal_date falls within embargo_days
+        # of the latest signal_date in the training set. Prevents near-boundary
+        # signals from carrying train-period information into the test evaluation.
+        n_embargo_excluded = 0
+        if embargo_days > 0 and split_idx > 0:
+            train_dates = [_parse_iso(item[0].price_date) for item in resolvable[:split_idx]]
+            train_dates = [d for d in train_dates if d is not None]
+            if train_dates:
+                cutoff = max(train_dates) + timedelta(days=embargo_days)
+                before = len(test_set)
+                test_set = [
+                    item for item in test_set
+                    if (_parse_iso(item[0].price_date) or cutoff) > cutoff
+                ]
+                n_embargo_excluded = before - len(test_set)
+                if n_embargo_excluded:
+                    log.info(
+                        "Embargo (%dd): excluded %d test signals too close to train boundary",
+                        embargo_days, n_embargo_excluded,
+                    )
+
         log.info(
-            "Backtest: %d signals → %d resolvable → %d in test set (train_ratio=%.1f)",
-            len(signals), len(resolvable), len(test_set), train_ratio,
+            "Backtest: %d signals → %d resolvable → %d in test set (train_ratio=%.1f, embargo=%dd)",
+            len(signals), len(resolvable), len(test_set), train_ratio, embargo_days,
         )
 
         trades: list[TradeResult] = []
@@ -367,6 +391,24 @@ class Backtester:
             np.mean(np.abs(np.array(strat_pred) - np.array(outcomes)))
         )
 
+        # ── BOOTSTRAP CI ON SKILL SCORE ───────────────────────────────────
+        # 1000 resamples with replacement; gives 95% CI for skill score.
+        # CI lower bound < 0.02 is a hard failure in the validator.
+        skill_score_ci: tuple[float, float] = (0.0, 0.0)
+        if len(trades) >= 20:
+            boot_skills: list[float] = []
+            for _ in range(1000):
+                idx = self.rng.integers(0, len(trades), size=len(trades))
+                bt = [trades[i] for i in idx]
+                bs_s = _brier_score([t.p_true for t in bt], [t.outcome for t in bt])
+                bs_b = _brier_score([t.expected_win_prob for t in bt], [t.outcome for t in bt])
+                boot_skills.append(1.0 - bs_s / bs_b if bs_b > 0 else 0.0)
+            arr_boot = np.array(boot_skills)
+            skill_score_ci = (
+                float(np.percentile(arr_boot, 2.5)),
+                float(np.percentile(arr_boot, 97.5)),
+            )
+
         # ── BREAKDOWNS ────────────────────────────────────────────────────
         by_strategy: dict[str, dict] = {}
         by_source: dict[str, dict] = {}
@@ -384,6 +426,7 @@ class Backtester:
             brier_score_strategy=bs_strat,
             brier_score_baseline=bs_baseline,
             skill_score=skill_score,
+            skill_score_ci=skill_score_ci,
             observed_wr=observed_wr,
             expected_wr=expected_wr,
             wr_excess=wr_excess,
@@ -397,6 +440,7 @@ class Backtester:
             pnl_p05=pnl_p05,
             mean_abs_error=mean_abs_error,
             n_unfilled=n_unfilled,
+            n_embargo_excluded=n_embargo_excluded,
             trades=trades,
             by_strategy=by_strategy,
             by_source=by_source,

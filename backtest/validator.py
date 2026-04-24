@@ -2,17 +2,19 @@
 Auto-validation — converts BacktestResult + robustness report into a binary verdict.
 
 Criteria for EDGE NÃO COMPROVADO (ANY failure → invalid):
-  C1. N trades ≥ 300
-  C2. Skill Score > 0.05
-  C3. EV > 0
-  C4. Drawdown < 30% of bankroll
-  C5. WR excess > 0.02   [observed_wr - expected_wr > 2pp — market-relative, not absolute]
-  C6. Match concordance ≥ 70%   [empirical outcome agreement between platforms]
-  C7. Shuffle test significant   [z-score > 2 — not a noise artifact]
-  C8. Threshold stable           [skill doesn't collapse at stricter thresholds]
+  C1.  N trades ≥ 1500      [statistical power: z=2 for SS=0.05 requires ~1500 trades]
+  C2.  Skill Score > 0.05
+  C2b. Skill CI lower > 0.02 [bootstrap 95% CI lower bound — rules out noise at N<2000]
+  C3.  EV > 0.5%
+  C4.  Drawdown < 20% of bankroll
+  C5.  WR excess > 3pp      [observed_wr - expected_wr — market-relative, not absolute]
+  C6.  Sharpe proxy ≥ 1.5
+  C7.  Match concordance ≥ 70%
+  C8.  Shuffle test significant  [cluster-stratified z > 2.576]
+  C9.  Threshold stable          [skill doesn't collapse at stricter thresholds]
 
-C1-C5 are primary metrics.
-C6-C8 are integrity checks — a positive C1-C5 is meaningless if C6-C8 fail.
+C1-C6 are primary metrics.
+C7-C9 are integrity checks — a positive C1-C6 is meaningless if C7-C9 fail.
 
 Calibration warning (not a hard criterion, but logged):
   mean_abs_error < 0.05 on N > 100 trades is suspicious — very accurate probability
@@ -26,13 +28,14 @@ from backtest import BacktestResult
 
 log = logging.getLogger(__name__)
 
-MIN_TRADES        = 400
-MIN_SKILL_SCORE   = 0.05
-MIN_EV            = 0.005   # 0.5% minimum EV per trade (not just > 0)
-MAX_DRAWDOWN_PCT  = 0.20    # tightened from 30%
-MIN_WR_EXCESS     = 0.03    # 3pp above expected (raised from 2pp)
-MIN_SHARPE_PROXY  = 1.5     # t-stat proxy — requires meaningful signal-to-noise
-MIN_CONCORDANCE   = 0.70
+MIN_TRADES         = 1500   # statistical power: z=2 for SS=0.05 requires ~1500 trades
+MIN_SKILL_SCORE    = 0.05
+MIN_SKILL_CI_LOWER = 0.02   # bootstrap 95% CI lower bound must exceed this
+MIN_EV             = 0.005  # 0.5% minimum EV per trade (not just > 0)
+MAX_DRAWDOWN_PCT   = 0.20   # tightened from 30%
+MIN_WR_EXCESS      = 0.03   # 3pp above expected (raised from 2pp)
+MIN_SHARPE_PROXY   = 1.5    # t-stat proxy — requires meaningful signal-to-noise
+MIN_CONCORDANCE    = 0.70
 SUSPICIOUS_MAE_THRESHOLD = 0.05   # very low MAE → possible lookahead
 
 
@@ -46,9 +49,12 @@ def validate(
     max_dd_pct = result.max_drawdown / bankroll if bankroll > 0 else 1.0
 
     # ── PRIMARY CHECKS ────────────────────────────────────────────────────
+    ci_lower = result.skill_score_ci[0] if result.skill_score_ci else 0.0
+    ci_upper = result.skill_score_ci[1] if result.skill_score_ci else 0.0
+
     checks: list[dict[str, Any]] = [
         {
-            "name": "N trades ≥ 400",
+            "name": "N trades ≥ 1500",
             "pass": result.n_trades >= MIN_TRADES,
             "value": result.n_trades,
             "threshold": MIN_TRADES,
@@ -59,6 +65,13 @@ def validate(
             "pass": result.skill_score > MIN_SKILL_SCORE,
             "value": round(result.skill_score, 4),
             "threshold": MIN_SKILL_SCORE,
+            "group": "primary",
+        },
+        {
+            "name": "Skill CI lower > 0.02",
+            "pass": ci_lower >= MIN_SKILL_CI_LOWER,
+            "value": round(ci_lower, 4),
+            "threshold": MIN_SKILL_CI_LOWER,
             "group": "primary",
         },
         {
@@ -104,15 +117,16 @@ def validate(
         "group": "integrity",
     })
 
+    shuffle_z = robustness.get("shuffle_test", {}).get("z_score") if robustness else None
     shuffle_significant = (
         robustness.get("shuffle_test", {}).get("significant", False)
         if robustness else False
     )
     checks.append({
-        "name": "Shuffle test significant (z>2)",
+        "name": "Shuffle test significant (z>2.576)",
         "pass": shuffle_significant,
-        "value": robustness.get("shuffle_test", {}).get("z_score") if robustness else None,
-        "threshold": 2.0,
+        "value": shuffle_z,
+        "threshold": 2.576,
         "group": "integrity",
     })
 
@@ -143,6 +157,16 @@ def validate(
             f"Negative return skew ({result.pnl_skew:.2f}): "
             "tail losses larger than tail gains — risk of ruin under live trading."
         )
+    if shuffle_z is not None and 2.0 < shuffle_z <= 2.576:
+        warnings.append(
+            f"Shuffle z-score in borderline zone ({shuffle_z:.2f}): above 2σ but "
+            "below 2.576σ — statistically marginal. Collect more data before trusting."
+        )
+    if result.n_embargo_excluded > 0:
+        log.info(
+            "Embargo excluded %d signals from test set (train/test boundary contamination guard)",
+            result.n_embargo_excluded,
+        )
 
     return {
         "verdict": "EDGE VALIDADO" if all_pass else "EDGE NÃO COMPROVADO",
@@ -151,9 +175,11 @@ def validate(
         "warnings": warnings,
         "metrics": {
             "n_trades": result.n_trades,
+            "n_embargo_excluded": result.n_embargo_excluded,
             "brier_strategy": round(result.brier_score_strategy, 6),
             "brier_baseline": round(result.brier_score_baseline, 6),
             "skill_score": round(result.skill_score, 4),
+            "skill_score_ci": (round(ci_lower, 4), round(ci_upper, 4)),
             "observed_wr": round(result.observed_wr, 4),
             "expected_wr": round(result.expected_wr, 4),
             "wr_excess": round(result.wr_excess, 4),
@@ -217,9 +243,13 @@ def print_report(verdict_data: dict[str, Any]) -> None:
     print()
     print("  METRICS (test window)")
     print(f"  {sep}")
-    print(f"  Trades (N)         : {m['n_trades']}")
+    ci = m.get("skill_score_ci", (0.0, 0.0))
+    embargo_excl = m.get("n_embargo_excluded", 0)
+    print(f"  Trades (N)         : {m['n_trades']}"
+          + (f"  (+{embargo_excl} excluded by embargo)" if embargo_excl else ""))
     print(f"  Brier (bot/mkt)    : {m['brier_strategy']} / {m['brier_baseline']}")
-    print(f"  Skill Score        : {m['skill_score']:+.4f}")
+    print(f"  Skill Score        : {m['skill_score']:+.4f}  "
+          f"[95% CI: {ci[0]:+.4f}, {ci[1]:+.4f}]")
     print(f"  WR observed/expect : {m['observed_wr']:.1%} / {m['expected_wr']:.1%}  "
           f"(excess: {m['wr_excess']:+.1%})")
     print(f"  Mean EV/trade      : {m['mean_ev']:+.4f}")
