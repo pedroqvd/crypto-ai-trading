@@ -1,12 +1,13 @@
 """
 Semantic question matching: Polymarket ↔ Metaculus / Manifold.
 
-Matching pipeline per pair:
+Matching pipeline per pair (all gates must pass):
   1. Embedding cosine similarity ≥ threshold (sentence-transformers)
-  2. Date compatibility: |end_date - resolve_time| ≤ 45 days
-  3. Entity overlap: ≥ 1 shared capitalized token or year
+  2. Date compatibility: both dates must exist AND be within 45 days
+  3. Entity overlap: ≥ 2 shared capitalized tokens or years
+  4. Structural compatibility: same negation polarity, question family, numeric targets
 
-A pair passes only if ALL three conditions hold.
+A pair passes only if ALL four conditions hold.
 
 Empirical concordance validation:
   For matched pairs where both sides are resolved, compare binary outcomes.
@@ -33,6 +34,7 @@ DEFAULT_THRESHOLD = 0.80        # conservative starting point
 MAX_DATE_DELTA_DAYS = 45        # resolution dates must be within 45 days
 MIN_CONCORDANCE = 0.70          # below this → system is invalid
 MIN_CONCORDANCE_N = 30          # minimum resolved pairs to trust concordance estimate
+MIN_ENTITY_OVERLAP = 2          # aggressive rejection of weak entity overlap
 
 _model = None
 
@@ -78,13 +80,13 @@ def _parse_date(s: Optional[str]) -> Optional[datetime]:
 
 
 def dates_compatible(poly_end_date: Optional[str], meta_resolve_time: Optional[str]) -> bool:
-    """True if dates are within MAX_DATE_DELTA_DAYS, or if either is missing."""
+    """True only if both dates exist and are within MAX_DATE_DELTA_DAYS."""
     if not poly_end_date or not meta_resolve_time:
-        return True  # can't check; allow but flag later
+        return False   # missing date = cannot verify = reject
     a = _parse_date(poly_end_date)
     b = _parse_date(meta_resolve_time)
     if a is None or b is None:
-        return True
+        return False
     return abs((a - b).days) <= MAX_DATE_DELTA_DAYS
 
 
@@ -114,13 +116,54 @@ def _key_tokens(text: str) -> set[str]:
 def entities_compatible(poly_q: str, meta_q: str, min_overlap: int = 1) -> bool:
     """
     True if the two questions share at least min_overlap key tokens.
-    If either question has no key tokens, returns True (can't reject).
+    If either question has no key tokens, rejects the pair (can't verify equivalence).
     """
     pt = _key_tokens(poly_q)
     mt = _key_tokens(meta_q)
     if not pt or not mt:
-        return True
+        return False   # no entities → unverifiable → reject
     return len(pt & mt) >= min_overlap
+
+
+def structural_compatible(poly_q: str, ext_q: str) -> bool:
+    """
+    Hard structural gate — three checks:
+      1. Same negation polarity (both or neither contain negation tokens)
+      2. Same question form family (will / who / when / can / other)
+      3. If both contain numeric targets, they must overlap
+
+    These catch cases where embedding similarity is high but the questions
+    are logically opposite or have different numeric thresholds.
+    """
+    neg_tokens = {"not", "n't", "no", "never", "sem"}
+    pq = poly_q.lower()
+    eq = ext_q.lower()
+
+    poly_neg = any(t in pq for t in neg_tokens)
+    ext_neg  = any(t in eq for t in neg_tokens)
+    if poly_neg != ext_neg:
+        return False
+
+    def _family(q: str) -> str:
+        if "will " in q or q.startswith("will"):
+            return "will"
+        if "who " in q or q.startswith("who"):
+            return "who"
+        if "when " in q or q.startswith("when"):
+            return "when"
+        if "can " in q or q.startswith("can"):
+            return "can"
+        return "other"
+
+    if _family(pq) != _family(eq):
+        return False
+
+    nums_a = set(re.findall(r"\b\d{1,4}\b", pq))
+    nums_b = set(re.findall(r"\b\d{1,4}\b", eq))
+    if nums_a and nums_b and not (nums_a & nums_b):
+        return False
+
+    return True
 
 
 # ──────────────────────────────────────────────
@@ -164,9 +207,16 @@ def _run_matching(
         if not date_ok:
             continue
 
-        # Entity check
-        entity_ok = entities_compatible(poly_row["question"], ext_questions[best_j])
+        # Entity check (min overlap raised to MIN_ENTITY_OVERLAP)
+        entity_ok = entities_compatible(
+            poly_row["question"], ext_questions[best_j], min_overlap=MIN_ENTITY_OVERLAP
+        )
         if not entity_ok:
+            continue
+
+        # Structural check: negation polarity, question family, numeric targets
+        structural_ok = structural_compatible(poly_row["question"], ext_questions[best_j])
+        if not structural_ok:
             continue
 
         source_id = str(ext_row["id"])
@@ -175,7 +225,10 @@ def _run_matching(
                 INSERT OR IGNORE INTO matched_pairs
                     (poly_id, source, source_id, similarity, date_compatible, entity_overlap, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (poly_row["id"], source, source_id, best_sim, int(date_ok), int(entity_ok), now))
+            """, (
+                poly_row["id"], source, source_id, best_sim,
+                int(date_ok), int(entity_ok and structural_ok), now,
+            ))
             added += 1
         except sqlite3.Error as e:
             log.error("DB error: %s", e)

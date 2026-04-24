@@ -1,29 +1,22 @@
 """
-Robustness tests — three mandatory checks before accepting any backtest result.
-
-1. Threshold sensitivity   — skill score should be STABLE as threshold rises 0.75→0.90.
-                             If skill collapses above 0.80 → edge is driven by weak matches.
-
-2. Shuffle test (null model) — randomly permute market outcomes, rerun backtest.
-                             Resulting skill score should be ≈ 0 (±noise).
-                             If positive and significant → structural bias or bug.
-
-3. Ablation — remove Metaculus, remove Manifold, remove negRisk.
-              Identifies which component is load-bearing.
-              If removing one source makes skill → 0 → all eggs in one basket (risk).
-
-All tests run on the SAME signal set and test split used by the main backtest,
-ensuring comparability.
-
-Interpretation guide:
-  Threshold test: stable skill (< 20% drop from 0.75 to 0.90) → robust matching
-  Shuffle test: |shuffle_mean_skill| < 0.02 → no structural bias
-  Ablation: skill positive with both sources individually → not fragile
+Robustness suite (8 checks):
+  1) Threshold sensitivity    — skill stable across 0.75→0.90
+  2) Shuffle null-model       — skill collapses with permuted outcomes (z > 2)
+  3) Ablation by source       — each source individually shows positive skill
+  4) Placebo matching         — shuffling p_true collapses skill
+  5) Noise injection          — skill degrades gracefully with Gaussian noise on p_true
+  6) Execution stress         — skill survives 2× and 3× spread/slippage multiplier
+  7) Latency stress           — skill survives 30s and 60s signal-to-fill latency
+  8) Edge decay               — signal-to-resolution horizon distribution
 """
 
 import logging
 import random
 import sqlite3
+from dataclasses import replace
+from datetime import datetime
+
+
 import numpy as np
 
 from backtest import Backtester
@@ -248,6 +241,216 @@ def ablation_test(
 
 
 # ──────────────────────────────────────────────
+# TESTS 4–8 (from PR #35)
+# ──────────────────────────────────────────────
+
+def placebo_matching_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+) -> dict:
+    """
+    Shuffle p_true across signals while keeping outcomes fixed.
+    If real edge exists, skill should collapse when p_true is randomly re-assigned
+    to different markets. If it doesn't collapse → structural data leak, not real edge.
+    """
+    if len(signals) < 20:
+        return {"valid": False, "reason": "too_few_signals"}
+
+    rng = random.Random(123)
+    shuffled_probs = [s.p_true for s in signals]
+    rng.shuffle(shuffled_probs)
+
+    placebo = [
+        replace(
+            s,
+            p_true=max(0.001, min(0.999, p)),
+            ev=s.ev + (p - s.p_true),
+            kelly_f=max(0.0, s.kelly_f * 0.5),
+        )
+        for s, p in zip(signals, shuffled_probs)
+    ]
+
+    base   = backtester.run(signals, train_ratio=train_ratio)
+    result = backtester.run(placebo, train_ratio=train_ratio)
+
+    collapsed = result.skill_score < base.skill_score * 0.5
+
+    return {
+        "valid": True,
+        "real_skill": round(base.skill_score, 4),
+        "placebo_skill": round(result.skill_score, 4),
+        "collapsed": collapsed,
+        "interpretation": (
+            "GOOD — skill collapsed on placebo (edge is in the matching)"
+            if collapsed else
+            "BAD — skill did not collapse; p_true assignment may not matter"
+        ),
+    }
+
+
+def noise_injection_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+    noise_levels: list[float] = [0.01, 0.02, 0.03],
+) -> dict:
+    """
+    Add Gaussian noise N(0, σ) to p_true. Real edge should degrade
+    proportionally and monotonically. Non-monotonic degradation → fragility.
+    """
+    rng = np.random.default_rng(7)
+    base = backtester.run(signals, train_ratio=train_ratio)
+    by_noise = []
+
+    for sigma in noise_levels:
+        noisy = [
+            replace(s, p_true=float(max(0.001, min(0.999, s.p_true + rng.normal(0, sigma)))))
+            for s in signals
+        ]
+        r = backtester.run(noisy, train_ratio=train_ratio)
+        by_noise.append({
+            "sigma": sigma,
+            "skill_score": round(r.skill_score, 4),
+            "wr_excess":   round(r.wr_excess, 4),
+        })
+
+    # Monotone degradation check
+    skills = [r["skill_score"] for r in by_noise]
+    monotone = all(skills[i] >= skills[i + 1] for i in range(len(skills) - 1))
+
+    return {
+        "base_skill": round(base.skill_score, 4),
+        "by_noise": by_noise,
+        "monotone_degradation": monotone,
+        "interpretation": (
+            "GOOD — skill degrades monotonically with noise"
+            if monotone else
+            "WARNING — non-monotone degradation indicates fragile signal"
+        ),
+    }
+
+
+def execution_stress_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+    stress_levels: list[float] = [1.0, 2.0, 3.0],
+) -> dict:
+    """
+    Test with escalating execution stress multipliers.
+    Edge must survive at least 2× stress to be tradeable in real conditions.
+    """
+    out = []
+    for mult in stress_levels:
+        r = backtester.run(
+            signals,
+            train_ratio=train_ratio,
+            execution_stress_mult=mult,
+        )
+        out.append({
+            "stress_mult": mult,
+            "n_trades":    r.n_trades,
+            "skill_score": round(r.skill_score, 4),
+            "total_pnl":   round(r.total_pnl, 2),
+            "n_unfilled":  r.n_unfilled,
+        })
+
+    survives_2x = next((r for r in out if r["stress_mult"] == 2.0), {}).get("skill_score", -1) > 0
+
+    return {
+        "by_stress": out,
+        "survives_2x": survives_2x,
+        "interpretation": (
+            "GOOD — edge survives 2× execution stress"
+            if survives_2x else
+            "BAD — edge disappears at 2× stress; likely too fragile for live trading"
+        ),
+    }
+
+
+def latency_stress_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+    latencies_sec: list[int] = [1, 5, 30, 60],
+) -> dict:
+    """
+    Test with escalating signal-to-fill latency.
+    Edge should survive realistic latencies (≤ 30s for an automated system).
+    """
+    out = []
+    for sec in latencies_sec:
+        r = backtester.run(
+            signals,
+            train_ratio=train_ratio,
+            latency_signal_to_order_sec=sec,
+            latency_order_to_fill_sec=sec,
+        )
+        out.append({
+            "latency_sec": sec,
+            "n_trades":    r.n_trades,
+            "wr_excess":   round(r.wr_excess, 4),
+            "total_pnl":   round(r.total_pnl, 2),
+            "n_unfilled":  r.n_unfilled,
+        })
+
+    survives_30s = next((r for r in out if r["latency_sec"] == 30), {}).get("total_pnl", -1) > 0
+
+    return {
+        "by_latency": out,
+        "survives_30s": survives_30s,
+        "interpretation": (
+            "GOOD — edge survives 30s latency"
+            if survives_30s else
+            "BAD — edge requires sub-30s execution; requires low-latency infrastructure"
+        ),
+    }
+
+
+def edge_decay_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+) -> dict:
+    """
+    Proxy for edge durability: distribution of signal-to-resolution horizons.
+    Short horizons (< 7 days) are high-noise; long horizons (> 90 days) are
+    more reliable but require more capital at risk.
+    """
+    base = backtester.run(signals, train_ratio=train_ratio)
+    if not base.trades:
+        return {"valid": False, "reason": "no_trades"}
+
+    horizons = []
+    for t in base.trades:
+        try:
+            sdt = datetime.fromisoformat(t.signal_date.replace("Z", "+00:00"))
+            rdt = datetime.fromisoformat(t.resolution_date.replace("Z", "+00:00"))
+            horizons.append((rdt - sdt).total_seconds() / 86400)
+        except Exception:
+            pass
+
+    if len(horizons) < 10:
+        return {"valid": False, "reason": "insufficient_horizon_data"}
+
+    arr = np.array(horizons)
+    return {
+        "valid": True,
+        "n": len(horizons),
+        "median_horizon_days": round(float(np.median(arr)), 2),
+        "p25_horizon_days":    round(float(np.percentile(arr, 25)), 2),
+        "p75_horizon_days":    round(float(np.percentile(arr, 75)), 2),
+        "pct_below_7d":        round(float(np.mean(arr < 7)) * 100, 1),
+        "interpretation": (
+            "WARNING — >30% of signals resolve within 7 days (high-noise horizon)"
+            if float(np.mean(arr < 7)) > 0.30 else
+            "OK — majority of signals have adequate horizon"
+        ),
+    }
+
+
+# ──────────────────────────────────────────────
 # COMBINED REPORT
 # ──────────────────────────────────────────────
 
@@ -260,19 +463,35 @@ def run_all_robustness_tests(
 ) -> dict:
     log.info("=== Running robustness tests ===")
 
-    log.info("--- 1/3 Threshold sensitivity ---")
+    log.info("--- 1/8 Threshold sensitivity ---")
     threshold_result = threshold_sensitivity_test(conn, backtester, train_ratio=train_ratio)
 
-    log.info("--- 2/3 Shuffle test (n=%d) ---", n_shuffle)
+    log.info("--- 2/8 Shuffle test (n=%d) ---", n_shuffle)
     shuffle_result = shuffle_test(conn, signals, backtester, n_shuffle, train_ratio)
 
-    log.info("--- 3/3 Ablation test ---")
+    log.info("--- 3/8 Ablation test ---")
     ablation_result = ablation_test(conn, backtester, train_ratio)
+
+    log.info("--- 4/8 Placebo matching ---")
+    placebo_result = placebo_matching_test(signals, backtester, train_ratio)
+
+    log.info("--- 5/8 Noise injection ---")
+    noise_result = noise_injection_test(signals, backtester, train_ratio)
+
+    log.info("--- 6/8 Execution stress ---")
+    execution_result = execution_stress_test(signals, backtester, train_ratio)
+
+    log.info("--- 7/8 Latency stress ---")
+    latency_result = latency_stress_test(signals, backtester, train_ratio)
+
+    log.info("--- 8/8 Edge decay ---")
+    decay_result = edge_decay_test(signals, backtester, train_ratio)
 
     all_pass = (
         threshold_result["stable"] and
         shuffle_result.get("significant", False) and
-        not ablation_result["fragile"]
+        not ablation_result["fragile"] and
+        placebo_result.get("collapsed", False)
     )
 
     return {
@@ -280,6 +499,11 @@ def run_all_robustness_tests(
         "threshold_sensitivity": threshold_result,
         "shuffle_test": shuffle_result,
         "ablation": ablation_result,
+        "placebo_matching": placebo_result,
+        "noise_injection": noise_result,
+        "execution_stress": execution_result,
+        "latency_stress": latency_result,
+        "edge_decay": decay_result,
     }
 
 
@@ -323,5 +547,57 @@ def print_robustness_report(report: dict) -> None:
     for r in ab["by_config"]:
         print(f"  {r['config']:<22}  N={r['n_trades']:>4}  skill={r['skill_score']:>+.4f}")
     print(f"  {ab['interpretation']}")
+
+    pl = report.get("placebo_matching", {})
+    if pl and pl.get("valid", True):
+        print()
+        print("  4. PLACEBO MATCHING")
+        print(f"  {sep}")
+        print(f"  Real skill:    {pl.get('real_skill', 0):+.4f}")
+        print(f"  Placebo skill: {pl.get('placebo_skill', 0):+.4f}")
+        print(f"  Collapsed:     {'YES ✓' if pl.get('collapsed') else 'NO ✗'}")
+        print(f"  {pl.get('interpretation', '')}")
+
+    ns = report.get("noise_injection", {})
+    if ns:
+        print()
+        print("  5. NOISE INJECTION")
+        print(f"  {sep}")
+        print(f"  Base skill: {ns.get('base_skill', 0):+.4f}")
+        for r in ns.get("by_noise", []):
+            print(f"  σ={r['sigma']:.1%}  skill={r['skill_score']:>+.4f}  WR_excess={r['wr_excess']:>+.4f}")
+        print(f"  Monotone: {'YES ✓' if ns.get('monotone_degradation') else 'NO ✗'}")
+
+    ex = report.get("execution_stress", {})
+    if ex:
+        print()
+        print("  6. EXECUTION STRESS")
+        print(f"  {sep}")
+        for r in ex.get("by_stress", []):
+            print(f"  x{r['stress_mult']:.1f}  N={r['n_trades']:>4}  skill={r['skill_score']:>+.4f}  "
+                  f"PnL=${r['total_pnl']:>8.2f}  unfilled={r['n_unfilled']}")
+        print(f"  {ex.get('interpretation', '')}")
+
+    lt = report.get("latency_stress", {})
+    if lt:
+        print()
+        print("  7. LATENCY STRESS")
+        print(f"  {sep}")
+        for r in lt.get("by_latency", []):
+            print(f"  {r['latency_sec']:>3}s  N={r['n_trades']:>4}  "
+                  f"WR_excess={r['wr_excess']:>+.4f}  PnL=${r['total_pnl']:>8.2f}  "
+                  f"unfilled={r['n_unfilled']}")
+        print(f"  {lt.get('interpretation', '')}")
+
+    ed = report.get("edge_decay", {})
+    if ed and ed.get("valid"):
+        print()
+        print("  8. EDGE DECAY / HORIZON")
+        print(f"  {sep}")
+        print(f"  Median horizon (days): {ed['median_horizon_days']}")
+        print(f"  P25 / P75 (days):      {ed['p25_horizon_days']} / {ed['p75_horizon_days']}")
+        print(f"  % resolving < 7d:      {ed['pct_below_7d']:.1f}%")
+        print(f"  {ed.get('interpretation', '')}")
+
     print("=" * width)
     print()

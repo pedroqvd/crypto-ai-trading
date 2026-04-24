@@ -26,12 +26,13 @@ from backtest import BacktestResult
 
 log = logging.getLogger(__name__)
 
-MIN_TRADES       = 300
-MIN_SKILL_SCORE  = 0.05
-MIN_EV           = 0.0
-MAX_DRAWDOWN_PCT  = 0.30
-MIN_WR_EXCESS    = 0.02   # observed_wr must exceed expected_wr by at least 2pp
-MIN_CONCORDANCE  = 0.70
+MIN_TRADES        = 400
+MIN_SKILL_SCORE   = 0.05
+MIN_EV            = 0.005   # 0.5% minimum EV per trade (not just > 0)
+MAX_DRAWDOWN_PCT  = 0.20    # tightened from 30%
+MIN_WR_EXCESS     = 0.03    # 3pp above expected (raised from 2pp)
+MIN_SHARPE_PROXY  = 1.5     # t-stat proxy — requires meaningful signal-to-noise
+MIN_CONCORDANCE   = 0.70
 SUSPICIOUS_MAE_THRESHOLD = 0.05   # very low MAE → possible lookahead
 
 
@@ -47,7 +48,7 @@ def validate(
     # ── PRIMARY CHECKS ────────────────────────────────────────────────────
     checks: list[dict[str, Any]] = [
         {
-            "name": "N trades ≥ 300",
+            "name": "N trades ≥ 400",
             "pass": result.n_trades >= MIN_TRADES,
             "value": result.n_trades,
             "threshold": MIN_TRADES,
@@ -61,24 +62,31 @@ def validate(
             "group": "primary",
         },
         {
-            "name": "Mean EV > 0",
+            "name": "Mean EV > 0.5%",
             "pass": result.mean_ev > MIN_EV,
             "value": round(result.mean_ev, 4),
             "threshold": MIN_EV,
             "group": "primary",
         },
         {
-            "name": "Max Drawdown < 30%",
+            "name": "Max Drawdown < 20%",
             "pass": max_dd_pct < MAX_DRAWDOWN_PCT,
             "value": round(max_dd_pct, 4),
             "threshold": MAX_DRAWDOWN_PCT,
             "group": "primary",
         },
         {
-            "name": "WR excess > 2pp",
+            "name": "WR excess > 3pp",
             "pass": result.wr_excess > MIN_WR_EXCESS,
             "value": round(result.wr_excess, 4),
             "threshold": MIN_WR_EXCESS,
+            "group": "primary",
+        },
+        {
+            "name": "Sharpe proxy ≥ 1.5",
+            "pass": result.sharpe_proxy >= MIN_SHARPE_PROXY,
+            "value": round(result.sharpe_proxy, 4),
+            "threshold": MIN_SHARPE_PROXY,
             "group": "primary",
         },
     ]
