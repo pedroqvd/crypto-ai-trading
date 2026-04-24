@@ -51,13 +51,18 @@ COPY backtest/data_collector.py  ./backtest/data_collector.py
 COPY backtest/price_recorder.py  ./backtest/price_recorder.py
 COPY backtest/snapshot_daemon.py ./backtest/snapshot_daemon.py
 
-# Script de inicialização: sobe o daemon Python em background + Node.js em foreground
-COPY start.sh /app/start.sh
-
 # Cria diretórios persistentes com permissão correta
-RUN mkdir -p data logs backtest && \
-    chmod +x /app/start.sh && \
-    chown -R bot:bot /app
+RUN mkdir -p data logs backtest && chown -R bot:bot /app
+
+# Script de inicialização: sobe o daemon Python em background + Node.js em foreground
+RUN cat > /app/start.sh << 'EOF'
+#!/bin/sh
+cd /app/backtest
+python3 snapshot_daemon.py --db /data/backtest.db --price-interval 300 &
+cd /app
+exec node dist/index.js
+EOF
+RUN chmod +x /app/start.sh
 
 # Troca para usuário não-root
 USER bot
