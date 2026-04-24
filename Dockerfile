@@ -30,6 +30,9 @@ FROM node:20-alpine AS runtime
 LABEL maintainer="pedroqvd"
 LABEL description="Polymarket Autonomous AI Trader"
 
+# Python3 + requests para o snapshot daemon (sem torch/sentence-transformers)
+RUN apk add --no-cache python3 py3-requests
+
 # Cria usuário não-root para segurança
 RUN addgroup -S bot && adduser -S bot -G bot
 
@@ -43,8 +46,18 @@ COPY --from=builder /app/package.json ./package.json
 # Copia assets estáticos do dashboard
 COPY public/ ./public/
 
+# Copia scripts de coleta de dados (apenas os que rodam em produção)
+COPY backtest/data_collector.py  ./backtest/data_collector.py
+COPY backtest/price_recorder.py  ./backtest/price_recorder.py
+COPY backtest/snapshot_daemon.py ./backtest/snapshot_daemon.py
+
+# Script de inicialização: sobe o daemon Python em background + Node.js em foreground
+COPY start.sh /app/start.sh
+
 # Cria diretórios persistentes com permissão correta
-RUN mkdir -p data logs && chown -R bot:bot /app
+RUN mkdir -p data logs backtest && \
+    chmod +x /app/start.sh && \
+    chown -R bot:bot /app
 
 # Troca para usuário não-root
 USER bot
@@ -56,5 +69,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget -qO- http://localhost:3000/api/health || exit 1
 
-# Inicia o bot compilado
-CMD ["node", "dist/index.js"]
+# Sobe daemon de snapshots + bot Node.js
+CMD ["/app/start.sh"]
