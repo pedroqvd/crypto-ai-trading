@@ -54,16 +54,6 @@ COPY backtest/snapshot_daemon.py ./backtest/snapshot_daemon.py
 # Cria diretórios persistentes com permissão correta
 RUN mkdir -p data logs backtest && chown -R bot:bot /app
 
-# Script de inicialização: sobe o daemon Python em background + Node.js em foreground
-RUN cat > /app/start.sh << 'EOF'
-#!/bin/sh
-cd /app/backtest
-python3 snapshot_daemon.py --db /data/backtest.db --price-interval 300 &
-cd /app
-exec node dist/index.js
-EOF
-RUN chmod +x /app/start.sh
-
 # Troca para usuário não-root
 USER bot
 
@@ -74,5 +64,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget -qO- http://localhost:3000/api/health || exit 1
 
-# Sobe daemon de snapshots + bot Node.js
-CMD ["/app/start.sh"]
+# Sobe daemon de snapshots em background + bot Node.js em foreground
+CMD sh -c 'cd backtest && python3 snapshot_daemon.py --db /data/backtest.db --price-interval 300 & cd /app && node dist/index.js'
