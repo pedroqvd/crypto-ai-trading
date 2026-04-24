@@ -1,29 +1,24 @@
 """
-Robustness tests — three mandatory checks before accepting any backtest result.
-
-1. Threshold sensitivity   — skill score should be STABLE as threshold rises 0.75→0.90.
-                             If skill collapses above 0.80 → edge is driven by weak matches.
-
-2. Shuffle test (null model) — randomly permute market outcomes, rerun backtest.
-                             Resulting skill score should be ≈ 0 (±noise).
-                             If positive and significant → structural bias or bug.
-
-3. Ablation — remove Metaculus, remove Manifold, remove negRisk.
-              Identifies which component is load-bearing.
-              If removing one source makes skill → 0 → all eggs in one basket (risk).
-
-All tests run on the SAME signal set and test split used by the main backtest,
-ensuring comparability.
-
-Interpretation guide:
-  Threshold test: stable skill (< 20% drop from 0.75 to 0.90) → robust matching
-  Shuffle test: |shuffle_mean_skill| < 0.02 → no structural bias
-  Ablation: skill positive with both sources individually → not fragile
+Robustness suite (10 checks):
+  1)  Threshold sensitivity    — skill stable across 0.75→0.90
+  2)  Shuffle null-model       — skill collapses with cluster-stratified outcome permutation (z > 2.576)
+  3)  Ablation by source       — each source individually shows positive skill
+  4)  Placebo matching         — shuffling p_true collapses skill
+  5)  Noise injection          — skill degrades gracefully with Gaussian noise on p_true
+  6)  Execution stress         — skill survives 2× and 3× spread/slippage multiplier
+  7)  Latency stress           — skill survives 30s and 60s signal-to-fill latency
+  8)  Edge decay               — signal-to-resolution horizon distribution
+  9)  Cluster concentration    — PnL not concentrated in a single event cluster
+  10) Forecaster density       — edge does not exclusively require high forecaster count
 """
 
 import logging
 import random
 import sqlite3
+from dataclasses import replace
+from datetime import datetime
+
+
 import numpy as np
 
 from backtest import Backtester
@@ -108,19 +103,23 @@ def shuffle_test(
     train_ratio: float = 0.6,
 ) -> dict:
     """
-    Randomly permute market outcomes N times and compute the skill score distribution.
+    Cluster-stratified null model: permute outcome *assignments at the event-group
+    level* rather than permuting individual market outcomes.
 
-    A real edge should produce a real skill score >> shuffled distribution.
-    If shuffle_mean_skill ≈ real_skill → the edge is not from predictions,
-    it's from a structural bias (selection bias, lookahead, or code bug).
+    Why cluster-stratified?
+      In negRisk groups, multiple markets share an event_group_id and their
+      outcomes are correlated (mutually exclusive). A global shuffle breaks that
+      correlation structure, making the null model artificially easy to beat and
+      inflating the z-score. By shuffling group-level outcome blocks, we preserve
+      within-group outcome structure while destroying cross-group predictive power.
 
-    The outcome permutation is applied via outcome_override — the DB is never modified.
+    Significance threshold: z > 2.576 (p ≈ 0.005) — stricter than the
+    conventional 2.0 to reduce false positives given the small N typical in
+    early-stage backtests.
     """
-    # Get real result first
     real_result = backtester.run(signals, train_ratio=train_ratio)
     real_skill = real_result.skill_score
 
-    # Gather all market outcomes that are resolvable
     all_resolutions = conn.execute("""
         SELECT market_id, outcome FROM poly_resolutions
         WHERE outcome IN ('YES', 'NO')
@@ -132,20 +131,50 @@ def shuffle_test(
             "shuffle_mean": None,
             "shuffle_std": None,
             "z_score": None,
+            "significant": False,
+            "warn_weak_z": False,
             "valid": False,
             "reason": "too few resolutions to shuffle",
         }
 
-    market_ids = [r["market_id"] for r in all_resolutions]
-    outcomes_raw = [1.0 if r["outcome"] == "YES" else 0.0 for r in all_resolutions]
+    # Build event-group → [(market_id, outcome)] mapping using signal metadata
+    sig_group: dict[str, str] = {s.market_id: (s.event_group_id or s.market_id) for s in signals}
+    outcome_map: dict[str, float] = {
+        r["market_id"]: (1.0 if r["outcome"] == "YES" else 0.0)
+        for r in all_resolutions
+    }
+
+    from collections import defaultdict
+    group_to_markets: dict[str, list[str]] = defaultdict(list)
+    for mid, outcome in outcome_map.items():
+        group = sig_group.get(mid, mid)
+        group_to_markets[group].append(mid)
+
+    group_ids = list(group_to_markets.keys())
+    # Snapshot of outcomes per group (as a list to preserve within-group structure)
+    group_outcome_blocks: list[list[tuple[str, float]]] = [
+        [(mid, outcome_map[mid]) for mid in group_to_markets[g]]
+        for g in group_ids
+    ]
 
     shuffle_skills: list[float] = []
-    rng = random.Random(42)  # deterministic seed for reproducibility
+    rng = random.Random(42)
 
     for _ in range(n_iterations):
-        shuffled = outcomes_raw.copy()
-        rng.shuffle(shuffled)
-        override = dict(zip(market_ids, shuffled))
+        # Shuffle which group gets which outcome block
+        shuffled_blocks = group_outcome_blocks.copy()
+        rng.shuffle(shuffled_blocks)
+
+        override: dict[str, float] = {}
+        for g_idx, gid in enumerate(group_ids):
+            original_mids = group_to_markets[gid]
+            shuffled_block = shuffled_blocks[g_idx]
+            # Assign shuffled block outcomes to this group's markets positionally
+            for i, mid in enumerate(original_mids):
+                if i < len(shuffled_block):
+                    override[mid] = shuffled_block[i][1]
+                else:
+                    override[mid] = shuffled_block[0][1]
 
         result = backtester.run(signals, train_ratio=train_ratio, outcome_override=override)
         shuffle_skills.append(result.skill_score)
@@ -155,21 +184,26 @@ def shuffle_test(
     std = float(np.std(arr))
     z   = (real_skill - mu) / std if std > 0 else 0.0
 
-    # Edge is real only if real_skill is > 2 standard deviations above shuffle mean
-    significant = z > 2.0
+    significant = z > 2.576
+    warn_weak_z = not significant and z > 2.0
 
     return {
-        "real_skill": round(real_skill, 4),
+        "real_skill":   round(real_skill, 4),
         "shuffle_mean": round(mu, 4),
-        "shuffle_std": round(std, 4),
-        "z_score": round(z, 2),
+        "shuffle_std":  round(std, 4),
+        "z_score":      round(z, 2),
         "n_iterations": n_iterations,
-        "significant": significant,
+        "significant":  significant,
+        "warn_weak_z":  warn_weak_z,
         "interpretation": (
-            f"SIGNAL (z={z:.1f}): real skill significantly above random baseline"
-            if significant else
-            f"NOISE (z={z:.1f}): real skill not distinguishable from shuffled outcomes — "
-            "indicates lookahead bias, structural data leak, or code bug"
+            f"SIGNAL (z={z:.2f}): real skill significantly above cluster-permuted baseline"
+            if significant else (
+                f"BORDERLINE (z={z:.2f}): marginally above 2σ but below 2.576σ — "
+                "collect more data before trusting this result"
+                if warn_weak_z else
+                f"NOISE (z={z:.2f}): real skill indistinguishable from cluster-shuffled "
+                "outcomes — indicates lookahead bias, structural leak, or code bug"
+            )
         ),
     }
 
@@ -248,6 +282,336 @@ def ablation_test(
 
 
 # ──────────────────────────────────────────────
+# TESTS 4–8 (from PR #35)
+# ──────────────────────────────────────────────
+
+def placebo_matching_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+) -> dict:
+    """
+    Shuffle p_true across signals while keeping outcomes fixed.
+    If real edge exists, skill should collapse when p_true is randomly re-assigned
+    to different markets. If it doesn't collapse → structural data leak, not real edge.
+    """
+    if len(signals) < 20:
+        return {"valid": False, "reason": "too_few_signals"}
+
+    rng = random.Random(123)
+    shuffled_probs = [s.p_true for s in signals]
+    rng.shuffle(shuffled_probs)
+
+    placebo = [
+        replace(
+            s,
+            p_true=max(0.001, min(0.999, p)),
+            ev=s.ev + (p - s.p_true),
+            kelly_f=max(0.0, s.kelly_f * 0.5),
+        )
+        for s, p in zip(signals, shuffled_probs)
+    ]
+
+    base   = backtester.run(signals, train_ratio=train_ratio)
+    result = backtester.run(placebo, train_ratio=train_ratio)
+
+    collapsed = result.skill_score < base.skill_score * 0.5
+
+    return {
+        "valid": True,
+        "real_skill": round(base.skill_score, 4),
+        "placebo_skill": round(result.skill_score, 4),
+        "collapsed": collapsed,
+        "interpretation": (
+            "GOOD — skill collapsed on placebo (edge is in the matching)"
+            if collapsed else
+            "BAD — skill did not collapse; p_true assignment may not matter"
+        ),
+    }
+
+
+def noise_injection_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+    noise_levels: list[float] = [0.01, 0.02, 0.03],
+) -> dict:
+    """
+    Add Gaussian noise N(0, σ) to p_true. Real edge should degrade
+    proportionally and monotonically. Non-monotonic degradation → fragility.
+    """
+    rng = np.random.default_rng(7)
+    base = backtester.run(signals, train_ratio=train_ratio)
+    by_noise = []
+
+    for sigma in noise_levels:
+        noisy = [
+            replace(s, p_true=float(max(0.001, min(0.999, s.p_true + rng.normal(0, sigma)))))
+            for s in signals
+        ]
+        r = backtester.run(noisy, train_ratio=train_ratio)
+        by_noise.append({
+            "sigma": sigma,
+            "skill_score": round(r.skill_score, 4),
+            "wr_excess":   round(r.wr_excess, 4),
+        })
+
+    # Monotone degradation check
+    skills = [r["skill_score"] for r in by_noise]
+    monotone = all(skills[i] >= skills[i + 1] for i in range(len(skills) - 1))
+
+    return {
+        "base_skill": round(base.skill_score, 4),
+        "by_noise": by_noise,
+        "monotone_degradation": monotone,
+        "interpretation": (
+            "GOOD — skill degrades monotonically with noise"
+            if monotone else
+            "WARNING — non-monotone degradation indicates fragile signal"
+        ),
+    }
+
+
+def execution_stress_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+    stress_levels: list[float] = [1.0, 2.0, 3.0],
+) -> dict:
+    """
+    Test with escalating execution stress multipliers.
+    Edge must survive at least 2× stress to be tradeable in real conditions.
+    """
+    out = []
+    for mult in stress_levels:
+        r = backtester.run(
+            signals,
+            train_ratio=train_ratio,
+            execution_stress_mult=mult,
+        )
+        out.append({
+            "stress_mult": mult,
+            "n_trades":    r.n_trades,
+            "skill_score": round(r.skill_score, 4),
+            "total_pnl":   round(r.total_pnl, 2),
+            "n_unfilled":  r.n_unfilled,
+        })
+
+    survives_2x = next((r for r in out if r["stress_mult"] == 2.0), {}).get("skill_score", -1) > 0
+
+    return {
+        "by_stress": out,
+        "survives_2x": survives_2x,
+        "interpretation": (
+            "GOOD — edge survives 2× execution stress"
+            if survives_2x else
+            "BAD — edge disappears at 2× stress; likely too fragile for live trading"
+        ),
+    }
+
+
+def latency_stress_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+    latencies_sec: list[int] = [1, 5, 30, 60],
+) -> dict:
+    """
+    Test with escalating signal-to-fill latency.
+    Edge should survive realistic latencies (≤ 30s for an automated system).
+    """
+    out = []
+    for sec in latencies_sec:
+        r = backtester.run(
+            signals,
+            train_ratio=train_ratio,
+            latency_signal_to_order_sec=sec,
+            latency_order_to_fill_sec=sec,
+        )
+        out.append({
+            "latency_sec": sec,
+            "n_trades":    r.n_trades,
+            "wr_excess":   round(r.wr_excess, 4),
+            "total_pnl":   round(r.total_pnl, 2),
+            "n_unfilled":  r.n_unfilled,
+        })
+
+    survives_30s = next((r for r in out if r["latency_sec"] == 30), {}).get("total_pnl", -1) > 0
+
+    return {
+        "by_latency": out,
+        "survives_30s": survives_30s,
+        "interpretation": (
+            "GOOD — edge survives 30s latency"
+            if survives_30s else
+            "BAD — edge requires sub-30s execution; requires low-latency infrastructure"
+        ),
+    }
+
+
+def edge_decay_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+) -> dict:
+    """
+    Proxy for edge durability: distribution of signal-to-resolution horizons.
+    Short horizons (< 7 days) are high-noise; long horizons (> 90 days) are
+    more reliable but require more capital at risk.
+    """
+    base = backtester.run(signals, train_ratio=train_ratio)
+    if not base.trades:
+        return {"valid": False, "reason": "no_trades"}
+
+    horizons = []
+    for t in base.trades:
+        try:
+            sdt = datetime.fromisoformat(t.signal_date.replace("Z", "+00:00"))
+            rdt = datetime.fromisoformat(t.resolution_date.replace("Z", "+00:00"))
+            horizons.append((rdt - sdt).total_seconds() / 86400)
+        except Exception:
+            pass
+
+    if len(horizons) < 10:
+        return {"valid": False, "reason": "insufficient_horizon_data"}
+
+    arr = np.array(horizons)
+    return {
+        "valid": True,
+        "n": len(horizons),
+        "median_horizon_days": round(float(np.median(arr)), 2),
+        "p25_horizon_days":    round(float(np.percentile(arr, 25)), 2),
+        "p75_horizon_days":    round(float(np.percentile(arr, 75)), 2),
+        "pct_below_7d":        round(float(np.mean(arr < 7)) * 100, 1),
+        "interpretation": (
+            "WARNING — >30% of signals resolve within 7 days (high-noise horizon)"
+            if float(np.mean(arr < 7)) > 0.30 else
+            "OK — majority of signals have adequate horizon"
+        ),
+    }
+
+
+# ──────────────────────────────────────────────
+# 9. CLUSTER CONCENTRATION TEST
+# ──────────────────────────────────────────────
+
+def cluster_concentration_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+) -> dict:
+    """
+    Verify that PnL is distributed across many event groups, not concentrated
+    in a handful. Concentrated PnL indicates the edge is event-specific and
+    fragile — it disappears if those events stop occurring or change character.
+
+    Fails if the top 20% of event groups (by count) account for >70% of
+    total absolute PnL.
+    """
+    base = backtester.run(signals, train_ratio=train_ratio)
+    if not base.trades:
+        return {"valid": False, "reason": "no_trades"}
+
+    from collections import defaultdict
+    group_pnl: dict[str, float] = defaultdict(float)
+    for t in base.trades:
+        group_pnl[t.event_group_id] += t.pnl
+
+    if len(group_pnl) < 5:
+        return {
+            "valid": False,
+            "reason": f"too_few_event_groups ({len(group_pnl)})",
+            "n_events": len(group_pnl),
+        }
+
+    sorted_groups = sorted(group_pnl.values(), key=abs, reverse=True)
+    total_abs_pnl = sum(abs(v) for v in sorted_groups)
+    if total_abs_pnl == 0:
+        return {"valid": False, "reason": "zero_total_pnl"}
+
+    top_n = max(1, int(len(sorted_groups) * 0.20))
+    top_share = sum(abs(v) for v in sorted_groups[:top_n]) / total_abs_pnl
+
+    concentrated = top_share > 0.70
+
+    return {
+        "valid": True,
+        "n_events": len(group_pnl),
+        "top20pct_n": top_n,
+        "top20pct_share": round(top_share, 4),
+        "concentrated": concentrated,
+        "interpretation": (
+            f"FRAGILE — top {top_n} event group(s) ({top_share:.0%} of |PnL|): "
+            "edge is event-specific and likely not generalizable"
+            if concentrated else
+            f"ROBUST — PnL distributed across {len(group_pnl)} event groups "
+            f"(top 20% = {top_share:.0%} of |PnL|)"
+        ),
+    }
+
+
+# ──────────────────────────────────────────────
+# 10. FORECASTER DENSITY TEST
+# ──────────────────────────────────────────────
+
+def forecaster_density_test(
+    signals: list[Signal],
+    backtester: Backtester,
+    train_ratio: float = 0.6,
+) -> dict:
+    """
+    Split signals by Metaculus forecaster count into buckets and compare
+    skill scores. Expected pattern: peak edge at [20–50] forecasters where
+    expert signal is present but market hasn't fully arbitraged it away.
+
+    Availability bias flag: if skill increases monotonically with forecaster
+    count (skill[101+] > skill[20-50] × 1.5), the edge is being driven by
+    well-covered markets where sophisticated arbitrageurs also operate — the
+    'edge' is more likely explained by data availability than by information.
+    """
+    buckets = {
+        "20_50":  [s for s in signals if 20 <= (s.num_forecasters or 0) <= 50],
+        "51_100": [s for s in signals if 51 <= (s.num_forecasters or 0) <= 100],
+        "101_plus": [s for s in signals if (s.num_forecasters or 0) > 100],
+    }
+
+    by_bucket: dict[str, dict] = {}
+    for label, bucket_signals in buckets.items():
+        if len(bucket_signals) < 5:
+            by_bucket[label] = {"n_signals": len(bucket_signals), "skill_score": None, "skipped": True}
+            continue
+        r = backtester.run(bucket_signals, train_ratio=train_ratio)
+        by_bucket[label] = {
+            "n_signals": len(bucket_signals),
+            "n_trades":  r.n_trades,
+            "skill_score": round(r.skill_score, 4),
+            "wr_excess":   round(r.wr_excess, 4),
+            "skipped": False,
+        }
+
+    skill_low  = by_bucket.get("20_50", {}).get("skill_score") or 0.0
+    skill_high = by_bucket.get("101_plus", {}).get("skill_score") or 0.0
+    availability_bias_suspected = (
+        skill_high is not None
+        and skill_low is not None
+        and skill_high > skill_low * 1.5
+        and skill_low > 0
+    )
+
+    return {
+        "by_bucket": by_bucket,
+        "availability_bias_suspected": availability_bias_suspected,
+        "interpretation": (
+            "WARNING — skill increases with forecaster count: edge may reflect "
+            "data availability rather than genuine information advantage"
+            if availability_bias_suspected else
+            "OK — skill pattern consistent with genuine edge "
+            "(peak not driven by high-coverage markets)"
+        ),
+    }
+
+
+# ──────────────────────────────────────────────
 # COMBINED REPORT
 # ──────────────────────────────────────────────
 
@@ -258,21 +622,44 @@ def run_all_robustness_tests(
     train_ratio: float = 0.6,
     n_shuffle: int = 200,
 ) -> dict:
-    log.info("=== Running robustness tests ===")
+    log.info("=== Running robustness tests (10 checks) ===")
 
-    log.info("--- 1/3 Threshold sensitivity ---")
+    log.info("--- 1/10 Threshold sensitivity ---")
     threshold_result = threshold_sensitivity_test(conn, backtester, train_ratio=train_ratio)
 
-    log.info("--- 2/3 Shuffle test (n=%d) ---", n_shuffle)
+    log.info("--- 2/10 Cluster-stratified shuffle test (n=%d) ---", n_shuffle)
     shuffle_result = shuffle_test(conn, signals, backtester, n_shuffle, train_ratio)
 
-    log.info("--- 3/3 Ablation test ---")
+    log.info("--- 3/10 Ablation test ---")
     ablation_result = ablation_test(conn, backtester, train_ratio)
 
+    log.info("--- 4/10 Placebo matching ---")
+    placebo_result = placebo_matching_test(signals, backtester, train_ratio)
+
+    log.info("--- 5/10 Noise injection ---")
+    noise_result = noise_injection_test(signals, backtester, train_ratio)
+
+    log.info("--- 6/10 Execution stress ---")
+    execution_result = execution_stress_test(signals, backtester, train_ratio)
+
+    log.info("--- 7/10 Latency stress ---")
+    latency_result = latency_stress_test(signals, backtester, train_ratio)
+
+    log.info("--- 8/10 Edge decay ---")
+    decay_result = edge_decay_test(signals, backtester, train_ratio)
+
+    log.info("--- 9/10 Cluster concentration ---")
+    concentration_result = cluster_concentration_test(signals, backtester, train_ratio)
+
+    log.info("--- 10/10 Forecaster density ---")
+    density_result = forecaster_density_test(signals, backtester, train_ratio)
+
     all_pass = (
-        threshold_result["stable"] and
-        shuffle_result.get("significant", False) and
-        not ablation_result["fragile"]
+        threshold_result["stable"]
+        and shuffle_result.get("significant", False)
+        and not ablation_result["fragile"]
+        and placebo_result.get("collapsed", False)
+        and not concentration_result.get("concentrated", False)
     )
 
     return {
@@ -280,6 +667,13 @@ def run_all_robustness_tests(
         "threshold_sensitivity": threshold_result,
         "shuffle_test": shuffle_result,
         "ablation": ablation_result,
+        "placebo_matching": placebo_result,
+        "noise_injection": noise_result,
+        "execution_stress": execution_result,
+        "latency_stress": latency_result,
+        "edge_decay": decay_result,
+        "cluster_concentration": concentration_result,
+        "forecaster_density": density_result,
     }
 
 
@@ -323,5 +717,82 @@ def print_robustness_report(report: dict) -> None:
     for r in ab["by_config"]:
         print(f"  {r['config']:<22}  N={r['n_trades']:>4}  skill={r['skill_score']:>+.4f}")
     print(f"  {ab['interpretation']}")
+
+    pl = report.get("placebo_matching", {})
+    if pl and pl.get("valid", True):
+        print()
+        print("  4. PLACEBO MATCHING")
+        print(f"  {sep}")
+        print(f"  Real skill:    {pl.get('real_skill', 0):+.4f}")
+        print(f"  Placebo skill: {pl.get('placebo_skill', 0):+.4f}")
+        print(f"  Collapsed:     {'YES ✓' if pl.get('collapsed') else 'NO ✗'}")
+        print(f"  {pl.get('interpretation', '')}")
+
+    ns = report.get("noise_injection", {})
+    if ns:
+        print()
+        print("  5. NOISE INJECTION")
+        print(f"  {sep}")
+        print(f"  Base skill: {ns.get('base_skill', 0):+.4f}")
+        for r in ns.get("by_noise", []):
+            print(f"  σ={r['sigma']:.1%}  skill={r['skill_score']:>+.4f}  WR_excess={r['wr_excess']:>+.4f}")
+        print(f"  Monotone: {'YES ✓' if ns.get('monotone_degradation') else 'NO ✗'}")
+
+    ex = report.get("execution_stress", {})
+    if ex:
+        print()
+        print("  6. EXECUTION STRESS")
+        print(f"  {sep}")
+        for r in ex.get("by_stress", []):
+            print(f"  x{r['stress_mult']:.1f}  N={r['n_trades']:>4}  skill={r['skill_score']:>+.4f}  "
+                  f"PnL=${r['total_pnl']:>8.2f}  unfilled={r['n_unfilled']}")
+        print(f"  {ex.get('interpretation', '')}")
+
+    lt = report.get("latency_stress", {})
+    if lt:
+        print()
+        print("  7. LATENCY STRESS")
+        print(f"  {sep}")
+        for r in lt.get("by_latency", []):
+            print(f"  {r['latency_sec']:>3}s  N={r['n_trades']:>4}  "
+                  f"WR_excess={r['wr_excess']:>+.4f}  PnL=${r['total_pnl']:>8.2f}  "
+                  f"unfilled={r['n_unfilled']}")
+        print(f"  {lt.get('interpretation', '')}")
+
+    ed = report.get("edge_decay", {})
+    if ed and ed.get("valid"):
+        print()
+        print("  8. EDGE DECAY / HORIZON")
+        print(f"  {sep}")
+        print(f"  Median horizon (days): {ed['median_horizon_days']}")
+        print(f"  P25 / P75 (days):      {ed['p25_horizon_days']} / {ed['p75_horizon_days']}")
+        print(f"  % resolving < 7d:      {ed['pct_below_7d']:.1f}%")
+        print(f"  {ed.get('interpretation', '')}")
+
+    cc = report.get("cluster_concentration", {})
+    if cc and cc.get("valid"):
+        print()
+        print("  9. CLUSTER CONCENTRATION")
+        print(f"  {sep}")
+        print(f"  Event groups:         {cc['n_events']}")
+        print(f"  Top 20% share of |PnL|: {cc['top20pct_share']:.0%}  "
+              f"({'FRAGILE ✗' if cc['concentrated'] else 'OK ✓'})")
+        print(f"  {cc.get('interpretation', '')}")
+
+    fd = report.get("forecaster_density", {})
+    if fd:
+        print()
+        print("  10. FORECASTER DENSITY")
+        print(f"  {sep}")
+        for label, d in fd.get("by_bucket", {}).items():
+            if d.get("skipped"):
+                print(f"  [{label}]  N={d['n_signals']} signals — skipped (too few)")
+            else:
+                print(f"  [{label}]  N={d['n_trades']:>4} trades  "
+                      f"skill={d['skill_score']:>+.4f}  WR_excess={d['wr_excess']:>+.4f}")
+        bias = fd.get("availability_bias_suspected", False)
+        print(f"  Availability bias: {'SUSPECTED ✗' if bias else 'not detected ✓'}")
+        print(f"  {fd.get('interpretation', '')}")
+
     print("=" * width)
     print()
